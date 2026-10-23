@@ -2025,7 +2025,12 @@ async function proveLegacyOrderContextPreflight(args) {
     const previousCanonicalFlag = process.env.PDV_CANONICAL_CONFIG_QA;
     delete process.env.PDV_CANONICAL_CONFIG_QA;
     try {
-      const queried = await noCanonicalDb.comanda.findUnique({ where: { id: oldCommand.id }, include: INCLUDE_COMANDA_OPERACAO });
+      // This pre-canonical fixture intentionally uses a schema from before
+      // ItemComanda.cancelamentosEntregue existed. Keep the assertion focused
+      // on the canonical-config relation while omitting that newer relation.
+      const legacyInclude = structuredClone(INCLUDE_COMANDA_OPERACAO);
+      delete legacyInclude.pedidosOperacao.include.itensComanda.include.cancelamentosEntregue;
+      const queried = await noCanonicalDb.comanda.findUnique({ where: { id: oldCommand.id }, include: legacyInclude });
       assert.equal(queried?.id, oldCommand.id, 'the production-shared comanda include query succeeds without the additive table when activation is off');
     } finally {
       if (previousCanonicalFlag === undefined) delete process.env.PDV_CANONICAL_CONFIG_QA;
