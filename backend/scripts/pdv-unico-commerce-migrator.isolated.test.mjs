@@ -1620,6 +1620,7 @@ async function proveAuthenticatedCashApi({ db, primaryCompany, primaryPoint, men
     const commandOrderOverride = await withOwnerAt('2026-11-02', (cookie) => app.inject({ method: 'POST', url: `/api/operacao/comandas/${encodeURIComponent(recurringCommand1.id)}/pedidos`, headers: { cookie }, payload: { itens: [{ produtoId: product.id, quantidade: 1 }], ocorrenciaId: recurringOccurrences[1].id } }));
     assert.equal(commandOrderOverride.statusCode, 400, 'order API rejects a client-supplied occurrence override');
     await assertNoApiWrites(beforeCommandOrderOverride, 'command order occurrence override');
+    await closeOccurrenceCash('2026-11-02', 0);
 
     const recurringSession2 = await openOccurrenceCash('2026-11-03', recurringOccurrences[1].id);
     const recurringCommand2Response = await withOwnerAt('2026-11-03', (cookie) => app.inject({ method: 'POST', url: '/api/operacao/comandas', headers: { cookie }, payload: { pontoVendaId: primaryPoint.id, tipo: 'APELIDO', identificador: 'Recurring customer', clienteId: occurrenceClient.id } }));
