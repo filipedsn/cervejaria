@@ -193,13 +193,14 @@ try {
       assert.equal(response.statusCode, 201, response.body);
     }
     const lines = await prisma.itemComanda.findMany({ where: { comandaId: command2Id }, orderBy: { volumeMl: 'asc' } });
-    const partial = await inject({ method: 'DELETE', url: `/api/operacao/comandas/${command2Id}/itens/${lines.find((item) => item.volumeMl === 500).id}`, headers: auth(owner), payload: { quantidade: 1 } });
+    const partial = await inject({ method: 'DELETE', url: `/api/operacao/comandas/${command2Id}/itens/${lines.find((item) => item.volumeMl === 500).id}`, headers: auth(owner), payload: { quantidade: 1, quantidadeEsperada: 2, motivo: 'QA erro de lançamento', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID() } });
     assert.equal(partial.statusCode, 200, partial.body);
-    const full = await inject({ method: 'DELETE', url: `/api/operacao/comandas/${command2Id}/itens/${lines.find((item) => item.volumeMl === 700).id}`, headers: auth(owner) });
+    const full = await inject({ method: 'DELETE', url: `/api/operacao/comandas/${command2Id}/itens/${lines.find((item) => item.volumeMl === 700).id}`, headers: auth(owner), payload: { quantidade: 1, quantidadeEsperada: 1, motivo: 'QA erro de lançamento', tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID() } });
     assert.equal(full.statusCode, 200, full.body);
     const net = await prisma.comanda.findUniqueOrThrow({ where: { id: command2Id }, include: { itens: true } });
     assert.equal(Number(net.total), 23);
-    assert.deepEqual(net.itens.map((item) => [item.volumeMl, item.quantidade]), [[500, 1]]);
+    assert.deepEqual(net.itens.filter((item) => !item.canceladoEm).map((item) => [item.volumeMl, item.quantidade]), [[500, 1]]);
+    assert.equal(net.itens.filter((item) => item.canceladoEm).length, 1, 'full cancellation preserves the historical line');
     const paid2 = await inject({ method: 'POST', url: `/api/operacao/comandas/${command2Id}/pagamentos`, headers: auth(owner), payload: { pagamentos: [{ forma: 'PIX', valor: 23 }] } });
     assert.equal(paid2.statusCode, 200, paid2.body);
 

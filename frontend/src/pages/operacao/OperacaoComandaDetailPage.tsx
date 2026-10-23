@@ -100,13 +100,6 @@ export function OperacaoComandaDetailPage() {
     queryFn: () => api.get<ComandaOperacao>(`/api/operacao/comandas/${id}`),
   });
 
-  const { data: produtos } = useQuery({
-    queryKey: ['operacao-produtos-operacionais', comanda?.pontoVendaId],
-    queryFn: () =>
-      api.get<ProdutoOperacao[]>(produtosOperacionaisUrl(comanda!.pontoVendaId)),
-    enabled: Boolean(comanda?.pontoVendaId),
-  });
-
   const caixaQuery = useQuery({
     queryKey: ['operacao-caixa', comanda?.pontoVendaId],
     queryFn: () => api.get<CaixaResposta>(`/api/operacao/caixa?pontoVendaId=${comanda!.pontoVendaId}`),
@@ -114,6 +107,14 @@ export function OperacaoComandaDetailPage() {
     refetchInterval: poll30,
   });
   const caixaData = caixaQuery.data;
+  const { data: produtos } = useQuery({
+    queryKey: ['operacao-produtos-operacionais', comanda?.pontoVendaId, caixaData?.sessao?.id],
+    queryFn: () =>
+      api.get<ProdutoOperacao[]>(produtosOperacionaisUrl(comanda!.pontoVendaId)),
+    enabled: Boolean(comanda?.pontoVendaId && caixaData?.sessao?.id),
+  });
+
+
   const caixaAberto = caixaData?.sessao?.status === 'ABERTO';
   const podeReceber = canPermission('payment.receive');
   const podeOperarComanda = canPermission('command.operate');

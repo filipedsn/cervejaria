@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -339,7 +339,11 @@ try {
             await page.getByRole('button', { name: new RegExp(`${volume} ml`) }).click();
             const price = ({ 300: 'R$ 12,00', 500: 'R$ 18,00', 700: 'R$ 24,00' })[volume];
             await page.getByText(`${price} cada`, { exact: false }).waitFor();
-            await page.getByRole('button', { name: /Adicionar chope à lista/ }).click();
+            const launchCall = page.waitForResponse((response) => response.url().includes(`/api/operacao/comandas/${createdCommandBody.id}/pedidos`) && response.request().method() === 'POST');
+            await page.getByRole('button', { name: 'Adicionar à comanda', exact: true }).click();
+            const launchResult = await launchCall;
+            assert.equal(launchResult.status(), 201, `${label}: immediate tap launch: ${await launchResult.text()}`);
+            await page.getByRole('button', { name: 'Adicionar à comanda', exact: true }).waitFor();
           }
           const detailPath = new URL(page.url()).pathname;
           const comandaId = detailPath.split('/').at(-1);
@@ -355,14 +359,10 @@ try {
             await page.locator('body').screenshot({ path: path.join(screenshots, 'sale-igarape-mobile.png'), fullPage: true });
             await page.setViewportSize({ width: 1440, height: 1000 });
           }
-          const paymentCall = page.waitForResponse((response) => response.url().includes(`/api/operacao/comandas/${comandaId}/pedidos`) && response.request().method() === 'POST');
-          await page.getByRole('button', { name: 'Lançar na comanda' }).click();
-          const response = await paymentCall;
-          assert.equal(response.status(), 201, `${label}: launch route: ${await response.text()}`);
-          const returned = await response.json();
+          const returned = await prisma.comanda.findUniqueOrThrow({ where: { id: comandaId } });
           assert.equal(Number(returned.total), expectedTotal, `${label}: server calculated the explicit menu total`);
           records.at(-1).valorLancado = Number(returned.total);
-          await page.getByRole('button', { name: 'Voltar', exact: true }).click();
+          await page.getByRole('button', { name: 'Fechar', exact: true }).click();
           if (volumes.length === 3) {
             await page.locator('body').screenshot({ path: path.join(screenshots, 'sale-igarape-launch-confirmed-desktop.png'), fullPage: true });
             await page.setViewportSize({ width: 390, height: 844 });
