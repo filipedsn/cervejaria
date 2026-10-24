@@ -1,5 +1,5 @@
-# CI remoto — plano Free (repo privado).
-# Branch protection de verdade exige GitHub Pro ou repo público (API 403 no Free).
+# CI remoto (repo público + plano Free).
+# Branch protection em main exige o check "build-and-unit".
 # Gate local `npm run ci` + atestado continua válido; este workflow espelha o núcleo Linux.
 name: CI
 
@@ -42,8 +42,9 @@ jobs:
       - name: Install frontend
         run: npm ci --prefix frontend
 
+      # Usar o prisma pinado em backend/ (npx na raiz baixa latest e quebra).
       - name: Prisma generate
-        run: npx prisma generate --schema backend/prisma/schema.prisma
+        run: npm exec --prefix backend -- prisma generate
 
       - name: Backend unit tests
         run: npm run test:unit --prefix backend

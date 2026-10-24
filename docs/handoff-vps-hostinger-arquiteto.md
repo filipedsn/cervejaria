@@ -1,9 +1,9 @@
 # Handoff arquiteto / IA — Quiver Tap no VPS Hostinger
 
-**Data:** 2026-10-24 (atualizado no cutover + hardening)  
-**Repo:** `C:\Users\Papai\Documents\Desenvolvimento\Cervejaria` (`filipedsn/cervejaria`)  
-**Escopo:** migração da produção para Hostinger VPS + Cloudflare + diagnóstico CI/CD + postura de segurança  
-**Estado:** **produção pública no VPS** em `https://tap.quivercloud.com.br` · PC **não** é mais origem · validado com PC desligado
+**Data:** 2026-10-24 (cutover + hardening + CI/CD remoto)  
+**Repo:** `C:\Users\Papai\Documents\Desenvolvimento\Cervejaria` (`filipedsn/cervejaria`, **público**)  
+**Escopo:** migração da produção para Hostinger VPS + Cloudflare + CI/CD remoto + postura de segurança  
+**Estado:** **produção pública no VPS** em `https://tap.quivercloud.com.br` · PC **não** é mais origem · validado com PC desligado · **CI Actions + branch protection em `main`**
 
 ---
 
@@ -192,38 +192,38 @@ DKIM cinza (`hostingermail-*._domainkey`) é **só e-mail** (envio/autenticidade
 | Gate de origem | preflight deploy | main limpa + atestado |
 | Ops Panel | `:3099` | local |
 
-### 5.2 Lacunas de plataforma (ainda válidas)
+### 5.2 Lacunas de plataforma (restantes)
 
 | Lacuna | Evidência |
 |---|---|
-| GitHub Actions desligado | `ci.yml` só `workflow_dispatch` / TAP-116 |
-| Sem branch protection efetiva | merge sem check remoto obrigatório |
-| CD ainda manual no VPS | tarball/`docker compose build` ad hoc |
-| Sem registry de imagens por SHA | tag `quiver-tap-api:staging` |
-| Backup agendado no VPS | pendente |
+| CD no VPS ainda semi-manual | `deploy-vps.yml` faz `docker build` por SHA; deploy SSH via Tailscale **opcional** (faltam secrets `TS_*` / `VPS_SSH_KEY`) |
+| Sem push para registry | build local no runner (`push: false`); tag `quiver-tap-api:<SHA>` |
+| Restore drill | dumps diários + rclone OneDrive OK; restore ainda não ensaiado |
 | OTEL no VPS | desligado no env atual |
 
-### 5.3 Notas (1–5) — atualizadas pós-cutover
+**Resolvido nesta sessão:** repo público (Free Actions + branch protection); `ci.yml` em push/PR com job `build-and-unit`; protection em `main` (PR + check obrigatório).
+
+### 5.3 Notas (1–5) — atualizadas pós-CI remoto
 
 | Dimensão | Antes | Agora | Comentário |
 |---|---|---|---|
-| Qualidade / gates locais | 4 | **4** | Intactos |
-| Processo Git / PR | 3 | **3** | Ainda sem enforcement remoto |
-| CI remoto | 1 | **2–3*** | Runners Free ok; `ci.yml` pronto (pendente merge em `main`). Protection indisponível no Free privado |
-| CD / promoção a prod | 2 | **3** | Prod no VPS, mas deploy ainda manual |
+| Qualidade / gates locais | 4 | **4** | Intactos (`npm run ci` + atestado) |
+| Processo Git / PR | 3 | **4** | PR obrigatório + check `build-and-unit` em `main` |
+| CI remoto | 1 | **4** | Actions Free no repo público; Prisma via `npm exec --prefix backend` |
+| CD / promoção a prod | 2 | **3** | Workflow de build SHA pronto; promote Tailscale ainda sem secrets |
 | Infra portable / runtime | 2 | **4** | App+DB Docker no VPS = runtime oficial |
-| DR / multi-env | 2 | **3** | Cutover feito; falta backup cron + rollback imagem |
+| DR / multi-env | 2 | **4** | Backup cron 01:00 BRT + offsite OneDrive; falta restore drill |
 
-**Síntese:** o SPOF do notebook para **servir** produção foi eliminado. O SPOF restante é **como** se publica (ainda manual) e **CI remoto** off.
+**Síntese:** o SPOF do notebook para **servir** produção foi eliminado. CI remoto e proteção de `main` estão ativos. O SPOF restante é **como** se publica no VPS (deploy ainda depende de secrets Tailscale no Actions ou SSH manual).
 
 ### 5.4 Definição de pronto (plataforma ~4)
 
 - [x] `tap.quivercloud.com.br` no VPS com HTTPS; PC não serve prod  
 - [x] `:3001` não pública; SSH restrito  
-- [ ] Todo PR em `main` exige CI verde no GitHub  
-- [ ] Todo deploy de prod vem de imagem tagueada com SHA de `main`  
+- [x] Todo PR em `main` exige CI verde no GitHub (`build-and-unit`)  
+- [ ] Todo deploy de prod vem de imagem tagueada com SHA de `main` (build SHA ok; promote automático pendente)  
 - [ ] Smoke automático no VPS antes do promote  
-- [ ] Backup DB no VPS agendado + restore ensaiado (30 dias)  
+- [x] Backup DB no VPS agendado (30 dumps + rclone OneDrive) · [ ] restore ensaiado  
 - [ ] Rollback de app (imagem n-1) documentado e testado  
 
 ---
@@ -259,18 +259,19 @@ branch → PR → CI remoto obrigatório → merge main
 
 ---
 
-## 7. Roadmap CI/CD restante
+## 7. Roadmap CI/CD
 
-### Fase A — CI remoto (1–2 semanas)
-1. Reativar Actions em push/PR (equivalente a `npm run ci`).
-2. Branch protection quando o plano permitir.
-3. Atestado local como complemento.
+### Fase A — CI remoto — **FEITA**
+1. [x] Repo **público** (`filipedsn/cervejaria`) para Actions Free + branch protection.  
+2. [x] `ci.yml` em push/PR/`workflow_dispatch` — job **`build-and-unit`** (Node 24, npm ci root/backend/frontend, `prisma generate` no backend, unit, build FE/BE).  
+3. [x] Branch protection em `main`: PR obrigatório + status check `build-and-unit`; sem push direto.  
+4. [x] Atestado local (`npm run ci`) permanece como complemento no fluxo Windows legado.
 
-### Fase B — CD para o VPS (2–4 semanas)
-1. Imagem canônica a partir de `deploy/tap-quiver/Dockerfile` (tag SHA).
-2. Registry (GHCR) ou build pinado no VPS.
-3. Action/script: backup → migrate → compose → smoke.
-4. Secrets em store (não tarball com `.env`).
+### Fase B — CD para o VPS (próximo)
+1. [x] Workflow `deploy-vps.yml` — `docker build` tag = SHA (`workflow_dispatch`).  
+2. [ ] Secrets Actions: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`, `VPS_SSH_KEY`, `VPS_TAILSCALE_IP` (deploy SSH via Tailscale; porta 22 pública fechada).  
+3. [ ] Registry (GHCR) ou build pinado no VPS + migrate + smoke `/api/ready`.  
+4. [ ] Secrets de app só no VPS (nunca tarball com `.env` no git).
 
 ### Fase C — Cutover — **FEITA**
 1. [x] HTTPS + Cloudflare proxy  
@@ -280,10 +281,11 @@ branch → PR → CI remoto obrigatório → merge main
 5. [x] Firewall: sem `:3001` / sem `:22` públicos  
 
 ### Fase D — Operação
-1. Backup Postgres no VPS (cron + retenção + restore testado).
-2. Alertas (uptime `/api/ready`, disco, restarts).
-3. Rollback imagem n-1 documentado.
-4. OTEL/EDOT opcional no VPS (ES já disponível via Tailscale).
+1. [x] Backup Postgres no VPS (cron 01:00 BRT, 30 dumps) + rclone OneDrive PRD.  
+2. [ ] Restore ensaiado.  
+3. [ ] Alertas (uptime `/api/ready`, disco, restarts).  
+4. [ ] Rollback imagem n-1 documentado.  
+5. [ ] OTEL/EDOT opcional no VPS (ES já disponível via Tailscale).
 
 ```mermaid
 flowchart LR
@@ -430,16 +432,29 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 5. [x] SSH só Tailscale + rotação de segredos  
 6. [x] Cloudflared desinstalado no PC  
 7. [x] Chaves SSH humanas + agente documentadas + backup cifrado no OneDrive  
-8. [x] Workflows CI + deploy-vps no repo (build por SHA); deploy com Tailscale secrets ainda opcional
-9. [x] Repo **publico**; branch protection em `main` (PR obrigatorio + check CI `build-and-unit`; sem push direto)10. [x] Backups Postgres agendados no VPS (01:00 BRT, 30 dumps) · [ ] restore ensaiado  
+8. [x] Workflows CI + `deploy-vps.yml` no repo (build por SHA); deploy Tailscale ainda sem secrets no Actions  
+9. [x] Repo **público**; branch protection em `main` (PR obrigatório + check `build-and-unit`; sem push direto)  
+10. [x] Backups Postgres agendados no VPS (01:00 BRT, 30 dumps) · [ ] restore ensaiado  
 11. [x] Backup off-site OneDrive `Quiver/Tap Quiver/Backup banco/PRD` (rclone no VPS)  
 12. [ ] `releaseSha` no container (hoje pode ser `unknown`)  
 13. [x] Tarefa `QuiverTap-ProdBackup` no PC excluída  
 14. [ ] OTEL → ES no VPS (opcional)  
 15. [x] ES healthcheck alinhado à senha rotacionada → container **healthy**
 
+### 11.1 Branch protection (`main`) — como está
+
+| Regra | Valor |
+|---|---|
+| Require a pull request before merging | **on** |
+| Require status checks to pass | **on** → `build-and-unit` |
+| Require branches to be up to date | **on** (quando suportado) |
+| Restrict who can push | só via PR (sem push direto na `main`) |
+| Repo visibility | **public** (necessário no plano Free para protection + Actions) |
+
+Workflows: `.github/workflows/ci.yml`, `.github/workflows/deploy-vps.yml`.
+
 ---
 
 ## 12. Mensagem executiva (1 parágrafo)
 
-O Quiver Tap **saiu do notebook**: produção pública está no **VPS Hostinger** atrás da **Cloudflare** (`https://tap.quivercloud.com.br`, SSL Full Strict), com app e banco em Docker, porta da API fechada na internet, SSH só via **Tailscale** (chave humana + chave do agente Cursor), Elasticsearch/Kibana na tailnet, backup diário do Postgres no VPS e **backup cifrado das chaves SSH no OneDrive** (com plano B via painel Hostinger). O cutover foi **provado com o PC desligado**. Lacunas principais restantes: **restore drill** do Postgres; CD completo no VPS ainda depende de secrets Tailscale no Actions; OTEL opcional.
+O Quiver Tap **saiu do notebook**: produção pública está no **VPS Hostinger** atrás da **Cloudflare** (`https://tap.quivercloud.com.br`, SSL Full Strict), com app e banco em Docker, porta da API fechada na internet, SSH só via **Tailscale** (chave humana + chave do agente Cursor), Elasticsearch/Kibana na tailnet, backup diário do Postgres no VPS (+ rclone OneDrive PRD) e **backup cifrado das chaves SSH no OneDrive** (plano B via painel Hostinger). O repositório está **público**, com **GitHub Actions** (`build-and-unit`) e **branch protection** em `main`. O cutover foi **provado com o PC desligado**. Lacunas principais restantes: **restore drill** do Postgres; CD automático no VPS (secrets Tailscale no Actions); OTEL opcional.
