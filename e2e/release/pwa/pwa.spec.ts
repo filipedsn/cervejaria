@@ -22,7 +22,10 @@ test('PWA-S02 barra Sem conexão aparece offline', async ({ ops, page, evidence 
   });
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
-  await expect.poll(() => pageViews.get('/login') ?? 0, { timeout: 6_000 }).toBe(1);
+  await expect.poll(() => pageViews.get('/operacao/comandas') ?? 0, { timeout: 8_000 }).toBe(1);
+  // Anonymous views must not be reassigned to whoever signs in next.
+  expect(pageViews.get('/login') ?? 0).toBe(0);
+  pageViews.clear();
   await page.goto('/operacao/comandas', { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: /Caixa do dia|Comandas/i }).first()).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => pageViews.get('/operacao/comandas') ?? 0, { timeout: 6_000 }).toBe(1);

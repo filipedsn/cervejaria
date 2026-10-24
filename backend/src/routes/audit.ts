@@ -53,6 +53,7 @@ const SAFE_UI_ACTION_LABELS = new Set([
   'error-boundary-reload', 'frontend_error',
   'operacao-caixa-abrir', 'operacao-caixa-corrigir', 'operacao-caixa-encerrar-administrativamente',
   'operacao-caixa-fechar', 'operacao-caixa-fechar-confirmar', 'operacao-caixa-sangria',
+  'operacao-caixa-abrir-confirmar',
   'operacao-caixa-suprimento', 'operacao-comanda-cancelar', 'operacao-comanda-fechar',
   'operacao-confirmar-pagamento', 'operacao-cozinha-avancar', 'operacao-cozinha-cancelar',
   'operacao-cozinha-confirmar-cancelamento', 'operacao-estoque-ajustar', 'operacao-estoque-ajuste-confirmar',

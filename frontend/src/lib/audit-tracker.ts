@@ -34,6 +34,7 @@ const queue: UiEvent[] = [];
 const MAX_QUEUE = 500;
 let flushing = false;
 let sessionEpoch = 0;
+let lastPageView: string | undefined;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
 
@@ -119,6 +120,7 @@ export function flushPendingAuditAfterAuth(): void {
   // Old pre-auth events are intentionally not assigned to a newly authenticated actor.
   queue.length = 0;
   sessionEpoch += 1;
+  lastPageView = undefined;
 }
 
 function scheduleFlush(): void {
@@ -144,7 +146,10 @@ function enqueue(event: UiEvent): void {
 }
 
 export function trackPageView(page: string = currentPage()): void {
-  enqueue({ type: 'page_view', page: safePagePath(page) });
+  const safe = safePagePath(page);
+  if (lastPageView === safe) return;
+  lastPageView = safe;
+  enqueue({ type: 'page_view', page: safe });
 }
 
 export function trackClick(label: string, meta?: Record<string, unknown>, element?: string): void {

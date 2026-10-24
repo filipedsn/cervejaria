@@ -10,6 +10,11 @@ async function portalAberto(ops: Ops, settings?: Record<string, unknown>) {
 
 const portalBase = (tenant: Tenant) => `/api/public/cervejarias/${tenant.slug}/pontos-venda/${tenant.pointId}`;
 
+async function adicionarNoPortal(page: Page, nome: RegExp) {
+  await page.getByRole('button', { name: nome }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Adicionar ao pedido', exact: true }).click();
+}
+
 async function abrirNoPortal(page: Page, tenant: Tenant, nome: string, telefone = uniquePhone()) {
   await page.goto(`/c/${tenant.slug}/p/${tenant.pointId}`, { waitUntil: 'networkidle' });
   const busca = page.waitForResponse((response) => response.url().includes('/cliente-por-telefone'));
@@ -40,13 +45,13 @@ test('POR-S01 cliente abre a comanda no QR do PDV com telefone e nome', async ({
 test('POR-S02 cliente escolhe itens, limpa o carrinho e envia o pedido', async ({ ops, page, evidence }) => {
   const tenant = await portalAberto(ops);
   await abrirNoPortal(page, tenant, 'Cliente Pedido QA');
-  await page.getByRole('button', { name: /Água QA/ }).click();
+  await adicionarNoPortal(page, /Água QA/);
   await expect(page.getByRole('button', { name: 'Pedidos (1)' })).toBeVisible();
   await page.getByRole('button', { name: 'Cancelar' }).click();
   await expect(page.getByRole('button', { name: 'Pedidos (0)' })).toBeVisible();
-  await page.getByRole('button', { name: /Lata QA/ }).click();
+  await adicionarNoPortal(page, /Lata QA/);
   await page.getByRole('button', { name: 'Aumentar Lata QA' }).click();
-  await page.getByRole('button', { name: /Pilsen QA.*18,00/ }).click();
+  await adicionarNoPortal(page, /Pilsen QA.*18,00/);
   await expect(page.getByRole('button', { name: 'Pedidos (2)' })).toBeVisible();
   await evidence.screenshot('carrinho');
   await page.getByRole('button', { name: 'Enviar pedido' }).click();
@@ -97,7 +102,7 @@ test('POR-S02 cliente escolhe itens, limpa o carrinho e envia o pedido', async (
 test('POR-S03 o status do pedido muda no portal sem recarregar', async ({ ops, page, evidence }) => {
   const tenant = await portalAberto(ops);
   await abrirNoPortal(page, tenant, 'Cliente Status QA');
-  await page.getByRole('button', { name: /Porção QA/ }).click();
+  await adicionarNoPortal(page, /Porção QA/);
   await page.getByRole('button', { name: 'Enviar pedido' }).click();
   await page.getByRole('button', { name: 'Resumo da conta' }).click();
   await expect(page.getByText('1x Porção QA')).toBeVisible();
@@ -185,7 +190,7 @@ test('POR-X02 cliente inativo não abre comanda nem envia pedidos pelo portal', 
   const estoqueAoDesativar = await tenant.stock();
 
   await abrirNoPortal(page, tenant, cliente.nome, telefone);
-  await page.getByRole('button', { name: /Água QA/ }).click();
+  await adicionarNoPortal(page, /Água QA/);
   await tenant.owner.expect(tenant.owner.patch(`/api/clientes/${cliente.id}`, { ativo: false }), 200, 'desativar pelo fluxo administrativo');
   await evidence.checkpoint();
 

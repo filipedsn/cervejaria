@@ -58,6 +58,7 @@ const steps = [
   ['backend-test', () => run(npm, ['run', 'test:unit'], 'backend')],
   ['backend-build (tsc --noEmit)', () => run(npx, ['tsc', '--noEmit'], 'backend')],
   ['ops-panel-test', () => run(npm, ['run', 'test:unit'], 'ops-panel')],
+  ['observability-tools', () => run('node', ['--test', 'scripts/observability/report-platform.test.mjs', 'scripts/observability/dev-alerts.test.mjs'], '.')],
   ['support-analyst-test: typecheck', () => run(npm, ['run', 'typecheck'], 'support-analyst')],
   ['support-analyst-test: test', () => run(npm, ['run', 'test'], 'support-analyst')],
   ['support-analyst-test: dossier-replay', () => run(npm, ['run', 'dossier-replay'], 'support-analyst')],
