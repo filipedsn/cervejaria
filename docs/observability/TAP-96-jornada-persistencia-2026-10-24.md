@@ -2,7 +2,7 @@
 
 ## Escopo desta entrega
 
-Base inicial: `origin/main` c68cd9d3. Branch `feat/tap96-journey-persistence`. A segregação física foi expressamente reservada pelo proprietário para execução conjunta. Este documento descreve a mudança de instrumentação; a reconstrução da infraestrutura compartilhada posteriormente autorizada está em [validação operacional](TAP-96-validacao-operacional-2026-10-24.md). A aplicação de produção não foi publicada. Os relatórios históricos de TAP-96 continuam válidos apenas para os SHAs e ambientes que identificam.
+Base inicial: `origin/main` c68cd9d3. Branch `feat/tap96-journey-persistence`. O proprietário realizou a segregação durante esta entrega: **PC local é DEV; VPS Hostinger é produção**. O DEV não depende de DNS público nem do antigo tunnel. Este documento descreve a instrumentação; a reconstrução local, o alinhamento dos papéis e a inspeção somente leitura da produção oficial estão em [validação operacional](TAP-96-validacao-operacional-2026-10-24.md). A aplicação na VPS não foi publicada por esta entrega. Relatórios antigos de namespace PRD no PC são históricos e não certificam a VPS.
 
 ## Correções
 
@@ -58,7 +58,7 @@ Monitorar separadamente erros técnicos de banco, recusas de negócio e transaç
 - Consultas raw não têm interpretação automática de escrita, entidade ou payload; mantêm sinais técnicos. Erros durante COMMIT exigem reconciliação por chave de negócio antes de repetir operações.
 - DEV observado em 24/10: `77a466829b8a9a84da0aad4b0a02b0ac6680e379`, três commits exclusivos em relação à base main (modal e consulta de comandas encerradas). Não substituir essa versão por uma branch sem essas mudanças. Integrar pelo fluxo de PR antes da troca oficial.
 - No diagnóstico inicial, a consulta Elastic respondeu 401. Depois o usuário autorizou uso em memória da credencial do container e descarte do histórico OTel. Consultar a avaliação operacional para o estado posterior; a prova DEV deve identificar o SHA publicado. Credenciais não são impressas nem gravadas.
-- Segregação física fica para trabalho conjunto. Deploy de produção requer autorização explícita. Backup da observabilidade continua adiado conforme decisão histórica registrada no repositório.
+- Segregação física foi realizada pelo proprietário: PC DEV e VPS PROD. O collector local descarta sinais de produção. A inspeção da VPS encontrou os exportadores OTEL desativados, sem streams de aplicação nem regras; a ativação/promoção na produção oficial permanece pendente de autorização e implantação próprias. Backup de observabilidade não deve ser confundido com o backup Postgres já configurado na VPS.
 
 ## Testes e rollback
 

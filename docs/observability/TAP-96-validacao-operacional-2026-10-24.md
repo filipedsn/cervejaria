@@ -2,7 +2,9 @@
 
 ## Escopo e método
 
-Avaliação em 24/10/2026, Elastic/Kibana 8.17.0, licença Basic ativa. Consultas locais autenticadas, sem registrar credenciais. `scripts/observability/report-platform.mjs` coleta inventário, ILM, regras e SLIs agregados. O relatório não modifica retenção, documentos ou regras. A aplicação de produção não foi publicada. Após a avaliação inicial, o usuário autorizou recriar a infraestrutura e descartar o histórico Elastic sem importância; a reconstrução descrita abaixo inclui os dados OTel dos ambientes DEV, PRD e infra do cluster compartilhado. Segregação física permanece reservada para execução conjunta.
+Estado operacional confirmado pelo proprietário em 24/10/2026: **PC local = DEV; VPS Hostinger = produção**. A segregação física já foi realizada por ele, conforme `docs/handoff-vps-hostinger-arquiteto.md` fornecido no checkout principal. `tapdev` e o antigo tunnel foram removidos intencionalmente; não foram recriados. A entrega publica DEV em `http://localhost:5202`, API `:3002`, banco DEV `:5434` e Elastic local. A produção oficial é `https://tap.quivercloud.com.br`, na VPS, acessada administrativamente só por Tailscale/SSH.
+
+Os números PRD nas avaliações históricas abaixo referem-se ao antigo ambiente do PC, antes do handoff; **não certificam a produção atual da VPS**. A reconstrução do histórico Elastic local sem importância foi autorizada, incluindo dados locais legados. A avaliação da VPS foi somente leitura, sem deploy, reinício, mudança de ambiente, regra ou exclusão. Consultas usam credenciais apenas em memória, sem impressão nem armazenamento. `scripts/observability/report-platform.mjs` coleta inventário, ILM, regras e SLIs agregados; seu resultado deve sempre identificar qual cluster foi consultado.
 
 ## Regressão e preservação funcional
 
@@ -42,7 +44,7 @@ Ativados com autorização explícita, intervalo de um minuto, sem ações exter
 
 Janela móvel de 24 horas, leitura às 18:00 UTC, antes da publicação do candidato:
 
-| Indicador | DEV | PRD (somente leitura) |
+| Indicador histórico | DEV local | PRD legado no PC |
 | --- | ---: | ---: |
 | Documentos de auditoria | 2.330 | 15.945 |
 | Requisições servidor elegíveis | 1.245 | 6.708 |
@@ -60,7 +62,7 @@ Cluster de um nó, saúde yellow, 750 shards primários ativos, zero primários 
 | Grupo | Índices | Documentos | Armazenamento primário aproximado |
 | --- | ---: | ---: | ---: |
 | DEV | 690 | 17.900.969 | 2,09 GiB |
-| PRD | 18 | 507.128 | 130,5 MiB |
+| PRD legado no PC | 18 | 507.128 | 130,5 MiB |
 | Infra/outros sinais OTel | 6 | 6.382.486 | 396,8 MiB |
 
 Os primários incluem também índices de sistema não mostrados na tabela. A fragmentação em muitos datasets é mais preocupante que os poucos GiB atuais. Identificadores de tenant, operador e correlação ficam nos logs; não devem tornar-se dimensões de métricas. O histórico sintético contribui para a cardinalidade de datasets. O runner descartável evita continuar alimentando o cluster compartilhado com a regressão.
@@ -91,6 +93,23 @@ Após reinício do computador, a leitura de 18:40 UTC confirmou persistência da
 
 Foi observado `version_conflict_engine_exception` em métricas TSDB. A combinação Elasticsearch 8.17.0 / exporter 0.130.0 requer o campo `_metric_names_hash` como dimensão para evitar colisão de métricas distintas em batches separados. Foi aplicado o componente `metrics-otel@custom`, preservando campos independentes, e recriados somente os streams de métricas recém-gerados. A correção segue a [documentação oficial do exporter, seção Known issues](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.130.0/exporter/elasticsearchexporter/README.md#version_conflict_engine_exception); não foi necessário atualizar o cluster. Após a aplicação, a leitura de logs do collector por um minuto não registrou novas falhas. O runner descartável também instala esse mapping antes de receber métricas.
 
+## Alinhamento definitivo após o handoff PC/VPS
+
+| Ambiente | Runtime e acesso | Instrumentação observada |
+| --- | --- | --- |
+| DEV | PC; frontend `:5202`, API `:3002`, Postgres `:5434`; Elastic/Kibana locais | Release validada, eventos reais de fixture, três regras sem conectores e retenção explícita |
+| PROD oficial | VPS Hostinger; nginx/Cloudflare HTTPS; app e DB Docker; Elastic/Kibana apenas localhost + Tailscale | Containers healthy e cluster green; exportadores OTEL `none`, sem streams de aplicação e sem regras ativas |
+
+O collector local agora monitora somente a API/frontend e Postgres DEV. Foram removidos os checks do antigo `:3001`, do banco legado `:5432` e dos endereços públicos. Logs, métricas e traces passam por filtro DEV-only: namespace diferente de `dev` ou ambiente `production` são descartados. Os receivers infra locais continuam em namespace `infra`. O dataset também é normalizado no span, evitando que um atributo de span recrie índices por tenant.
+
+Teste OTLP real local enviou variantes DEV, PROD e namespace DEV com ambiente production. Resultado: um log, uma métrica e um trace DEV aceitos; as duas variantes de produção descartadas nos três sinais. O trace permaneceu no dataset `generic`. A métrica de teste usa apenas enum finito de caso, sem run ID em dimensão. Após a prova, três streams PRD legados foram removidos somente do Elastic local. A API legada local iniciada durante a recuperação foi encerrada com validação de PID/caminho; os bancos e a VPS permaneceram intactos.
+
+Inspeção autenticada da VPS via SSH/Tailscale, em 24/10: Elasticsearch/Kibana 8.17.0 e app healthy; cluster green, um nó e 30 primários; zero streams de aplicação; zero regras Kibana; `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER` e `OTEL_LOGS_EXPORTER` iguais a `none`; `RELEASE_SHA` ausente. O mapping de compatibilidade `_metric_names_hash` também não está aplicado. Zero streams não comprova retenção suficiente. Os checks somente leitura não habilitaram exportação nem alteraram produção.
+
+Amostra real no DEV publicado: duas mutações de catálogo produziram dez documentos de auditoria, dez `event.id` distintos, cinco documentos por mutação, 20.440 bytes de `_source` serializado (média 2.044 bytes/documento). Tenant, operador, request/interaction/correlation, payload permitido, tenant alvo e commit foram conferidos com a leitura do banco. Nenhuma cópia dessas correlações apareceu no namespace PRD local. Essa amostra não representa todas as jornadas, espaço em disco, volume total nem custo monetário; preço e tráfego representativos continuam necessários.
+
+Na produção oficial, o aceite de observabilidade permanece aberto: preparar e autorizar promoção da instrumentação, collector/configuração próprios para VPS, autenticação de exportação, mapping compatível, retenção e alertas PROD; então provar ingestão e observar janela operacional. Não copiar o arquivo DEV-only do PC para a VPS. A mudança de DNS/ingress e a segregação já feitas não foram revertidas.
+
 ## Parecer
 
-As configurações anteriores não eram suficientes para certificar excelência operacional: não havia regras ativas e a retenção real era majoritariamente ilimitada. A detecção DEV foi implantada e testada; a instrumentação ganhou correlação e confirmação transacional. Com a nova autorização, a consolidação e retenção foram aplicadas e o histórico sem valor foi descartado. Permanecem a segregação física conjunta, acompanhamento de uma janela operacional representativa e definição de custo monetário a partir de preço e consumo reais. A autorização de reconstrução não inclui publicação da aplicação em produção.
+O DEV local ganhou detecção testada, correlação, payload protegido, confirmação transacional, retenção e roteamento exclusivo. A segregação PC/VPS já foi feita pelo proprietário e foi respeitada. A produção oficial está saudável como aplicação, mas ainda **não possui ingestão OTEL ativa nem alertas**, portanto não está certificada em observabilidade. Permanecem a implantação autorizada dessa camada na VPS, janela operacional representativa e custo monetário com preço/consumo reais. Nenhuma publicação ou reconfiguração de produção foi realizada por esta entrega.

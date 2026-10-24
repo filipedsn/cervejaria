@@ -5,8 +5,14 @@ version: 1
 updated: 2026-10-24
 
 environments:
+  development:
+    namespace: dev
+    runtime: local_pc
+    origin_ready: http://127.0.0.1:3002/api/ready
+    frontend_url: http://localhost:5202
   production:
     namespace: prd
+    runtime: hostinger_vps
     public_url: https://tap.quivercloud.com.br
     origin_ready: http://127.0.0.1:3001/api/ready
 

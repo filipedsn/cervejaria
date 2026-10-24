@@ -9,22 +9,15 @@ receivers:
   httpcheck:
     collection_interval: 60s
     targets:
-      - endpoint: http://host.docker.internal:3001/api/ready
-        method: GET
       - endpoint: http://host.docker.internal:3002/api/ready
         method: GET
-      - endpoint: https://tapdev.quivercloud.com.br/api/ready
-        method: GET
-      - endpoint: https://tap.quivercloud.com.br/api/ready
+      - endpoint: http://host.docker.internal:5202/
         method: GET
 
   tcpcheck:
     collection_interval: 60s
     initial_delay: 5s
     targets:
-      - endpoint: host.docker.internal:5432
-        dialer:
-          timeout: 5s
       - endpoint: host.docker.internal:5434
         dialer:
           timeout: 5s
@@ -72,6 +65,9 @@ processors:
         statements:
           - set(attributes["data_stream.dataset"], "generic")
     trace_statements:
+      - context: span
+        statements:
+          - set(attributes["data_stream.dataset"], "generic")
       - context: resource
         statements:
           - set(attributes["data_stream.dataset"], "generic")
@@ -80,13 +76,16 @@ processors:
     error_mode: ignore
     traces:
       span:
-        - 'resource.attributes["data_stream.namespace"] == "prd"'
+        - 'resource.attributes["data_stream.namespace"] != "dev"'
+        - 'resource.attributes["deployment.environment.name"] == "production"'
     metrics:
       metric:
-        - 'resource.attributes["data_stream.namespace"] == "prd"'
+        - 'resource.attributes["data_stream.namespace"] != "dev"'
+        - 'resource.attributes["deployment.environment.name"] == "production"'
     logs:
       log_record:
-        - 'resource.attributes["data_stream.namespace"] == "prd"'
+        - 'resource.attributes["data_stream.namespace"] != "dev"'
+        - 'resource.attributes["deployment.environment.name"] == "production"'
 
   transform/namespace:
     error_mode: ignore
@@ -172,11 +171,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/namespace, transform/dataset, tail_sampling, batch]
+      processors: [transform/namespace, filter/dev-only, transform/dataset, tail_sampling, batch]
       exporters: [elasticsearch]
     metrics/app:
       receivers: [otlp]
-      processors: [transform/namespace, transform/dataset, batch]
+      processors: [transform/namespace, filter/dev-only, transform/dataset, batch]
       exporters: [elasticsearch]
     metrics/infra:
       receivers: [httpcheck, tcpcheck, hostmetrics]
@@ -184,5 +183,5 @@ service:
       exporters: [elasticsearch]
     logs:
       receivers: [otlp]
-      processors: [transform/namespace, transform/dataset, batch]
+      processors: [transform/namespace, filter/dev-only, transform/dataset, batch]
       exporters: [elasticsearch]
