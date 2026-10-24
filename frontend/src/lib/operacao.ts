@@ -587,6 +587,13 @@ export interface RelatorioTurnoCaixa {
   /** Administrative closure: values come from explicit links, without physical count. */
   conferenciaFisicaPendente?: boolean;
   comandasAtendidas: number | null;
+  /** Total of closed CAIXA records in the report scope, including AVULSA. */
+  registrosVenda?: number | null;
+  /** Closed records with a persisted session realization link. */
+  comandasComVinculoSessao?: number | null;
+  /** Historical candidates with matching point/day/time but no session link. */
+  historicasSemVinculo?: number | null;
+  comandasCanceladas?: number | null;
   vendasTotal: number | null;
   totalRecebido: number | null;
   vendasAvulsas: number | null;
@@ -637,6 +644,37 @@ export interface RelatorioTurnoCaixa {
   ticketMedio: number | null;
   duracaoMinutos: number | null;
   receitaPorHora: number | null;
+}
+
+export interface ComandasTurnoPage {
+  dados: Array<ComandaOperacao & { vinculoSessao: 'CONFIRMADO' | 'NAO_COMPROVADO' }>;
+  filtroAtivo: 'TODOS' | 'COMANDAS' | 'AVULSAS' | 'CANCELADAS';
+  escopo: {
+    totalRegistros: number;
+    registrosDeVenda: number;
+    comandas: number;
+    vendasAvulsas: number;
+    comandasCanceladas: number;
+    vinculoConfirmado: number;
+    semVinculoConfiavel: number;
+    criterio: string;
+  };
+  paginacao: { pagina: number; tamanhoPagina: number; totalFiltrado: number; paginas: number; de: number; ate: number };
+}
+
+export interface RecebimentoDividaAnteriorTurno {
+  comanda: {
+    id: string;
+    tipo: TipoComanda;
+    numero: number | null;
+    identificador: string | null;
+    cliente: { id: string; nome: string } | null;
+    sessaoOrigemId: string | null;
+    fechadaEm: string | null;
+    total: number;
+  };
+  pagamentos: Array<{ id: string; forma: string; valor: number; pagoEm: string }>;
+  recebidoNesteTurno: number;
 }
 
 export function formatTurnoTitulo(abertoEm: string, fechadoEm: string): string {
