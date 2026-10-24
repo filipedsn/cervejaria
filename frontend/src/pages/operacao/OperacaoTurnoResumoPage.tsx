@@ -209,12 +209,6 @@ export function OperacaoTurnoResumoPage() {
           <h2 className="section-label">Comandas e vendas avulsas do histórico do turno</h2>
           <p className="text-xs text-ink-faint">Somente leitura — caixa encerrado, sem reabertura</p>
         </div>
-        {data.registrosVenda !== undefined && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm" role="note">
-            <p className="font-semibold">{data.registrosVenda} registros de venda no escopo histórico: {data.comandasAtendidas ?? 0} comandas + {data.vendasAvulsas ?? 0} vendas avulsas; {data.comandasCanceladas ?? 0} comanda(s) cancelada(s).</p>
-            <p className="mt-1 text-ink-muted">Vendas avulsas já estão dentro dos registros de venda; canceladas ficam separadas e não entram nos indicadores financeiros. {data.comandasComVinculoSessao ?? 0} vendas têm vínculo explícito com este turno; {data.historicasSemVinculo ?? 0} registros migrados não têm vínculo de sessão confiável e aparecem identificados separadamente. O valor financeiro mantém os snapshots e filtros históricos existentes.</p>
-          </div>
-        )}
         {comandasTurnoQuery.isLoading && <p className="text-sm text-ink-faint">Carregando comandas…</p>}
         {comandasTurnoQuery.isError && (
           <p className="text-sm text-red-600" role="alert">
@@ -241,7 +235,6 @@ export function OperacaoTurnoResumoPage() {
             <p className="text-xs text-ink-faint" data-testid="turno-comandas-paginacao">
               Filtro ativo: {filtroComandas === 'TODOS' ? 'todos os tipos e status' : filtroComandas === 'COMANDAS' ? 'comandas fechadas' : filtroComandas === 'AVULSAS' ? 'vendas avulsas fechadas' : 'comandas canceladas'} · Exibindo {comandasTurnoQuery.data.paginacao.de}–{comandasTurnoQuery.data.paginacao.ate} de {comandasTurnoQuery.data.paginacao.totalFiltrado} filtrados; escopo total {comandasTurnoQuery.data.escopo.totalRegistros} ({comandasTurnoQuery.data.escopo.comandas} comandas, {comandasTurnoQuery.data.escopo.vendasAvulsas} vendas avulsas, {comandasTurnoQuery.data.escopo.comandasCanceladas} canceladas).
             </p>
-            <p className="text-xs text-ink-faint">Critério: {comandasTurnoQuery.data.escopo.criterio}</p>
             <div className="divide-y divide-line" data-testid="turno-comandas-lista">
               {comandasTurnoQuery.data.dados.map((comanda) => {
                 const formas = comanda.pagamentos
@@ -269,9 +262,6 @@ export function OperacaoTurnoResumoPage() {
                       </p>
                       <p className="text-[11px] text-ink-faint mt-1">
                         Pagamentos listados são os registrados no sistema; valores da maquininha exigem conferência externa.
-                      </p>
-                      <p className={`text-xs mt-1 font-medium ${comanda.vinculoSessao === 'CONFIRMADO' ? 'text-green-700' : 'text-amber-700'}`}>
-                        {comanda.vinculoSessao === 'CONFIRMADO' ? 'Vínculo de sessão confirmado' : 'Registro histórico sem vínculo confiável com a sessão'}
                       </p>
                     </div>
                     <button

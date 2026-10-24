@@ -132,7 +132,7 @@ test('DSH-S11 lista paginada reconcilia 99 vendas e separa dívidas anteriores',
   await page.setViewportSize(viewport);
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto(`/operacao/turnos/${sessionB.id}`, { waitUntil: 'networkidle' });
-  await expect(page.getByText('99 registros de venda no escopo histórico: 70 comandas + 29 vendas avulsas; 1 comanda(s) cancelada(s).')).toBeVisible();
+  await expect(page.getByText(/registros de venda no escopo hist[oó]rico|Registro hist[oó]rico sem v[ií]nculo confi[aá]vel com a sess[aã]o|Registro hist[oó]rico no intervalo do caixa/)).toHaveCount(0);
   await expect(page.getByTestId('turno-comandas-lista').locator('[data-command-id]', {})).toHaveCount(25);
   const renderedIds: string[] = [];
   const unchangedUrl = page.url();

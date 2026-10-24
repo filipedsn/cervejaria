@@ -164,11 +164,6 @@ export function ComandaEspelhoTurnoModal({
               <Campo label="Turno" value={data.turno ? `${dataHora(data.turno.abertoEm)} – ${dataHora(data.turno.fechadoEm)}` : 'Não registrado'} />
               <Campo label="Agendamento" value={data.agendamento ? `${data.agendamento.nome} · ${dataLocal(data.agendamento.data)} · ${data.agendamento.horaInicio}${data.agendamento.horaFim ? `–${data.agendamento.horaFim}` : ''}${data.agendamento.agendaNome ? ` · ${data.agendamento.agendaNome}` : ''}` : 'Não registrado'} />
             </dl>
-            {data.contextoTurno === 'HISTORICO_SEM_VINCULO_CONFIAVEL' && (
-              <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800">
-                Registro histórico no intervalo do caixa; não há vínculo persistido que comprove sua origem neste turno.
-              </p>
-            )}
             {data.contextoTurno === 'CANCELAMENTO_TURNO' && (
               <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-700">
                 Comanda cancelada com vínculo explícito ao turno. Não entra nos indicadores nem nos totais de vendas.
