@@ -1,0 +1,97 @@
+# Build da imagem Quiver Tap tagueada com o SHA.
+# Deploy SSH no VPS exige Tailscale no runner (secrets) — porta 22 pública está fechada.
+# Enquanto os secrets não existirem, este workflow só valida o `docker build`.
+name: Deploy VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Também fazer deploy no VPS (requer secrets Tailscale+SSH)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: docker-build-sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (tag = SHA)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/tap-quiver/Dockerfile
+          push: false
+          load: true
+          tags: |
+            quiver-tap-api:${{ github.sha }}
+            quiver-tap-api:build
+
+      - name: Show image
+        run: docker images 'quiver-tap-api' --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}'
+
+  deploy:
+    name: deploy-via-tailscale
+    needs: build
+    if: ${{ inputs.deploy == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Require secrets
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          missing=0
+          [ -n "$TS_OAUTH_CLIENT_ID" ] || { echo "Falta secret TS_OAUTH_CLIENT_ID"; missing=1; }
+          [ -n "$TS_OAUTH_SECRET" ] || { echo "Falta secret TS_OAUTH_SECRET"; missing=1; }
+          [ -n "$VPS_SSH_KEY" ] || { echo "Falta secret VPS_SSH_KEY"; missing=1; }
+          exit $missing
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps
+          chmod 600 ~/.ssh/vps
+          cat >> ~/.ssh/config <<EOF
+          Host quiver-vps
+            HostName ${{ secrets.VPS_TAILSCALE_IP }}
+            User root
+            IdentityFile ~/.ssh/vps
+            StrictHostKeyChecking accept-new
+          EOF
+
+      - name: Remote build/recreate on VPS
+        run: |
+          ssh quiver-vps 'bash -s' <<'EOS'
+          set -euo pipefail
+          cd /opt/quiver-tap
+          git fetch origin main
+          git checkout -f origin/main
+          cd deploy/tap-quiver
+          docker compose build api
+          docker compose up -d --force-recreate api
+          curl -fsS -o /dev/null -w "ready:%{http_code}\n" http://127.0.0.1:3001/api/ready
+          EOS
