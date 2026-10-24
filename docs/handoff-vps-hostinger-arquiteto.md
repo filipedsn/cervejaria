@@ -1,11 +1,30 @@
 # Handoff arquiteto / IA — Quiver Tap no VPS Hostinger
 
-**Data:** 2026-10-24 (cutover + hardening + CI/CD + segregação Dev/PRD)  
-**Repo:** `C:\Users\Papai\Documents\Desenvolvimento\Cervejaria` (`filipedsn/cervejaria`, **público**)  
-**Escopo:** migração da produção para Hostinger VPS + Cloudflare + CI/CD remoto + postura de segurança + mapa Dev/PRD  
-**Estado:** **PRD** só no VPS (`https://tap.quivercloud.com.br`) · **DEV** só no PC · clusters Elastic **separados** · CI + branch protection em `main` · PC **não** serve clientes
+**Data:** 2026-10-24 (cutover + hardening + CI/CD + segregação Dev/PRD + checklist canônico)  
+**Repo:** `filipedsn/cervejaria` (**público**) · clone típico `C:\Users\Papai\Documents\Desenvolvimento\Cervejaria`  
+**Escopo:** operação PRD no VPS Hostinger + Cloudflare + CI/CD + mapa Dev/PRD + postura de segurança  
+**Estado:** **PRD** só no VPS (`https://tap.quivercloud.com.br`) · **DEV** só no PC · clusters Elastic **separados** · CI Actions + branch protection em `main` · PC **não** serve clientes
 
-**Leitor principal deste doc:** **Codex** (agente do dia a dia). Assuma zero contexto prévio: siga as tabelas e as proibições ao pé da letra.
+**Classificação:** documento **interno / restrito**. Contém topologia, paths e *localização* de credenciais (não as senhas). **Não** colar o arquivo inteiro em chat público, issue aberta, e-mail externo ou PR de terceiros. Em respostas a humanos, resumir o estado **sem** reproduzir IPs Tailscale, paths de `.env`/rclone nem inventário de chaves.
+
+**Leitor principal:** **Codex** (agente do dia a dia). Assuma zero contexto prévio. **Fonte da verdade = este arquivo na branch `main` do GitHub** (`origin/main`). Se a cópia local divergir, `git fetch` + ler `origin/main` — ignores WIP em feature branches.
+
+### Checklist canônico (use isto; ignore redações antigas / riscadas)
+
+| Tema | Status | Evidência / nota |
+|---|---|---|
+| PRD no VPS; PC fora do path de clientes | **Feito** | Cutover 2026-10-24; site OK com PC desligado |
+| Backup Postgres local no VPS (cron 01:00 BRT, 30 dumps) | **Feito** | `/etc/cron.d/quiver-tap-backup` + dumps em `/opt/quiver-tap/backups/postgres` |
+| Cópia **off-site** OneDrive (rclone) | **Feito** | `OFFSITE_ENABLED=1`; log `OFFSITE ok` em 2026-10-24 19:38 BRT; remote `…/Backup banco/PRD` |
+| Restore drill (ensaiar restore) | **Pendente** | Backup ≠ recovery até testar em DB descartável |
+| CI remoto `build-and-unit` + protection em `main` | **Feito** | Repo público; PR obrigatório |
+| `npm run ci` local | **Complementar** | Continua útil (atestado / suite Windows); **não** substitui o check Actions no merge |
+| CD automático no VPS (secrets Tailscale) | **Pendente** | Runbook §7.1; deploy ainda manual via SSH |
+| `releaseSha` / rollback imagem n-1 | **Pendente** | |
+| OTEL → ES PRD no VPS | **Pendente** (opcional) | Cluster PRD ≠ cluster DEV |
+| Equalizar API DEV em Docker | **Pendente** | Hoje API DEV = Node nativo |
+
+**Não é pendência:** “configurar backup OneDrive do Postgres”. Isso já roda. Quem listar off-site como lacuna está lendo trecho riscado, mensagem velha ou confusão com *restore*.
 
 ---
 
@@ -247,7 +266,8 @@ PC (Tailscale) → 100.120.170.89:9200 / :5601
 | SSH público | timeout (fechado no firewall) |
 | JWT / APP_URL https | ok após rotação |
 | ES/Kibana | localhost + Tailscale Serve |
-| Backup diário 01:00 BRT · 30 dumps | ok |
+| Backup diário 01:00 BRT · 30 dumps **locais** | ok |
+| Off-site OneDrive via rclone (`OFFSITE_ENABLED=1`) | **ok** (comprovado 2026-10-24: log `OFFSITE ok`) |
 | Headers app (Helmet) | HSTS/XFO/nosniff presentes na origem |
 
 ### 4.2 Riscos / itens ainda em aberto
@@ -256,8 +276,8 @@ PC (Tailscale) → 100.120.170.89:9200 / :5601
 |---|---|---|---|
 | ~~Alta~~ | ~~Cloudflared no PC~~ | ~~Resolvido 2026-10-24~~ | Serviço **desinstalado**; tunnel down |
 | ~~Alta~~ | ~~Chaves SSH~~ | ~~Resolvido / intencional~~ | (1) humana GitHub (2) agente Cursor `~/.ssh/quiver-vps/cursor-agent` · alias `ssh quiver-vps` |
-| ~~Média~~ | ~~Backups só no disco do VPS~~ | ~~Resolvido~~ | Offsite **OneDrive** `…/Backup banco/PRD` via rclone no cron 01:00 BRT |
-| Média | **Restore nunca ensaiado** | Backup sem restore testado ≠ recovery | Rodar restore drill em DB descartável |
+| ~~Média~~ | ~~Backups só no disco do VPS / sem off-site~~ | ~~Resolvido 2026-10-24~~ | rclone → OneDrive `…/Backup banco/PRD` no mesmo cron; **não** relistar como pendência |
+| Média | **Restore nunca ensaiado** | Ter dump (local + OneDrive) ≠ saber restaurar | Restore drill em DB **descartável** (única lacuna de backup) |
 | ~~Média~~ | ~~ES container `unhealthy`~~ | ~~Resolvido~~ | Healthcheck usava senha antiga no env do container; recreate alinhou `ELASTIC_PASSWORD` → **healthy** / cluster **green** |
 | ~~Média~~ | ~~QuiverTap-ProdBackup no PC~~ | ~~Resolvido~~ | Tarefa excluída pelo usuário (2026-10-24) |
 | Baixa | Secret store | `.env` em arquivo no disco | Migrar para vault/Hostinger secrets no CD |
@@ -271,27 +291,28 @@ DKIM cinza (`hostingermail-*._domainkey`) é **só e-mail** (envio/autenticidade
 
 ## 5. Diagnóstico de maturidade CI/CD
 
-### 5.1 O que já existe (release local forte)
+### 5.1 Modelo de qualidade (dois gates — não são rivais)
 
-| Peça | Onde | Papel |
+| Peça | Onde | Papel **atual** |
 |---|---|---|
-| Fluxo Git | `CONTRIBUTING.md` | branch → PR → squash → deploy |
-| CI local | `npm run ci` | build FE, Prisma, unit, tsc, ops-panel, Pester |
-| Atestado | `deploy/.local-ci-attestation.json` | exigido pelo deploy Windows legado |
-| Deploy Windows | `scripts/prod/deploy.ps1` | **legado** — não é mais o publisher de prod pública |
-| Gate de origem | preflight deploy | main limpa + atestado |
-| Ops Panel | `:3099` | local |
+| **CI remoto (obrigatório no merge)** | `.github/workflows/ci.yml` → job `build-and-unit` | Branch protection em `main` exige este check verde. **Supersede** a decisão antiga TAP-116 (“Actions desligado”) |
+| **CI local (complementar)** | `npm run ci` | Suite mais larga no Windows (Pester, ops-panel, etc.) + atestado para tooling legado. **Não** substitui o Actions |
+| Atestado | `deploy/.local-ci-attestation.json` | Ainda usado pelo `deploy.ps1` Windows **legado** |
+| Deploy Windows | `scripts/prod/deploy.ps1` / `deploy.cmd` | **Legado** — **não** publica mais o Tap público (PRD = VPS) |
+| Fluxo Git | `CONTRIBUTING.md` | Deve refletir Actions on; se o clone local disser “Actions desligado”, está **desatualizado** — confiar em `origin/main` |
+
+**Para o Codex:** não diga que “o projeto decidiu manter só CI local”. A decisão vigente é **híbrida**: Actions obriga merge; `npm run ci` continua recomendado no dia a dia / legado.
 
 ### 5.2 Lacunas de plataforma (restantes)
 
 | Lacuna | Evidência |
 |---|---|
 | CD no VPS ainda semi-manual | `deploy-vps.yml` faz `docker build` por SHA; deploy SSH via Tailscale **opcional** (faltam secrets `TS_*` / `VPS_SSH_KEY`) |
-| Sem push para registry | build local no runner (`push: false`); tag `quiver-tap-api:<SHA>` |
-| Restore drill | dumps diários + rclone OneDrive OK; restore ainda não ensaiado |
+| Sem push para registry | build no runner (`push: false`); tag `quiver-tap-api:<SHA>` |
+| Restore drill | dumps locais + OneDrive **OK**; **restore** ainda não ensaiado |
 | OTEL no VPS | desligado no env atual |
 
-**Resolvido nesta sessão:** repo público (Free Actions + branch protection); `ci.yml` em push/PR com job `build-and-unit`; protection em `main` (PR + check obrigatório).
+**Não listar aqui:** off-site OneDrive do Postgres (já feito — ver checklist canônico no topo).
 
 ### 5.3 Notas (1–5) — atualizadas pós-CI remoto
 
@@ -327,15 +348,18 @@ branch → PR → CI local → merge main
   → no PC: prod:deploy → Node :3001 → Tunnel Cloudflare
 ```
 
-### 6.2 Fluxo alvo
+### 6.2 Fluxo atual / alvo
 
 ```
-branch → PR → CI remoto obrigatório → merge main
-  → build imagem Docker (tag = SHA)
-  → push registry (ou build pinado no VPS)
+# Já vigente no merge:
+branch → PR → CI remoto obrigatório (build-and-unit) → merge main
+# Ainda alvo no promote PRD:
+  → build imagem Docker (tag = SHA) → (opcional GHCR)
   → deploy VPS: backup DB → migrate → compose up → smoke
   → PC só DEV
 ```
+
+`npm run ci` local continua **recomendado** antes do push; o **bloqueio** do botão de merge é o Actions.
 
 ### 6.3 Preservar vs substituir
 
@@ -570,14 +594,16 @@ Repo: filipedsn/cervejaria. VPS Tailscale: 100.120.170.89. Workflow: Deploy VPS.
 
 ## 9. Inventário técnico do VPS (paths)
 
+> Paths abaixo são para **ops autenticado** (SSH Tailscale). Em chat/resumo externo: diga “env e rclone só no VPS” — **não** espelhe a tabela inteira.
+
 | Recurso | Detalhe |
 |---|---|
 | Código | `/opt/quiver-tap` |
 | Compose app | `/opt/quiver-tap/deploy/tap-quiver/` |
-| Env app | `/opt/quiver-tap/deploy/tap-quiver/.env.staging` |
+| Env app | `/opt/quiver-tap/deploy/tap-quiver/.env.staging` (**600**; fora do git) |
 | nginx site | `/etc/nginx/sites-available/tap.quivercloud.com.br` |
 | Origin cert | `/etc/ssl/cloudflare/tap.pem` + `tap.key` |
-| Backups Postgres | Local: `/opt/quiver-tap/backups/postgres` · cron **01:00 America/Sao_Paulo** · **30 dumps** locais · **offsite OneDrive** via `rclone` (VPS→nuvem, **PC não precisa estar ligado**) · pasta `Quiver/Tap Quiver/Backup banco/PRD` · `OFFSITE_RETENTION_COUNT=30` · config `/opt/quiver-tap/deploy/tap-quiver/backup-postgres.env` · credencial rclone em `/root/.config/rclone/rclone.conf` (600) · log `/opt/quiver-tap/backups/logs/` |
+| Backups Postgres | Dumps locais + cron 01:00 BRT + **off-site rclone OneDrive** (feito). Config/credencial **só no VPS** (`backup-postgres.env`, `rclone.conf` mode 600). Log: `…/backups/logs/` |
 | DB | container `cervejaria-db` · project Banco de Dados |
 | API | container `cervejaria-api` · host network · health `:3001` |
 | ES/Kibana | `/docker/elasticsearch-kibana/` · ports `127.0.0.1:9200/5601` |
@@ -682,6 +708,19 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 
 ## 11. Pendências explícitas
 
+### 11.0 Ainda abertas (checklist curto — preferir esta lista)
+
+1. [ ] **Restore drill** do Postgres (dump VPS ou OneDrive → DB descartável)  
+2. [ ] **CD no VPS** — secrets Tailscale/SSH + 1º `deploy=true` (§7.1)  
+3. [ ] **`releaseSha`** no container + rollback imagem n-1 ensaiado  
+4. [ ] Smoke automático no promote  
+5. [ ] OTEL → ES **PRD** (opcional)  
+6. [ ] Equalizar **API DEV** em Docker  
+
+**Já fechado (não reabrir como lacuna):** cutover; HTTPS; tunnel/watchdog PC; SSH Tailscale; Cloudflared off; CI Actions + protection; backup local **e** off-site OneDrive; segregação Dev/PRD/Elastic; ES healthy.
+
+### 11.1 Histórico marcado (auditoria)
+
 1. [x] Cutover `tap.quivercloud.com.br`  
 2. [x] HTTPS + fechar `:3001` pública  
 3. [x] Remover dependência do Tunnel para o Tap  
@@ -691,16 +730,16 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 7. [x] Chaves SSH humanas + agente documentadas + backup cifrado no OneDrive  
 8. [x] Workflows CI + `deploy-vps.yml` no repo (build por SHA); deploy Tailscale ainda sem secrets — **runbook Codex em §7.1**  
 9. [x] Repo **público**; branch protection em `main` (PR obrigatório + check `build-and-unit`; sem push direto)  
-10. [x] Backups Postgres agendados no VPS (01:00 BRT, 30 dumps) · [ ] restore ensaiado  
-11. [x] Backup off-site OneDrive `Quiver/Tap Quiver/Backup banco/PRD` (rclone no VPS)  
+10. [x] Backups Postgres agendados no VPS (01:00 BRT, 30 dumps)  
+11. [x] Backup **off-site** OneDrive `…/Backup banco/PRD` via rclone (`OFFSITE_ENABLED=1`, comprovado 2026-10-24)  
 12. [ ] `releaseSha` no container (hoje pode ser `unknown`)  
 13. [x] Tarefa `QuiverTap-ProdBackup` no PC excluída  
 14. [ ] OTEL → ES **PRD** no VPS (opcional; cluster PRD ≠ cluster DEV local)  
 15. [x] ES healthcheck alinhado à senha rotacionada → container **healthy**  
 16. [x] Segregação física Dev (PC) × PRD (VPS) documentada — app, Postgres e **dois** clusters Elastic (§0.1)  
-17. [ ] Equalizar arquitetura de **DEV**: API também em Docker (hoje só Node nativo; DB/ES local já são Docker)
-
-### 11.1 Branch protection (`main`) — como está
+17. [ ] Equalizar arquitetura de **DEV**: API também em Docker (hoje só Node nativo; DB/ES local já são Docker)  
+18. [ ] Restore ensaiado (único item de backup ainda aberto)
+### 11.2 Branch protection (`main`) — como está
 
 | Regra | Valor |
 |---|---|
@@ -716,4 +755,4 @@ Workflows: `.github/workflows/ci.yml`, `.github/workflows/deploy-vps.yml`.
 
 ## 12. Mensagem executiva (1 parágrafo)
 
-O Quiver Tap **saiu do notebook**: **PRD** vive só no **VPS Hostinger** atrás da **Cloudflare** (`https://tap.quivercloud.com.br`); **DEV** vive só no **PC**. App/DB/Elastic de produção **não** compartilham máquina nem cluster com desenvolvimento — há **dois Elasticsearch** (local × VPS). PRD: Docker, SSH só **Tailscale**, backup Postgres + rclone OneDrive, chaves SSH cifradas no OneDrive. Repo **público**, Actions + protection em `main`. Cutover **provado com PC desligado**. Para o **Codex**: mapa Dev/PRD no **§0.1**; ligar CD no **§7.1**. Lacunas: secrets Tailscale do deploy; restore drill; OTEL PRD; **equalizar DEV em Docker** (API ainda é Node nativo).
+O Quiver Tap **saiu do notebook**: **PRD** só no **VPS** (Cloudflare → nginx → Docker); **DEV** só no **PC**; Elastic **separado** (cluster local ≠ cluster VPS). Backup Postgres **local + off-site OneDrive já configurados e comprovados**; o que falta de DR é **ensaiar o restore**. CI: Actions `build-and-unit` **obriga** merge em `main`; `npm run ci` local é **complementar** (não rivais). Cutover OK com PC desligado. Codex: checklist canônico no topo · Dev/PRD §0.1 · CD §7.1. Outras lacunas: secrets Tailscale do deploy; `releaseSha`/rollback; OTEL PRD; API DEV em Docker. Doc **interno** — não republicar paths/credenciais.
