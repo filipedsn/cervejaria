@@ -1,5 +1,6 @@
 import { metrics } from '@opentelemetry/api';
 import { getTelemetryContext } from './telemetry-context.js';
+import { afterTransactionCommit } from './transaction-telemetry.js';
 
 const meter = metrics.getMeter('quiver-tap-business');
 
@@ -37,23 +38,29 @@ function businessAttrs(tipo: string): Record<string, string> {
 
 export function recordComandaFechada(valorCentavos: number, origem: 'cervejaria' | 'operacao'): void {
   const attrs = businessAttrs(`comanda_fechada_${origem}`);
-  comandasFechadas.add(1, attrs);
-  if (valorCentavos > 0) valorVendidoCentavos.add(valorCentavos, attrs);
+  afterTransactionCommit(() => {
+    comandasFechadas.add(1, attrs);
+    if (valorCentavos > 0) valorVendidoCentavos.add(valorCentavos, attrs);
+  });
 }
 
 export function recordVendaAvulsa(valorCentavos: number): void {
   const attrs = businessAttrs('venda_avulsa');
-  comandasFechadas.add(1, attrs);
-  if (valorCentavos > 0) valorVendidoCentavos.add(valorCentavos, attrs);
+  afterTransactionCommit(() => {
+    comandasFechadas.add(1, attrs);
+    if (valorCentavos > 0) valorVendidoCentavos.add(valorCentavos, attrs);
+  });
 }
 
 export function recordTempoPreparoCozinha(durationMs: number): void {
-  tempoPreparoCozinhaMs.record(durationMs, businessAttrs('cozinha_preparo'));
+  const attrs = businessAttrs('cozinha_preparo');
+  afterTransactionCommit(() => tempoPreparoCozinhaMs.record(durationMs, attrs));
 }
 
 export function recordDivergenciaCaixa(absCentavos: number): void {
   if (absCentavos <= 0) return;
-  divergenciaCaixaCentavos.add(absCentavos, businessAttrs('caixa_divergencia'));
+  const attrs = businessAttrs('caixa_divergencia');
+  afterTransactionCommit(() => divergenciaCaixaCentavos.add(absCentavos, attrs));
 }
 
 export function recordTransacaoMetric(

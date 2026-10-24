@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    flushPendingAuditAfterAuth();
     clearSessionQueryCache();
     resetBreweryTheme();
     ensureAppShellBranding();
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* cookie cleared client-side anyway */
     }
+    flushPendingAuditAfterAuth();
     localStorage.removeItem('eventoAtivo');
     localStorage.removeItem('trailerAtivo');
     setUsuario(null);
@@ -117,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, senha: string) => {
+    flushPendingAuditAfterAuth();
     const data = await api.post<AuthResponse>('/api/auth/login', { email, senha });
     applyAuth(data);
     flushPendingAuditAfterAuth();

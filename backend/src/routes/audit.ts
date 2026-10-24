@@ -24,9 +24,10 @@ const httpTelemetrySchema = z.object({
   route: z.string().min(1).max(500).refine(safeHttpText, 'Rota inválida'),
   statusCode: z.number().int().min(100).max(599).optional(),
   durationMs: z.number().finite().min(0).max(300_000),
-  outcome: z.enum(['success', 'client_error', 'server_error', 'network_error', 'aborted', 'timeout']),
+  outcome: z.enum(['success', 'client_error', 'server_error', 'network_error', 'aborted', 'timeout', 'invalid_response']),
   correlationId: z.string().refine(validCorrelationId, 'Correlation ID inválido'),
   requestId: z.string().min(1).max(200).refine(safeHttpText, 'Request ID inválido').optional(),
+  interactionId: z.string().refine(validCorrelationId).optional(),
 });
 
 const uiEventSchema = z.object({
@@ -35,6 +36,7 @@ const uiEventSchema = z.object({
   element: z.string().max(200).optional(),
   label: z.string().max(300).optional(),
   timestamp: z.string().datetime().optional(),
+  interactionId: z.string().refine(validCorrelationId).optional(),
   meta: z.record(z.unknown()).optional(),
   http: httpTelemetrySchema.optional(),
 });
@@ -191,10 +193,13 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
           },
           correlationId: event.http.correlationId,
           requestId: event.http.requestId,
+          interactionId: event.http.interactionId,
           metadata: {
             source,
             durationMs: event.http.durationMs,
             outcome: event.http.outcome,
+            clientTimestamp: event.timestamp,
+            identitySource: 'authenticated_batch_session',
           },
         });
         continue;
@@ -211,6 +216,7 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
 
       emit({
         action: `ui.${event.type}`,
+        interactionId: event.interactionId,
         message,
         outcome: event.type === 'error' ? 'failure' : 'success',
         ui: {
@@ -220,6 +226,8 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
         },
         metadata: {
           source,
+          clientTimestamp: event.timestamp,
+          identitySource: 'authenticated_batch_session',
           ...safeUiMetadata(event.meta),
         },
       });

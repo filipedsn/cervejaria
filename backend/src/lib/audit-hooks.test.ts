@@ -61,7 +61,7 @@ test('keeps high-frequency kitchen polling out of successful-read audit', async 
   }
 });
 
-test('omits product, options, and idempotency payload from portal order HTTP audit', () => {
+test('captures bounded portal business details without idempotency credentials or free text', () => {
   const metadata = buildHttpAuditMetadata(
     '/api/public/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/pedidos',
     {
@@ -70,7 +70,12 @@ test('omits product, options, and idempotency payload from portal order HTTP aud
       paraViagem: true,
     },
   );
-  assert.equal(metadata, undefined);
+  assert.deepEqual(metadata?.requestBody, {
+    itens: [{ produtoId: 'synthetic-product', quantidade: 2, opcionais: [{ opcionalId: 'synthetic-option', quantidade: 1 }] }],
+    paraViagem: true,
+  });
+  assert.doesNotMatch(JSON.stringify(metadata), /synthetic-idempotency-key/);
+  assert.deepEqual(metadata?.payloadPolicy, { version: 1, omitted: true, truncated: false, identitySource: 'request_untrusted' });
 });
 
 test('retains safe response errors when a portal order payload is omitted', () => {
@@ -79,5 +84,16 @@ test('retains safe response errors when a portal order payload is omitted', () =
     { itens: [{ produtoId: 'synthetic-product' }] },
     { error: 'request rejected' },
   );
-  assert.deepEqual(metadata, { responseError: { error: 'request rejected' } });
+  assert.deepEqual(metadata?.responseError, { error: 'request rejected' });
+});
+
+test('payload policy drops arbitrary personal text and bounds nested arrays', () => {
+  const metadata = buildHttpAuditMetadata('/api/test', {
+    tenant: 'forged', nome: 'private-person', senha: 'secret', telefone: '27999999999',
+    itens: Array.from({ length: 1000 }, () => ({ produtoId: 'p1', quantidade: 2, observacao: 'private-note' })),
+  });
+  const json = JSON.stringify(metadata);
+  assert.doesNotMatch(json, /forged|private-person|secret|27999999999|private-note/);
+  assert.equal((metadata?.payloadPolicy as Record<string, unknown>).truncated, true);
+  assert.ok(json.length < 5000);
 });
