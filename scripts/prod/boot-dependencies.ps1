@@ -23,6 +23,22 @@ function Invoke-ProdDocker {
   }
 }
 
+function Wait-ProdDockerEngine {
+  param([int]$TimeoutSeconds = 300)
+  $deadline=(Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    if(Invoke-ProdDocker -DockerArgs @('info','--format','{{.ServerVersion}}') -TimeoutSeconds 10){return $true}
+    if((Get-Date) -ge $deadline){break}
+    Start-Sleep -Seconds 10
+  } while((Get-Date) -lt $deadline)
+  return $false
+}
+
+function Test-DockerStartupRecoveryAllowed {
+  param([bool]$EngineReady,[bool]$ApiAlive,[bool]$DatabaseListening,[bool]$Paused,[bool]$AlreadyAttempted)
+  return -not ($EngineReady -or $ApiAlive -or $DatabaseListening -or $Paused -or $AlreadyAttempted)
+}
+
 function Start-ProdDockerDesktop {
   # Docker Desktop/WSL precisa de sessao do usuario; nao tentar abrir GUI como SYSTEM.
   if ([Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) { return }

@@ -23,3 +23,22 @@ Describe 'Recuperacao segura do banco no boot' {
   }
 }
 
+Describe 'Guardas da recuperacao unica do Docker no login' {
+  It 'permite recuperar somente com motor e producao indisponiveis' {
+    (Test-DockerStartupRecoveryAllowed) | Should Be $true
+  }
+  It 'preserva motor responsivo' { (Test-DockerStartupRecoveryAllowed -EngineReady $true) | Should Be $false }
+  It 'preserva API viva mesmo sem readiness' { (Test-DockerStartupRecoveryAllowed -ApiAlive $true) | Should Be $false }
+  It 'preserva banco acessivel mesmo sem API' { (Test-DockerStartupRecoveryAllowed -DatabaseListening $true) | Should Be $false }
+  It 'respeita pausa operacional' { (Test-DockerStartupRecoveryAllowed -Paused $true) | Should Be $false }
+  It 'nao repete reset no mesmo boot' { (Test-DockerStartupRecoveryAllowed -AlreadyAttempted $true) | Should Be $false }
+  It 'identifica motor pronto sem acionar recuperacao' {
+    Mock Invoke-ProdDocker { '29.6.1' }
+    (Wait-ProdDockerEngine -TimeoutSeconds 0) | Should Be $true
+  }
+  It 'encerra espera limitada quando motor nao responde' {
+    Mock Invoke-ProdDocker { $null }
+    (Wait-ProdDockerEngine -TimeoutSeconds 0) | Should Be $false
+  }
+}
+
