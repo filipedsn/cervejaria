@@ -1,25 +1,115 @@
 # Handoff arquiteto / IA — Quiver Tap no VPS Hostinger
 
-**Data:** 2026-10-24 (cutover + hardening + CI/CD remoto)  
+**Data:** 2026-10-24 (cutover + hardening + CI/CD + segregação Dev/PRD)  
 **Repo:** `C:\Users\Papai\Documents\Desenvolvimento\Cervejaria` (`filipedsn/cervejaria`, **público**)  
-**Escopo:** migração da produção para Hostinger VPS + Cloudflare + CI/CD remoto + postura de segurança  
-**Estado:** **produção pública no VPS** em `https://tap.quivercloud.com.br` · PC **não** é mais origem · validado com PC desligado · **CI Actions + branch protection em `main`**
+**Escopo:** migração da produção para Hostinger VPS + Cloudflare + CI/CD remoto + postura de segurança + mapa Dev/PRD  
+**Estado:** **PRD** só no VPS (`https://tap.quivercloud.com.br`) · **DEV** só no PC · clusters Elastic **separados** · CI + branch protection em `main` · PC **não** serve clientes
+
+**Leitor principal deste doc:** **Codex** (agente do dia a dia). Assuma zero contexto prévio: siga as tabelas e as proibições ao pé da letra.
 
 ---
 
 ## 0. Como roda agora (verdade operacional)
 
-| Camada | Antes (PC Windows) | Agora (VPS Hostinger) |
+| Camada | DEV (PC Windows) | PRD (VPS Hostinger) |
 |---|---|---|
-| **Aplicação (`:3001`)** | Node nativo + watchdog/tarefas | Docker `cervejaria-api` (`network_mode: host`) |
-| **Banco** | Docker `cervejaria-db` no PC | Docker `cervejaria-db` · `127.0.0.1:5432` |
-| **Ingress público** | Cloudflare Tunnel → `localhost:3001` | Cloudflare **proxy** → VPS **nginx :443** → app `:3001` |
-| **URL canônica** | `https://tap.quivercloud.com.br` (via tunnel) | `https://tap.quivercloud.com.br` (via VPS) |
-| **Uploads** | `backend/uploads-prod` | Volume `vps_uploads_data` |
-| **ES / Kibana** | Local / tunnel (legado) | Docker no VPS · **só localhost + Tailscale** |
-| **SSH admin** | — | **Somente Tailscale** (`100.120.170.89`) · porta 22 **fechada** na internet |
+| **Onde vive** | Máquina do Filipe | VPS `2093568` · `200.141.28.26` / Tailscale `100.120.170.89` |
+| **Aplicação** | Node **nativo** (scripts locais) — ver §0.1 sobre equalizar em Docker | Docker `cervejaria-api` (`network_mode: host`) |
+| **Banco Postgres** | Docker local (`cervejaria-db` / `cervejaria-db-dev` em `docker-compose.yml`) | Docker `cervejaria-db` · só `127.0.0.1:5432` |
+| **Elasticsearch / Kibana** | **Cluster local** (Docker no PC) | **Cluster aparte no VPS** · `127.0.0.1` + Tailscale |
+| **Ingress público** | Nenhum (não é origem de clientes) | Cloudflare **proxy** → nginx `:443` → app `:3001` |
+| **URL canônica** | localhost / portas de dev | `https://tap.quivercloud.com.br` |
+| **Uploads** | pastas locais do repo | Volume `vps_uploads_data` |
+| **SSH admin** | — | **Somente Tailscale** · porta 22 **fechada** na internet |
 
-**Prova de cutover:** com o PC desligado, `https://tap.quivercloud.com.br` continuou respondendo.
+**Prova de cutover:** com o PC desligado, `https://tap.quivercloud.com.br` continuou respondendo.  
+**Regra de ouro:** PC desligado **não pode** afetar PRD; mexer em DEV **não pode** escrever no Elastic/Postgres/app do VPS.
+
+---
+
+## 0.1 Ambientes Dev vs PRD — segregação física (mastigado para o Codex)
+
+### Por que isso existe
+
+Antes o notebook era SPOF de produção (app + tunnel). Agora há **dois mundos físicos**:
+
+| Mundo | Máquina | Papel |
+|---|---|---|
+| **DEV** | PC Windows do Filipe | Codar, testar, OTEL de desenvolvimento, banco/ES de brinquedo |
+| **PRD** | VPS Hostinger | Único lugar que atende cliente em `tap.quivercloud.com.br` |
+
+Não é “o mesmo stack com `NODE_ENV` diferente”. São **hosts diferentes**, **discos diferentes**, **clusters Elastic diferentes**, **credenciais diferentes**. Se o Codex misturar, estraga telemetria, dados ou o site no ar.
+
+### Mapa lado a lado (cole na retina)
+
+| Peça | DEV (local) | PRD (VPS) | Misturar? |
+|---|---|---|---|
+| **App Quiver Tap** | Processo Node no PC (hoje) | Container `cervejaria-api` | **NUNCA** apontar o binário local para URL/DB/ES de PRD “só pra testar” |
+| **Postgres** | Compose raiz `docker-compose.yml` → `cervejaria-db` (`:5432`) e/ou `cervejaria-db-dev` (`:5434`, DB `cervejaria_dev`) | Container `cervejaria-db` no VPS, só loopback | **NUNCA** `pg_dump`/`restore` DEV→PRD sem pedido explícito + backup |
+| **Elasticsearch** | Cluster Docker **no PC** (rede típica `elasticsearch-kibana_elastic`, `:9200` local) | Cluster Docker **no VPS** em `/docker/elasticsearch-kibana/` · `127.0.0.1:9200` · Tailscale `100.120.170.89:9200` | **NUNCA** — dois clusters; índices `*.otel-dev` ≠ `*.otel-prd` |
+| **Kibana** | Local (PC) | VPS `:5601` via Tailscale | Idem |
+| **OTEL / EDOT Collector** | `docker-compose.observability.yml` → `quiver-edot-collector` · OTLP `127.0.0.1:4317/4318` · **só DEV** | Ainda **opcional / desligado** no VPS (pendência) | App DEV → collector/ES **local**; app PRD → ES **VPS** (quando OTEL PRD existir) |
+| **Backups DB** | Não são a retenção oficial | Cron VPS 01:00 BRT + rclone OneDrive `…/Backup banco/PRD` | Offsite PRD ≠ cópia do notebook |
+| **DNS / Cloudflare** | Não publica o Tap | `tap` → IP do VPS | Não recolocar tunnel do Tap no PC |
+| **Secrets** | `.env` / env local (fora do git) | `/opt/quiver-tap/deploy/tap-quiver/.env.staging` no VPS | Não copiar secret de PRD para repo nem para log |
+
+### Clusters Elastic — regra explícita (Codex erra aqui se não ler)
+
+```
+DEV  →  Elasticsearch no PC     →  data streams / índices de desenvolvimento (ex.: *.otel-dev)
+PRD  →  Elasticsearch no VPS    →  telemetria/ops de produção (ex.: *.otel-prd) quando ligado
+```
+
+1. **São clusters distintos.** Mesmo que a versão do ES seja a mesma (ex. 8.17), os dados **não** são compartilhados.  
+2. App em DEV deve usar `ELASTICSEARCH_URL` (ou equivalente) apontando para **127.0.0.1:9200 do PC**, nunca para `100.120.170.89`.  
+3. App em PRD (container no VPS, host network) fala com **127.0.0.1:9200 do VPS**.  
+4. Abrir Kibana PRD pelo browser do PC (`http://100.120.170.89:5601` com Tailscale) é **só leitura/ops** — não significa que o app DEV possa indexar lá.  
+5. Scripts em `scripts/observability/` e inventários TAP-96: se o alvo não disser “VPS/PRD”, assuma **cluster local DEV**. Mutação em PRD exige confirmação humana explícita.  
+6. Histórico: quando DEV e “prod” compartilhavam um único ES no PC, havia pressão de shards/`*.otel-dev` misturado com `*.otel-prd`. **Essa era uma dívida; a segregação física no VPS existe para acabar com isso.** Não recriar o monólito.
+
+### Assimetria de arquitetura (DEV ainda não é igual ao PRD)
+
+| | DEV hoje | PRD hoje | Alvo |
+|---|---|---|---|
+| App | Node nativo no Windows | Docker Compose (`deploy/tap-quiver/`) | **Equalizar:** DEV também subir a API via Docker (mesmo Dockerfile/compose de espírito), para “o que roda no PC ≈ o que roda no VPS” |
+| Postgres | Já Docker | Docker | OK (manter DBs **separados**) |
+| Elastic | Já Docker local | Docker no VPS | OK (clusters **separados**) |
+
+**Pendência de produto/engenharia:** containerizar o app de DEV (compose de desenvolvimento reutilizando `deploy/tap-quiver/Dockerfile` ou um `docker-compose.dev.yml`). Até lá, Codex **não** inventa que DEV “já é Docker na API” — só DB/observability são.
+
+### Como o Codex decide “em qual ambiente estou?”
+
+| Sinal | DEV | PRD |
+|---|---|---|
+| Hostname / SSH | Sessão local no Windows | `ssh` → `100.120.170.89` / `quiver-vps` |
+| URL no browser | `http://localhost:…` | `https://tap.quivercloud.com.br` |
+| `docker ps` no PC | `cervejaria-db`, `cervejaria-db-dev`, ES local, talvez `quiver-edot-collector` | Não é PRD |
+| `docker ps` no VPS | — | `cervejaria-api`, `cervejaria-db`, stack em `/docker/elasticsearch-kibana/` |
+| Path de código | `C:\Users\Papai\Documents\Desenvolvimento\Cervejaria` | `/opt/quiver-tap` |
+| Env file | locais / `backend` env de development | `.env.staging` no compose do VPS |
+
+Na dúvida: **pergunte ao humano** antes de apontar qualquer URL de Elastic, Postgres ou `APP_URL` para o outro mundo.
+
+### Proibições absolutas (imprimir na testa do Codex)
+
+1. **Não** apontar app DEV para Postgres ou Elastic do VPS.  
+2. **Não** apontar app PRD para serviços do PC (PC pode estar desligado; PRD quebra).  
+3. **Não** rodar migrate/seed/destructive em PRD “porque passou em DEV”.  
+4. **Não** indexar telemetria DEV no cluster PRD (nem o contrário).  
+5. **Não** reativar Cloudflare Tunnel do `tap` no PC.  
+6. **Não** reabrir `:22` / `:3001` / `:9200` / `:5601` na internet.  
+7. **Não** assumir que equalizar DEV em Docker já foi feito — está na lista de evolução.  
+8. Deploy PRD: só via processo do §7.1 + confirmação humana (`deploy=true`).
+
+### Prompt curto (Copiar para o Codex)
+
+```
+Leia docs/handoff-vps-hostinger-arquiteto.md seções 0, 0.1 e 7.1.
+DEV = PC (app Node local hoje; DB/ES Docker local). PRD = só VPS.
+Elastic DEV e Elastic PRD são clusters físicos diferentes — nunca cruzar.
+Não reabra portas; não use tunnel do tap no PC; deploy=true só com minha confirmação.
+Se for equalizar DEV em Docker, proponha PR pequeno (compose dev) sem tocar PRD.
+```
 
 ---
 
@@ -473,6 +563,8 @@ Repo: filipedsn/cervejaria. VPS Tailscale: 100.120.170.89. Workflow: Deploy VPS.
 4. Migrations: sem rollback automático de schema — backup antes obrigatório.
 5. ES/Kibana **nunca** expor na internet pública; ops via Tailscale.
 6. SSH admin **via Tailscale**; não reabrir `:22` “any” sem necessidade.
+7. **Segregação Dev/PRD (§0.1):** app/DB/Elastic de DEV no PC; app/DB/Elastic de PRD no VPS. Clusters Elastic **não** são compartilhados. Não cruzar URLs nem credenciais entre mundos.
+8. **Não** voltar a servir o Tap público a partir do PC (tunnel/watchdog de prod).
 
 ---
 
@@ -603,8 +695,10 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 11. [x] Backup off-site OneDrive `Quiver/Tap Quiver/Backup banco/PRD` (rclone no VPS)  
 12. [ ] `releaseSha` no container (hoje pode ser `unknown`)  
 13. [x] Tarefa `QuiverTap-ProdBackup` no PC excluída  
-14. [ ] OTEL → ES no VPS (opcional)  
-15. [x] ES healthcheck alinhado à senha rotacionada → container **healthy**
+14. [ ] OTEL → ES **PRD** no VPS (opcional; cluster PRD ≠ cluster DEV local)  
+15. [x] ES healthcheck alinhado à senha rotacionada → container **healthy**  
+16. [x] Segregação física Dev (PC) × PRD (VPS) documentada — app, Postgres e **dois** clusters Elastic (§0.1)  
+17. [ ] Equalizar arquitetura de **DEV**: API também em Docker (hoje só Node nativo; DB/ES local já são Docker)
 
 ### 11.1 Branch protection (`main`) — como está
 
@@ -622,4 +716,4 @@ Workflows: `.github/workflows/ci.yml`, `.github/workflows/deploy-vps.yml`.
 
 ## 12. Mensagem executiva (1 parágrafo)
 
-O Quiver Tap **saiu do notebook**: produção pública está no **VPS Hostinger** atrás da **Cloudflare** (`https://tap.quivercloud.com.br`, SSL Full Strict), com app e banco em Docker, porta da API fechada na internet, SSH só via **Tailscale** (chave humana + chave do agente Cursor), Elasticsearch/Kibana na tailnet, backup diário do Postgres no VPS (+ rclone OneDrive PRD) e **backup cifrado das chaves SSH no OneDrive** (plano B via painel Hostinger). O repositório está **público**, com **GitHub Actions** (`build-and-unit`) e **branch protection** em `main`. O cutover foi **provado com o PC desligado**. O **CD no VPS** ainda não liga (faltam secrets); o passo a passo mastigado para o **Codex** está no **§7.1**. Outras lacunas: **restore drill** do Postgres; OTEL opcional.
+O Quiver Tap **saiu do notebook**: **PRD** vive só no **VPS Hostinger** atrás da **Cloudflare** (`https://tap.quivercloud.com.br`); **DEV** vive só no **PC**. App/DB/Elastic de produção **não** compartilham máquina nem cluster com desenvolvimento — há **dois Elasticsearch** (local × VPS). PRD: Docker, SSH só **Tailscale**, backup Postgres + rclone OneDrive, chaves SSH cifradas no OneDrive. Repo **público**, Actions + protection em `main`. Cutover **provado com PC desligado**. Para o **Codex**: mapa Dev/PRD no **§0.1**; ligar CD no **§7.1**. Lacunas: secrets Tailscale do deploy; restore drill; OTEL PRD; **equalizar DEV em Docker** (API ainda é Node nativo).
