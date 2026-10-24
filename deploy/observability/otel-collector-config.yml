@@ -57,6 +57,23 @@ receivers:
             enabled: true
 
 processors:
+  # Dataset names are bounded. Tenant/operator identity stays in log fields.
+  transform/dataset:
+    error_mode: propagate
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["data_stream.dataset"], "technical")
+          - set(attributes["data_stream.dataset"], "audit") where attributes["event.category"] == "audit"
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.dataset"], "generic")
+    trace_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.dataset"], "generic")
+
   filter/dev-only:
     error_mode: ignore
     traces:
@@ -153,17 +170,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/namespace, tail_sampling, batch]
+      processors: [transform/namespace, transform/dataset, tail_sampling, batch]
       exporters: [elasticsearch]
     metrics/app:
       receivers: [otlp]
-      processors: [transform/namespace, batch]
+      processors: [transform/namespace, transform/dataset, batch]
       exporters: [elasticsearch]
     metrics/infra:
       receivers: [httpcheck, tcpcheck, hostmetrics]
-      processors: [transform/infra, filter/infra-allowlist, batch]
+      processors: [transform/infra, transform/dataset, filter/infra-allowlist, batch]
       exporters: [elasticsearch]
     logs:
       receivers: [otlp]
-      processors: [transform/namespace, batch]
+      processors: [transform/namespace, transform/dataset, batch]
       exporters: [elasticsearch]

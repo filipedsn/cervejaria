@@ -2,7 +2,7 @@
 
 ## Escopo e método
 
-Avaliação em 24/10/2026, Elastic/Kibana 8.17.0, licença Basic ativa. Consultas locais autenticadas, sem registrar credenciais. `scripts/observability/report-platform.mjs` coleta inventário, ILM, regras e SLIs agregados. Não modifica retenção, documentos ou regras. Produção não foi publicada nem reconfigurada. Segregação física permanece reservada para execução conjunta.
+Avaliação em 24/10/2026, Elastic/Kibana 8.17.0, licença Basic ativa. Consultas locais autenticadas, sem registrar credenciais. `scripts/observability/report-platform.mjs` coleta inventário, ILM, regras e SLIs agregados. O relatório não modifica retenção, documentos ou regras. A aplicação de produção não foi publicada. Após a avaliação inicial, o usuário autorizou recriar a infraestrutura e descartar o histórico Elastic sem importância; a reconstrução descrita abaixo inclui os dados OTel dos ambientes DEV, PRD e infra do cluster compartilhado. Segregação física permanece reservada para execução conjunta.
 
 ## Regressão e preservação funcional
 
@@ -67,6 +67,24 @@ DEV: 525 streams, 524 sem exclusão explícita. Desses, 397 usam `logs` com roll
 
 Cenário de capacidade: volume de auditoria nas 24h multiplicado pela média histórica de bytes/documento de todos os sinais do namespace resulta em aproximadamente 0,28 MiB/dia DEV e 4,10 MiB/dia PRD; em 30 dias, 8,34 MiB e 123,1 MiB. É uma aproximação grosseira, com composição histórica diferente do novo candidato; não representa tamanho preciso de auditoria, crescimento total, réplicas, snapshots ou fatura. Sem preço unitário contratado e amostra pós-publicação não há custo monetário defensável. O relatório gera esse cenário explicitamente, sem inventar valores.
 
+## Reconstrução autorizada e verificação
+
+Às 18:20 UTC, após autorização explícita de descarte, foram removidos **540 streams OTel**, enumerados por nome exato. Índices de segurança/sistema, configurações e regras do Kibana e bancos da aplicação foram preservados. O collector foi pausado durante a operação e reiniciado com configuração validada em container sem rede. A configuração ativa foi atualizada no arquivo montado em `deploy/observability/otel-collector-config.yml`.
+
+O roteamento limita datasets a `audit`, `technical` e `generic`, separados por namespace; mantém tenant, operador e correlação nos campos dos logs. Não há um stream por tenant. Os templates personalizados preservam os componentes de mappings OTel gerenciados e as configurações TSDB. Um primário e zero réplicas por índice são adequados ao nó único atual; isso não oferece redundância.
+
+| Namespace | Auditoria | Técnico | Métricas | Traces |
+| --- | ---: | ---: | ---: | ---: |
+| DEV | 7d | 7d | 7d | 3d |
+| PRD | 30d | 14d | 30d | 7d |
+| Infra | 7d | 7d | 14d | 3d |
+
+Os prazos de exclusão contam após rollover; rollover diário ou ao atingir 1 GiB por shard primário. Portanto, a idade total pode ultrapassar o prazo de delete em até aproximadamente um intervalo de rollover, além do ciclo de execução ILM. Índices vazios podem não fazer rollover; não há crescimento de dados nesses índices.
+
+Na primeira leitura após reconstrução (18:21 UTC), o cluster estava **green**, com **38 primários**, **zero shards sem alocação** e todos os streams OTel então recriados com exclusão explícita. A base anterior de SLIs/volume acima é histórica, não uma janela pós-reconstrução. Sem eventos suficientes, os indicadores retornam desconhecido; não é válido declarar 100% de disponibilidade ou custo zero. A amostragem pós-publicação e a prova de ingestão são registradas separadamente nas evidências do TAP-96.
+
+`scripts/observability/rebuild-platform.mjs` requer autorização de descarte explícita, valida nomes de streams e exclui em lotes de nomes exatos, sem wildcard. Sua suíte verifica proteção de índices de sistema, autorização, preservação de mappings e aplicação de ILM.
+
 ## Parecer
 
-As configurações anteriores não são suficientes para certificar excelência operacional: não havia regras ativas e a retenção real é majoritariamente ilimitada. A detecção DEV foi implantada e testada; a instrumentação ganhou correlação e confirmação transacional. Permanecem decisões conjuntas: separação física, consolidação de datasets e política de retenção histórica por ambiente, com simulação de impacto antes de qualquer exclusão. Nenhuma dessas constatações autoriza apagar dados, expandir infraestrutura ou publicar produção automaticamente.
+As configurações anteriores não eram suficientes para certificar excelência operacional: não havia regras ativas e a retenção real era majoritariamente ilimitada. A detecção DEV foi implantada e testada; a instrumentação ganhou correlação e confirmação transacional. Com a nova autorização, a consolidação e retenção foram aplicadas e o histórico sem valor foi descartado. Permanecem a segregação física conjunta, acompanhamento de uma janela operacional representativa e definição de custo monetário a partir de preço e consumo reais. A autorização de reconstrução não inclui publicação da aplicação em produção.

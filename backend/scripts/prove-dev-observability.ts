@@ -46,7 +46,10 @@ export async function proveDevObservability(options: {
     let events: any[] = [];
     for (let attempt = 0; attempt < 90; attempt++) {
       const result = await options.elastic('/logs-audit*.otel-dev*/_search', { size: 100, query: { bool: { filter: [{ terms: { 'attributes.correlationId': Object.values(correlations) } }, { term: { 'attributes.cervejaria.id': fixture.cervejaria.id } }] } } });
-      events = (result.hits?.hits ?? []).map((hit: any) => ({ index: hit._index, ...hit._source.attributes }));
+      events = (result.hits?.hits ?? []).map((hit: any) => {
+        const attributes = hit._source.attributes;
+        return { index: hit._index, ...attributes, metadata: typeof attributes.metadata === 'string' ? JSON.parse(attributes.metadata) : attributes.metadata };
+      });
       if (events.some(e => e['event.action'] === 'db.transaction.committed') && events.filter(e => ['http.post', 'http.put'].includes(e['event.action'])).length >= 2) break;
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
