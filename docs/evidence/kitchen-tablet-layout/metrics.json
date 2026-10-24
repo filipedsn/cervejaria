@@ -1,0 +1,189 @@
+{
+  "before": {
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "grid": {
+      "width": 1259,
+      "height": 588,
+      "clientHeight": 588,
+      "scrollHeight": 658,
+      "scrollTop": 0
+    },
+    "cardCount": 4,
+    "rowCardCounts": [
+      3,
+      1
+    ],
+    "firstRowRects": [
+      {
+        "x": 11,
+        "y": 79,
+        "width": 317,
+        "height": 279
+      },
+      {
+        "x": 334,
+        "y": 79,
+        "width": 317,
+        "height": 254
+      },
+      {
+        "x": 658,
+        "y": 79,
+        "width": 317,
+        "height": 356
+      }
+    ],
+    "actionButtons": {
+      "count": 5,
+      "minHeight": 48.390625,
+      "maxHeight": 48.390625
+    },
+    "timerText": "2:30",
+    "scrollRange": 70
+  },
+  "after": {
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "grid": {
+      "width": 1259,
+      "height": 588,
+      "clientHeight": 588,
+      "scrollHeight": 588,
+      "scrollTop": 0
+    },
+    "cardCount": 4,
+    "rowCardCounts": [
+      4
+    ],
+    "firstRowRects": [
+      {
+        "x": 11,
+        "y": 79,
+        "width": 309,
+        "height": 353
+      },
+      {
+        "x": 327,
+        "y": 79,
+        "width": 309,
+        "height": 353
+      },
+      {
+        "x": 644,
+        "y": 79,
+        "width": 309,
+        "height": 353
+      },
+      {
+        "x": 960,
+        "y": 79,
+        "width": 309,
+        "height": 353
+      }
+    ],
+    "actionButtons": {
+      "count": 5,
+      "minHeight": 48.390625,
+      "maxHeight": 48.390625
+    },
+    "timerText": "2:30",
+    "scrollRange": 0
+  },
+  "compactViewport1024x600": {
+    "viewport": {
+      "width": 1024,
+      "height": 600
+    },
+    "rowCardCounts": [
+      4
+    ],
+    "cardWidth": 245,
+    "grid": {
+      "clientHeight": 484,
+      "scrollHeight": 484
+    },
+    "actionButtonMinHeight": 48.390625,
+    "lastActionBottom": 421
+  },
+  "timer": {
+    "before": "2:30",
+    "after": "2:32",
+    "advanced": true
+  },
+  "longQueue": {
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "grid": {
+      "width": 1259,
+      "height": 588,
+      "clientHeight": 588,
+      "scrollHeight": 2419,
+      "scrollTop": 0
+    },
+    "cardCount": 30,
+    "rowCardCounts": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      2
+    ],
+    "firstRowRects": [
+      {
+        "x": 11,
+        "y": 79,
+        "width": 309,
+        "height": 314
+      },
+      {
+        "x": 327,
+        "y": 79,
+        "width": 309,
+        "height": 314
+      },
+      {
+        "x": 644,
+        "y": 79,
+        "width": 309,
+        "height": 314
+      },
+      {
+        "x": 960,
+        "y": 79,
+        "width": 309,
+        "height": 314
+      }
+    ],
+    "actionButtons": {
+      "count": 48,
+      "minHeight": 48.390625,
+      "maxHeight": 48.390625
+    },
+    "timerText": "28:30",
+    "scrollRange": 1831
+  },
+  "bottom": {
+    "scrollTop": 1831,
+    "scrollHeight": 2419,
+    "clientHeight": 588,
+    "lastCardVisible": true,
+    "lastActionVisible": true,
+    "lastActionHeight": 48,
+    "lastLabel": [
+      "#30",
+      "",
+      "0:00",
+      ""
+    ]
+  }
+}

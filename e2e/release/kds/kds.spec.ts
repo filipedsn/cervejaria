@@ -74,6 +74,24 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
   await page.goto('/operacao/cozinha/tv?demo=1', { waitUntil: 'networkidle' });
   await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('pedidos');
   await evidence.screenshot('tv-demo');
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/operacao/cozinha/tv?demo=1&tablet=1', { waitUntil: 'networkidle' });
+  const cards = page.locator('.cozinha-tv-grid > article');
+  await expect(cards).toHaveCount(4);
+  const layout = await cards.evaluateAll((elements) => {
+    const rects = elements.map((element) => element.getBoundingClientRect());
+    const actions = [...document.querySelectorAll('.cozinha-tv-card-actions button')];
+    return {
+      rows: new Set(rects.map((rect) => Math.round(rect.top))).size,
+      cardHeights: rects.map((rect) => Math.round(rect.height)),
+      minActionHeight: Math.min(...actions.map((button) => button.getBoundingClientRect().height)),
+    };
+  });
+  expect(layout.rows).toBe(1);
+  expect(new Set(layout.cardHeights).size).toBe(1);
+  expect(layout.minActionHeight).toBeGreaterThanOrEqual(44);
+  await evidence.screenshot('tv-tablet-four-cards');
 });
 
 test('KDS-S05 pedido novo aparece na cozinha sem recarregar', async ({ ops, page, evidence }) => {

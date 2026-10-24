@@ -1194,7 +1194,7 @@ button[title="Excluir"].icon-btn-danger {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--cozinha-card-min)), var(--cozinha-card-max)));
   grid-auto-rows: max-content;
   gap: clamp(0.65rem, 1.2vw, 1rem);
-  align-items: start;
+  align-items: stretch;
   align-content: start;
   padding-bottom: 0.5rem;
   -webkit-overflow-scrolling: touch;
@@ -1893,6 +1893,20 @@ button[title="Excluir"].icon-btn-danger {
 
   .cozinha-tv-card-obs {
     margin-top: 0;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 900px) and (max-width: 1366px) {
+  .cozinha-tv-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .cozinha-tv-grid > article {
+    min-width: 0;
+  }
+
+  .cozinha-tv-card-actions {
+    margin-top: auto;
   }
 }
 
