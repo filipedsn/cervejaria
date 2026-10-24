@@ -62,6 +62,8 @@ export async function proveDevObservability(options: {
     assert(!JSON.stringify(events).includes(email));
     const receipt = update.find(e => e['event.action'] === 'db.write.completed' && e['entity.id'] === product.id);
     assert(receipt, 'Persistence receipt missing');
+    assert.equal(receipt['target.cervejaria.id'], fixture.cervejaria.id);
+    assert.equal(receipt.requestId, http.requestId);
     assert.equal(receipt['db.transaction.state'], 'committed');
     assert(update.some(e => e['event.action'] === 'db.transaction.committed' && e['db.transaction.id'] === receipt['db.transaction.id']));
     for (const event of events) {
@@ -74,11 +76,18 @@ export async function proveDevObservability(options: {
     return { passed: true, observedAt: new Date().toISOString(), releaseSha: health.releaseSha, tenantId: fixture.cervejaria.id, operatorId: fixture.dono.id, productId: product.id, correlations, interactionId, persisted: { ativo: persisted.ativo, preco: Number(persisted.precos[0].preco) }, eventCount: events.length, events, scope: 'Actual DEV API, database and Elastic; not a synthetic browser interaction' };
   } finally {
     cookie = '';
-    if (fixture) {
-      // Keep the evidence relation intact; revoke access and hide the synthetic tenant.
-      await prisma.usuario.update({ where: { id: fixture.dono.id }, data: { ativo: false } });
-      await prisma.cervejaria.update({ where: { id: fixture.cervejaria.id }, data: { ativo: false } });
+    try {
+      if (fixture) {
+        // Usuario has no ativo flag. Invalidate credentials/sessions and disable
+        // only this synthetic tenant, retaining its evidence relation.
+        const revokedHash = await bcrypt.hash(randomBytes(24).toString('base64url'), 10);
+        await prisma.$transaction([
+          prisma.usuario.update({ where: { id: fixture.dono.id }, data: { senhaHash: revokedHash, passwordChangedAt: new Date() } }),
+          prisma.cervejaria.update({ where: { id: fixture.cervejaria.id }, data: { ativo: false } }),
+        ]);
+      }
+    } finally {
+      await prisma.$disconnect();
     }
-    await prisma.$disconnect();
   }
 }
