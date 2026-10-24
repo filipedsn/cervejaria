@@ -11,6 +11,11 @@ $ErrorActionPreference = 'Stop'
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 Start-ProdDockerDesktop
+if (-not [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) {
+  # Processo de usuario separado: nao bloquear o daemon SYSTEM esperando WSL.
+  $recoveryScript=Join-Path $PSScriptRoot 'recover-docker-startup.ps1'
+  Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$recoveryScript+'"')) -WindowStyle Hidden | Out-Null
+}
 
 $watchdogPidFile = Join-Path $paths.RuntimeDir 'watchdog.pid'
 $daemonScript = Join-Path $PSScriptRoot 'watchdog-daemon.ps1'
