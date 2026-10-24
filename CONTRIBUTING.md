@@ -18,7 +18,7 @@ git switch -c fix/descricao-curta      # feat/, fix/ ou chore/
 
 # ... alteracoes ...
 
-npm run ci                             # fonte de verdade (grava atestado local)
+npm run ci                             # complementar (atestado local); merge exige Actions
 git add <arquivos>
 git commit -m "fix(area): descricao"
 git push -u origin fix/descricao-curta
@@ -26,15 +26,9 @@ gh pr create --base main               # ou pela interface do GitHub
 ```
 
 1. Validar no DEV (`:3002` / `:5202` / `tapdev.quivercloud.com.br`) quando a mudança tiver efeito visível.
-2. Confirmar `npm run ci` verde no commit que será mergeado (GitHub Actions está desligado — TAP-116).
+2. Esperar o check remoto **build-and-unit** verde no PR (branch protection). Rodar `npm run ci` local continua recomendado (suite Windows + atestado legado).
 3. Merge por **Squash and merge**. Exceção: quando o PR apenas leva `main` a um commit que já está em produção, o merge é fast-forward para preservar o SHA publicado.
-4. Com autorização explícita para produção, no PC de produção:
-
-```powershell
-git switch main
-git pull --ff-only origin main
-.\deploy.cmd -Confirmed
-```
+4. Com autorização explícita para **produção pública** (`tap.quivercloud.com.br`): publicar no **VPS** (Docker). Ver `docs/handoff-vps-hostinger-arquiteto.md` §7.1. O `.\deploy.cmd -Confirmed` no PC é **legado** e **não** é mais o publisher do site público.
 
 ## Publicar no DEV
 
@@ -61,7 +55,7 @@ Branches de backup (`backup/*`) e tags `archive/*` guardam trabalho que não est
 
 ## CI local
 
-`npm run ci` é a fonte de verdade de qualidade (GitHub Actions desligado por decisão de custo — TAP-116). Executa build do frontend, `prisma generate` e `prisma validate`, testes unitários e checagem de tipos do backend, testes do ops-panel e do support-analyst e, no Windows, os testes do gate de release. Para na primeira falha e imprime um resumo. Em sucesso grava `deploy/.local-ci-attestation.json` (gitignore) com o SHA de `HEAD`.
+Há **dois** gates: (1) **GitHub Actions** job `build-and-unit` — obrigatório para merge em `main` (repo público + branch protection; supersede TAP-116 “Actions desligado”); (2) **`npm run ci` local** — complementar, grava atestado para o deploy Windows legado e exercita Pester/ops-panel no PC. Executa build do frontend, `prisma generate` e `prisma validate`, testes unitários e checagem de tipos do backend, testes do ops-panel e do support-analyst e, no Windows, os testes do gate de release. Para na primeira falha e imprime um resumo. Em sucesso grava `deploy/.local-ci-attestation.json` (gitignore) com o SHA de `HEAD`.
 
 Neste PC o alert poller de produção executa `backend/dist` com `backend/node_modules` da pasta principal. Por isso o CI local checa os tipos do backend com `tsc --noEmit` em vez de gravar `backend/dist`. Se o motor do Prisma estiver travado por esse processo, o `prisma generate` só é aceito quando o client já gerado corresponde ao schema atual.
 
@@ -82,4 +76,8 @@ Emergência autorizada: `.\deploy.cmd -Confirmed -BypassReleaseGate "motivo"`. O
 
 ## Limitação conhecida do GitHub
 
-O repositório é privado no plano gratuito, sem branch protection nem rulesets (a API responde 403). O botão de merge não exige checks remotos. O bloqueio obrigatório está no deploy: código fora de `main` ou sem atestado de `npm run ci` não chega a produção.
+## GitHub Actions e branch protection (vigente)
+
+O repositório é **público**. Em `main`: PR obrigatório + status check `build-and-unit` + branch atualizada; force push desligado. Detalhes operacionais do VPS/CD: `docs/handoff-vps-hostinger-arquiteto.md`.
+
+O publisher de **produção pública** é o **VPS** (Docker), não mais o `deploy.cmd` do PC. O gate do `deploy.ps1` (atestado local) permanece para o fluxo Windows **legado** e para quem ainda o usa em cenários não públicos.
