@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Continue'
 . "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\boot-dependencies.ps1"
 
 try {
   $settings = Get-QuiverTapSettings
@@ -28,14 +29,9 @@ $alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl
 $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
 $tunnelOk = Test-CloudflaredRunning
 
-# O painel tem health proprio e o start e idempotente; uma tentativa por ciclo
-# (padrao 60s) tambem recupera quedas apos o boot sem polling agressivo.
-& "$PSScriptRoot\start-ops-panel.ps1" -Quiet
-
-if (-not $alertPollerOk) {
-  Write-WatchdogLog -Paths $paths -Message 'Alert poller fora do ar - iniciando.'
-  & "$PSScriptRoot\start-alert-poller.ps1" -Quiet:$Quiet
-  $alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl
+if (-not $tunnelOk) {
+  & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\start-tunnel.ps1" -Quiet
+  $tunnelOk = Test-CloudflaredRunning
 }
 
 if (-not $apiOk -and (Test-PortListening -Port $paths.ApiPort)) {
@@ -49,9 +45,11 @@ if (-not $frontendOk -and (Test-PortListening -Port $paths.FrontendPort)) {
 }
 
 if (-not $apiOk) {
-  Write-WatchdogLog -Paths $paths -Message 'API fora do ar - iniciando.'
-  & "$PSScriptRoot\start-api.ps1" -Quiet:$Quiet
-  $apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl
+  if (Ensure-ProdDatabaseContainer -Paths $paths) {
+    Write-WatchdogLog -Paths $paths -Message 'Banco PROD healthy; iniciando API.'
+    & "$PSScriptRoot\start-api.ps1" -Quiet:$Quiet
+    $apiOk = Test-ApiHealthy -HealthUrl $paths.ReadyUrl
+  }
 }
 
 if (-not $frontendOk -and -not $paths.ServeFrontendFromApi) {
@@ -62,10 +60,11 @@ if (-not $frontendOk -and -not $paths.ServeFrontendFromApi) {
   $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
 }
 
-if (-not $tunnelOk) {
-  Write-WatchdogLog -Paths $paths -Message 'Tunnel fora do ar - iniciando.'
-  & "$PSScriptRoot\start-tunnel.ps1" -Quiet:$Quiet
-  $tunnelOk = Test-CloudflaredRunning
+# Auxiliares nao devem impedir recuperacao da API e do tunel.
+& (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\start-ops-panel.ps1" -Quiet
+if (-not $alertPollerOk) {
+  & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\start-alert-poller.ps1" -Quiet
+  $alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl
 }
 
 if ($apiOk -and $alertPollerOk -and $frontendOk -and $tunnelOk) {

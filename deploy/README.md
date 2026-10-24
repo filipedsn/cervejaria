@@ -50,7 +50,9 @@ O Vite faz proxy de `/api`, `/uploads` e WebSocket para a API dev (`:3002`). **N
 
 ## Politica no mesmo PC
 
-- **Producao** roda 24/7 via daemon oculto + tarefas `QuiverTap-AtLogon` / `QuiverTap-AtStartup`.
+- **Producao** e supervisionada pelo daemon oculto + tarefas `QuiverTap-AtLogon` / `QuiverTap-AtStartup`. Neste Windows o PostgreSQL depende do Docker Desktop/WSL: boot sem login nao garante banco disponivel. Ao fazer login, o launcher abre Docker Desktop se necessario; o supervisor aguarda o container PROD healthy e recupera a API automaticamente.
+- O supervisor inicia somente `cervejaria-db` ja existente, sem recriar volumes, executar migrations ou iniciar DEV. O servico Windows `Cloudflared` e o unico dono do tunel quando instalado; configuracao local nao e usada como fallback. Estado Running indica processo ativo, nao comprova conectividade externa.
+- A tarefa de boot executa o daemon diretamente, sem limite de duracao, com reinicio em falha. Um lock entre sessoes impede supervisores duplicados. Auxiliares nao condicionam a recuperacao do banco/API/tunel.
 - **Desenvolvimento** via supervisor do Cursor/VS Code ou `npm run dev:start`.
 - Evite rodar dev e prod sob carga pesada ao mesmo tempo (RAM).
 

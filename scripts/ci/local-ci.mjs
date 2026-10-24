@@ -65,6 +65,11 @@ const steps = [
 ];
 
 if (isWindows) {
+  steps.push(['prod-scripts: boot dependencies', () => run(
+    'powershell',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'Invoke-Pester -Script scripts/prod/boot-dependencies.tests.ps1 -EnableExit'],
+    '.',
+  )]);
   steps.push(['prod-scripts: release gate', () => run(
     'powershell',
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'Invoke-Pester -Script scripts/prod/release-gate.tests.ps1 -EnableExit'],

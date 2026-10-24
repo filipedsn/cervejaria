@@ -6,9 +6,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
+. "$PSScriptRoot\boot-dependencies.ps1"
 
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
+Start-ProdDockerDesktop
 
 $watchdogPidFile = Join-Path $paths.RuntimeDir 'watchdog.pid'
 $daemonScript = Join-Path $PSScriptRoot 'watchdog-daemon.ps1'

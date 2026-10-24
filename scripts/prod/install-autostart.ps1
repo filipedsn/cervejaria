@@ -138,6 +138,8 @@ $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable `
   -RestartCount 3 `
   -RestartInterval (New-TimeSpan -Minutes 1) `
+  -ExecutionTimeLimit ([TimeSpan]::Zero) `
+  -MultipleInstances IgnoreNew `
   -Hidden
 
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -153,7 +155,7 @@ if ($isAdmin -and -not $UserOnly) {
   # SYSTEM tambem evita depender do Docker Desktop ja ter aberto uma janela.
   $bootAction = New-ScheduledTaskAction `
     -Execute (Join-Path $PSHOME 'powershell.exe') `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'start-watchdog-daemon.ps1')`" -Quiet"
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'watchdog-daemon.ps1')`""
   $bootPrincipal = New-ScheduledTaskPrincipal `
     -UserId 'SYSTEM' `
     -LogonType ServiceAccount `
