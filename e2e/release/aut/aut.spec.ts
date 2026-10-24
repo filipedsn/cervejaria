@@ -86,10 +86,13 @@ test('AUT-X04 token adulterado leva ao login', async ({ ops, page, evidence }) =
   // redirect and can create a second cookie under /operacao instead of /.
   const cookie = (await page.context().cookies()).find(cookie => cookie.name === 'token');
   expect(cookie).toBeDefined();
+  // Stop authenticated polling before changing the cookie. A pending 401
+  // redirect must not race the navigation being tested.
+  await page.goto('about:blank');
   await page.context().clearCookies({ name: 'token' });
   await page.context().addCookies([{ ...cookie!, value: 'adulterado.qa.token' }]);
   expect((await page.request.get('/api/auth/me')).status()).toBe(401);
-  await page.goto('/operacao/comandas', { waitUntil: 'networkidle' });
+  await page.goto('/operacao/comandas', { waitUntil: 'commit' });
   await expect(page).toHaveURL(/\/login/);
   await evidence.assertNoDbChange();
   await evidence.screenshot('token-adulterado');
