@@ -71,7 +71,7 @@ Cenário de capacidade: volume de auditoria nas 24h multiplicado pela média his
 
 Às 18:20 UTC, após autorização explícita de descarte, foram removidos **540 streams OTel**, enumerados por nome exato. Índices de segurança/sistema, configurações e regras do Kibana e bancos da aplicação foram preservados. O collector foi pausado durante a operação e reiniciado com configuração validada em container sem rede. A configuração ativa foi atualizada no arquivo montado em `deploy/observability/otel-collector-config.yml`.
 
-O roteamento limita datasets a `audit`, `technical` e `generic`, separados por namespace; mantém tenant, operador e correlação nos campos dos logs. Não há um stream por tenant. Os templates personalizados preservam os componentes de mappings OTel gerenciados e as configurações TSDB. Um primário e zero réplicas por índice são adequados ao nó único atual; isso não oferece redundância.
+O roteamento da aplicação limita datasets a `audit`, `technical` e `generic`, separados por namespace; mantém tenant, operador e correlação nos campos dos logs. Não há um stream por tenant. Métricas infra conservam os datasets finitos dos receivers para preservar consultas, dashboards e SLOs existentes. O check HTTPS público de produção foi adicionado aos checks de origin e DEV, preenchendo o sinal exigido pelo SLO de disponibilidade pública. Os templates personalizados preservam os componentes de mappings OTel gerenciados e as configurações TSDB. Um primário e zero réplicas por índice são adequados ao nó único atual; isso não oferece redundância.
 
 | Namespace | Auditoria | Técnico | Métricas | Traces |
 | --- | ---: | ---: | ---: | ---: |
@@ -84,6 +84,8 @@ Os prazos de exclusão contam após rollover; rollover diário ou ao atingir 1 G
 Na primeira leitura após reconstrução (18:21 UTC), o cluster estava **green**, com **38 primários**, **zero shards sem alocação** e todos os streams OTel então recriados com exclusão explícita. A base anterior de SLIs/volume acima é histórica, não uma janela pós-reconstrução. Sem eventos suficientes, os indicadores retornam desconhecido; não é válido declarar 100% de disponibilidade ou custo zero. A amostragem pós-publicação e a prova de ingestão são registradas separadamente nas evidências do TAP-96.
 
 `scripts/observability/rebuild-platform.mjs` requer autorização de descarte explícita, valida nomes de streams e exclui em lotes de nomes exatos, sem wildcard. Sua suíte verifica proteção de índices de sistema, autorização, preservação de mappings e aplicação de ILM.
+
+Foi observado `version_conflict_engine_exception` em métricas TSDB. A combinação Elasticsearch 8.17.0 / exporter 0.130.0 requer o campo `_metric_names_hash` como dimensão para evitar colisão de métricas distintas em batches separados. Foi aplicado o componente `metrics-otel@custom`, preservando campos independentes, e recriados somente os streams de métricas recém-gerados. A correção segue a [documentação oficial do exporter, seção Known issues](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.130.0/exporter/elasticsearchexporter/README.md#version_conflict_engine_exception); não foi necessário atualizar o cluster. Após a aplicação, a leitura de logs do collector por um minuto não registrou novas falhas. O runner descartável também instala esse mapping antes de receber métricas.
 
 ## Parecer
 

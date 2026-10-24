@@ -15,6 +15,8 @@ receivers:
         method: GET
       - endpoint: https://tapdev.quivercloud.com.br/api/ready
         method: GET
+      - endpoint: https://tap.quivercloud.com.br/api/ready
+        method: GET
 
   tcpcheck:
     collection_interval: 60s
@@ -178,7 +180,7 @@ service:
       exporters: [elasticsearch]
     metrics/infra:
       receivers: [httpcheck, tcpcheck, hostmetrics]
-      processors: [transform/infra, transform/dataset, filter/infra-allowlist, batch]
+      processors: [transform/infra, filter/infra-allowlist, batch]
       exporters: [elasticsearch]
     logs:
       receivers: [otlp]

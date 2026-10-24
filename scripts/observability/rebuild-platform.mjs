@@ -1,6 +1,19 @@
 /** Destructive data reset: call only after explicit authorization to discard current OTel history. */
 export const isResettableStream = name => /^(logs|metrics|traces)-[a-zA-Z0-9_.-]+\.otel-(dev|prd|infra)$/.test(name);
 
+// Elasticsearch 8.17.0 needs this exporter-documented compatibility mapping.
+export async function ensureMetricsFingerprint(request) {
+  const existing = await request('/_component_template/metrics-otel@custom');
+  const component = existing.component_templates?.[0]?.component_template;
+  if (!component && existing.httpStatus !== 404) throw new Error('Cannot inspect metrics custom mappings');
+  const body = structuredClone(component ?? { template: {} });
+  body.template ??= {};
+  body.template.mappings ??= {};
+  body.template.mappings.properties = { ...body.template.mappings.properties, _metric_names_hash: { type: 'keyword', time_series_dimension: true } };
+  const result = await request('/_component_template/metrics-otel@custom', body, false, 'PUT');
+  if (!result.acknowledged) throw new Error('Metrics fingerprint mapping failed');
+}
+
 const days = {
   dev: { logs: 7, metrics: 7, traces: 3 },
   prd: { logs: 14, metrics: 30, traces: 7 },
@@ -32,6 +45,7 @@ export async function planPlatformRebuild(request) {
 export async function rebuildPlatform(request, plan, authorization) {
   if (authorization !== 'DISCARD_CURRENT_OTEL_HISTORY') throw new Error('Explicit history-discard authorization required');
   if (!plan.targets.length || !plan.targets.every(isResettableStream)) throw new Error('Invalid exact stream inventory');
+  await ensureMetricsFingerprint(request);
   const applied = [];
   for (const spec of plan.specifications) {
     const policy = { policy: { phases: { hot: { actions: { rollover: { max_age: '1d', max_primary_shard_size: '1gb' } } }, delete: { min_age: spec.retention + 'd', actions: { delete: {} } } } } };
