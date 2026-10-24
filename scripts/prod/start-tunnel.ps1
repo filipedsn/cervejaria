@@ -1,10 +1,28 @@
 # Inicia o Cloudflare Tunnel em segundo plano (se ainda não estiver rodando).
 
+param([switch]$Quiet)
+
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
 
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
+
+# O servico usa token/config remota. Nunca abrir um segundo conector local.
+$service = Get-Service -Name 'Cloudflared' -ErrorAction SilentlyContinue
+if ($service) {
+  try {
+    if ($service.Status -ne 'Running') {
+      Start-Service -Name 'Cloudflared' -ErrorAction Stop
+      $service.WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
+    }
+    Write-WatchdogLog -Paths $paths -Message 'Cloudflared gerenciado pelo servico Windows: Running.'
+    exit 0
+  } catch {
+    Write-WatchdogLog -Paths $paths -Message "Falha ao iniciar servico Cloudflared: $($_.Exception.Message)"
+    exit 1
+  }
+}
 
 $cfExe = Find-CloudflaredExe -Preferred $paths.CloudflaredExe
 if (-not $cfExe) {
