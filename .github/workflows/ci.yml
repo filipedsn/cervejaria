@@ -42,9 +42,10 @@ jobs:
       - name: Install frontend
         run: npm ci --prefix frontend
 
-      # Usar o prisma pinado em backend/ (npx na raiz baixa latest e quebra).
+      # Prisma pinado em backend/; CWD precisa ser backend/ (schema em ./prisma).
       - name: Prisma generate
-        run: npm exec --prefix backend -- prisma generate
+        working-directory: backend
+        run: npx prisma generate
 
       - name: Backend unit tests
         run: npm run test:unit --prefix backend
