@@ -99,7 +99,10 @@ test('TAP96 payment-request routes persist once and export searchable DEV signal
   let audit: Array<{ _id: string; _index: string; _source: Record<string, any> }> = [];
   await poll(async () => {
     const result = await search('logs-*.otel-dev', {
-      size: 500, query: { term: { 'attributes.test.run.id': seed.runId } },
+      size: 500, query: { bool: { filter: [
+        { term: { 'attributes.test.run.id': seed.runId } },
+        { terms: { 'attributes.correlationId': Object.values(ids) } },
+      ] } },
       _source: ['body', 'message', 'msg', 'severity_text', 'severity_number', 'attributes.log.logger', 'attributes.log.record.original', 'attributes.data_stream.dataset', 'attributes.event.action', 'attributes.event.outcome', 'attributes.cervejaria.id', 'attributes.cervejaria.slug', 'attributes.actor.id', 'attributes.actor.type', 'attributes.releaseSha', 'attributes.requestId', 'attributes.correlationId', 'attributes.test.run.id', 'attributes.http.response.status_code'],
     });
     audit = result.hits.hits;
@@ -154,7 +157,9 @@ test('TAP96 payment-request routes persist once and export searchable DEV signal
   expect(new Set(auditIds).size).toBe(auditIds.length);
   const semanticDocs = audit.filter((hit) => ['payment.requested', 'payment.request_resolved'].includes(hit._source.attributes?.['event.action']));
   const transitionCorrelations = [ids.request1, ids.request2, ids.resolve1, ids.resolve2];
-  const transitionDocs = audit.filter((hit) => transitionCorrelations.includes(hit._source.attributes?.correlationId));
+  // Persistence receipts are additional stages, not duplicate payment signals.
+  const transitionDocs = audit.filter((hit) => transitionCorrelations.includes(hit._source.attributes?.correlationId) &&
+    ['payment.requested', 'payment.request_resolved', 'http.post', 'http.delete'].includes(hit._source.attributes?.['event.action']));
   const expectedSignals = [
     { correlationId: ids.request1, semantic: 'payment.requested', http: 'http.post' },
     { correlationId: ids.request2, semantic: 'payment.requested', http: 'http.post' },
