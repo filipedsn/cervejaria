@@ -8,6 +8,9 @@ function Invoke-ProdDocker {
   try {
     # Endpoint explicito: SYSTEM nao herda o contexto Docker do usuario.
     $process = Start-Process -FilePath $docker -ArgumentList (@('--host', 'npipe:////./pipe/dockerDesktopLinuxEngine') + $DockerArgs) -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+    # Windows PowerShell 5.1 precisa reter o handle antes da espera; sem isso
+    # ExitCode pode ficar null mesmo quando docker conclui com sucesso.
+    $null = $process.Handle
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
       Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
       return $null
