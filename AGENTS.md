@@ -1,12 +1,34 @@
 # Agent Governance
 
+## OBRIGATÓRIO — primeiro passo de TODO chat (Codex / Cursor / qualquer agente)
+
+1. **Ler por completo** [`docs/codex-super-prompt-arquitetura-vps.md`](docs/codex-super-prompt-arquitetura-vps.md) antes de editar código, abrir PR, falar de deploy, CI, DEV/PRD, Elastic, tunnel ou VPS.  
+2. Em seguida ler o checklist canônico em [`docs/handoff-vps-hostinger-arquiteto.md`](docs/handoff-vps-hostinger-arquiteto.md) (topo + §0 / §0.1 quando o assunto for infra).  
+3. Só depois aplicar [`CONTRIBUTING.md`](CONTRIBUTING.md) e o restante deste arquivo.
+
+Se houver conflito entre docs antigos (skills, README, TAP-116) e o super prompt / handoff na `main`, **prevalecem o super prompt e o handoff**.
+
+Resumo operacional que nenhum agente pode “esquecer”:
+- **PRD** = só VPS (`https://tap.quivercloud.com.br`); **DEV** = só PC (localhost).  
+- Elastic DEV ≠ Elastic PRD (clusters físicos diferentes).  
+- CI: Actions `build-and-unit` **obriga** merge; `npm run ci` é complementar.  
+- `deploy.cmd` no PC = **legado**; não publica o Tap público.  
+- Off-site backup Postgres (OneDrive) **já feito**; falta restore drill.  
+- Se `gh` der 403: push da branch + link compare; não loop de auth; produção intocada.
+
 ## Delivery flow
 
-[CONTRIBUTING.md](CONTRIBUTING.md) is the mandatory delivery flow for every tool (Cursor, VS Code, terminal): production is the source of truth, `main` matches production, work starts from `main` in its own branch, `npm run ci` before the PR (GitHub Actions is disabled — TAP-116), merge only after local CI is green, and production deploy only with explicit user authorization. The deploy preflight blocks anything that is not a clean `origin/main` commit with a matching `deploy/.local-ci-attestation.json` from `npm run ci`.
+[CONTRIBUTING.md](CONTRIBUTING.md) is the mandatory delivery flow for every tool (Cursor, VS Code, terminal), **subject to the super prompt and handoff above**.
+
+Current rules (supersede TAP-116 “Actions off”):
+- Work starts from `main` on its own branch and returns via Pull Request.
+- Merge to `main` requires GitHub Actions check **`build-and-unit`** (branch protection). Local `npm run ci` remains complementary (attestation for legacy Windows tooling).
+- Public production publish is the **VPS** (Docker), not `.\deploy.cmd` on the PC. Legacy Windows deploy still uses attestation preflight when that path is used.
+- Production deploy (VPS or legacy) only with **explicit** user authorization.
 
 ## Plane MCP workflow
 
-Plane is the source of truth for work state. GitHub is the source of truth for code and commits. Local `npm run ci` (attestation file) is the source of truth for release quality gates.
+Plane is the source of truth for work state. GitHub is the source of truth for code and commits. GitHub Actions `build-and-unit` gates merge to `main`; local `npm run ci` (attestation file) remains for the complementary / legacy Windows release gate.
 
 Use the Plane MCP with least privilege. The authorized capabilities are limited to `workspace`, `project`, `workitem`, `workitem_comment`, `state`, and `label`; do not expand tools without an explicit need.
 
@@ -31,3 +53,5 @@ A technical item does not gain priority merely by existing. It must reduce real 
 ## Infrastructure Scaling Principle
 
 Infrastructure scales when the financial and operational risk of remaining simple exceeds the cost of evolving it. TAP Quiver is at an early commercial stage, so simple infrastructure is a deliberate economic decision. Do not introduce HA, Kubernetes, microservices, managed databases, or permanent staging without evidence of need.
+
+Post-cutover baseline (see handoff): public Tap runs on a single Hostinger VPS behind Cloudflare; admin via Tailscale; Dev and PRD are physically segregated including Elasticsearch clusters. Do not reintroduce PC-as-production or Cloudflare Tunnel for `tap` without an explicit new decision.
