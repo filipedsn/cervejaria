@@ -21,7 +21,7 @@
 | `npm run ci` local | **Complementar** | Continua útil (atestado / suite Windows); **não** substitui o check Actions no merge |
 | CD automático no VPS (secrets Tailscale) | **Pendente** | Runbook §7.1; deploy ainda manual via SSH |
 | `releaseSha` / rollback imagem n-1 | **Pendente** | |
-| OTEL → ES PRD no VPS | **Pendente** (opcional) | Cluster PRD ≠ cluster DEV |
+| OTEL → ES PRD no VPS | **Feito** | Collector `deploy/tap-quiver/docker-compose.observability.yml` → `*.otel-prd`; cluster PRD ≠ DEV |
 | Equalizar API DEV em Docker | **Pendente** | Hoje API DEV = Node nativo |
 
 **Não é pendência:** “configurar backup OneDrive do Postgres”. Isso já roda. Quem listar off-site como lacuna está lendo trecho riscado, mensagem velha ou confusão com *restore*.
@@ -67,7 +67,7 @@ Não é “o mesmo stack com `NODE_ENV` diferente”. São **hosts diferentes**,
 | **Postgres** | Compose raiz `docker-compose.yml` → `cervejaria-db` (`:5432`) e/ou `cervejaria-db-dev` (`:5434`, DB `cervejaria_dev`) | Container `cervejaria-db` no VPS, só loopback | **NUNCA** `pg_dump`/`restore` DEV→PRD sem pedido explícito + backup |
 | **Elasticsearch** | Cluster Docker **no PC** (rede típica `elasticsearch-kibana_elastic`, `:9200` local) | Cluster Docker **no VPS** em `/docker/elasticsearch-kibana/` · `127.0.0.1:9200` · Tailscale `100.120.170.89:9200` | **NUNCA** — dois clusters; índices `*.otel-dev` ≠ `*.otel-prd` |
 | **Kibana** | Local (PC) | VPS `:5601` via Tailscale | Idem |
-| **OTEL / EDOT Collector** | `docker-compose.observability.yml` → `quiver-edot-collector` · OTLP `127.0.0.1:4317/4318` · **só DEV** | Ainda **opcional / desligado** no VPS (pendência) | App DEV → collector/ES **local**; app PRD → ES **VPS** (quando OTEL PRD existir) |
+| **OTEL / EDOT Collector** | `docker-compose.observability.yml` → `quiver-edot-collector` · OTLP `127.0.0.1:4317/4318` · **só DEV** (`filter/dev-only`) | `deploy/tap-quiver/docker-compose.observability.yml` → `quiver-edot-collector-prd` · OTLP loopback · `filter/prd-only` → `*.otel-prd` | App DEV → ES **local**; app PRD → ES **VPS** |
 | **Backups DB** | Não são a retenção oficial | Cron VPS 01:00 BRT + rclone OneDrive `…/Backup banco/PRD` | Offsite PRD ≠ cópia do notebook |
 | **DNS / Cloudflare** | Não publica o Tap | `tap` → IP do VPS | Não recolocar tunnel do Tap no PC |
 | **Secrets** | `.env` / env local (fora do git) | `/opt/quiver-tap/deploy/tap-quiver/.env.staging` no VPS | Não copiar secret de PRD para repo nem para log |
@@ -310,7 +310,7 @@ DKIM cinza (`hostingermail-*._domainkey`) é **só e-mail** (envio/autenticidade
 | CD no VPS ainda semi-manual | `deploy-vps.yml` faz `docker build` por SHA; deploy SSH via Tailscale **opcional** (faltam secrets `TS_*` / `VPS_SSH_KEY`) |
 | Sem push para registry | build no runner (`push: false`); tag `quiver-tap-api:<SHA>` |
 | Restore drill | dumps locais + OneDrive **OK**; **restore** ainda não ensaiado |
-| OTEL no VPS | desligado no env atual |
+| OTEL no VPS | ligado: EDOT na API + collector PRD → `*.otel-prd` |
 
 **Não listar aqui:** off-site OneDrive do Postgres (já feito — ver checklist canônico no topo).
 
@@ -714,7 +714,7 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 2. [ ] **CD no VPS** — secrets Tailscale/SSH + 1º `deploy=true` (§7.1)  
 3. [ ] **`releaseSha`** no container + rollback imagem n-1 ensaiado  
 4. [ ] Smoke automático no promote  
-5. [ ] OTEL → ES **PRD** (opcional)  
+5. [x] OTEL → ES **PRD** (collector + EDOT na API) 
 6. [ ] Equalizar **API DEV** em Docker  
 
 **Já fechado (não reabrir como lacuna):** cutover; HTTPS; tunnel/watchdog PC; SSH Tailscale; Cloudflared off; CI Actions + protection; backup local **e** off-site OneDrive; segregação Dev/PRD/Elastic; ES healthy.
@@ -734,7 +734,7 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 11. [x] Backup **off-site** OneDrive `…/Backup banco/PRD` via rclone (`OFFSITE_ENABLED=1`, comprovado 2026-10-24)  
 12. [ ] `releaseSha` no container (hoje pode ser `unknown`)  
 13. [x] Tarefa `QuiverTap-ProdBackup` no PC excluída  
-14. [ ] OTEL → ES **PRD** no VPS (opcional; cluster PRD ≠ cluster DEV local)  
+14. [x] OTEL → ES **PRD** no VPS (cluster PRD ≠ cluster DEV local) 
 15. [x] ES healthcheck alinhado à senha rotacionada → container **healthy**  
 16. [x] Segregação física Dev (PC) × PRD (VPS) documentada — app, Postgres e **dois** clusters Elastic (§0.1)  
 17. [ ] Equalizar arquitetura de **DEV**: API também em Docker (hoje só Node nativo; DB/ES local já são Docker)  

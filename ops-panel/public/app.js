@@ -82,6 +82,7 @@ const els = {
   journeyWhere: document.getElementById('journeyWhere'),
   journeyOutcome: document.getElementById('journeyOutcome'),
   journeyCorrelation: document.getElementById('journeyCorrelation'),
+  journeyInteraction: document.getElementById('journeyInteraction'),
   journeyEnvironment: document.getElementById('journeyEnvironment'),
   journeySource: document.getElementById('journeySource'),
   journeyTimeline: document.getElementById('journeyTimeline'),
@@ -482,14 +483,27 @@ function renderJourney(events, page = journeyPage) {
     summary.textContent = 'Ver detalhes';
     const level2 = document.createElement('dl');
     addJourneyDetail(level2, 'Rota/tela', event.route || event.page);
+    addJourneyDetail(level2, 'Empresa do ator', event.tenantId);
+    addJourneyDetail(level2, 'Empresa afetada (banco)', event.targetTenantId);
     addJourneyDetail(level2, 'Entidade', [event.entityType, event.entityId].filter(Boolean).join(':'));
     addJourneyDetail(level2, 'HTTP', event.statusCode ? `${event.method || ''} ${event.statusCode}`.trim() : undefined);
     addJourneyDetail(level2, 'Correlation ID', event.correlationId);
+    addJourneyDetail(level2, 'Interação', event.interactionId);
+    addJourneyDetail(level2, 'Evento', event.eventId);
+    addJourneyDetail(level2, 'Transação', event.transactionId);
+    addJourneyDetail(level2, 'Persistência', event.transactionState);
     addJourneyDetail(level2, 'Trace ID', event.traceId);
     addJourneyDetail(level2, 'Span ID', event.spanId);
     addJourneyDetail(level2, 'Latência', event.durationMs !== undefined ? `${event.durationMs} ms` : undefined);
     addJourneyDetail(level2, 'Event action', event.action);
     details.append(summary, level2);
+    if (event.payload) {
+      const payloadLabel = document.createElement('p');
+      payloadLabel.textContent = 'Dados de negócio permitidos; IDs enviados no payload não comprovam identidade.';
+      const payload = document.createElement('pre');
+      payload.textContent = JSON.stringify(event.payload, null, 2);
+      details.append(payloadLabel, payload);
+    }
     item.append(time, main, details);
     els.journeyTimeline.append(item);
   }
@@ -507,6 +521,7 @@ function journeyQuery() {
     tenantId: els.journeyTenant.value.trim(), actorId: els.journeyActor.value.trim(),
     action: els.journeyAction.value.trim(), where: els.journeyWhere.value.trim(),
     outcome: els.journeyOutcome.value, correlationId: els.journeyCorrelation.value.trim(),
+    interactionId: els.journeyInteraction.value.trim(),
   };
   for (const [key, value] of Object.entries(values)) if (value) params.set(key, value);
   return params;

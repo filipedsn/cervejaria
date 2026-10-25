@@ -194,6 +194,143 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return comandas.map((comanda) => resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
   });
 
+  app.get('/:id/espelho-turno', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const { pontoVendaId, sessaoCaixaId, contexto } = z.object({
+      pontoVendaId: z.string().min(1),
+      sessaoCaixaId: z.string().min(1),
+      contexto: z.enum(['VENDA', 'CANCELAMENTO_TURNO', 'RECEBIMENTO_DIVIDA_ANTERIOR']).default('VENDA'),
+    }).parse(request.query);
+
+    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+      where: { id: sessaoCaixaId, cervejariaId, pontoVendaId, status: 'FECHADO', fechadoEm: { not: null } },
+      select: { id: true, cervejariaId: true, pontoVendaId: true, diaOperacional: true, abertoEm: true, fechadoEm: true, tipoEncerramento: true },
+    });
+    if (!sessao?.fechadoEm) return reply.status(404).send({ error: 'Turno não encontrado neste ponto de venda' });
+
+    const associacoesVenda: Prisma.ComandaWhereInput[] = [{ sessaoCaixaRealizacaoId: sessao.id }];
+    if (sessao.tipoEncerramento !== 'ADMINISTRATIVO') {
+      associacoesVenda.push({
+        AND: [
+          { sessaoCaixaRealizacaoId: null },
+          { diaOperacional: sessao.diaOperacional },
+          { fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm } },
+        ],
+      });
+    }
+    let comanda = contexto === 'VENDA' ? await prisma.comanda.findFirst({
+      where: whereComandaOperacao(cervejariaId, {
+        id,
+        pontoVendaId: sessao.pontoVendaId,
+        status: 'FECHADA',
+        OR: associacoesVenda,
+      }),
+      include: {
+        ...INCLUDE_COMANDA_OPERACAO,
+        pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+        ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
+        itens: {
+          orderBy: { createdAt: 'asc' },
+          include: { produto: true, opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } },
+        },
+      },
+    }) : contexto === 'CANCELAMENTO_TURNO' ? await prisma.comanda.findFirst({
+      where: whereComandaOperacao(cervejariaId, {
+        id,
+        pontoVendaId: sessao.pontoVendaId,
+        status: 'CANCELADA',
+        sessaoCaixaRealizacaoId: sessao.id,
+      }),
+      include: {
+        ...INCLUDE_COMANDA_OPERACAO,
+        pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+        ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
+        itens: { orderBy: { createdAt: 'asc' }, include: { produto: true, opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } } },
+      },
+    }) : null;
+    const pagamentoRecebimentoAnterior = contexto === 'RECEBIMENTO_DIVIDA_ANTERIOR'
+      ? await prisma.pagamento.findFirst({
+          where: { comandaId: id, sessaoCaixaId: sessao.id, contaReceberId: { not: null } },
+          select: { id: true },
+        })
+      : null;
+    if (!comanda && pagamentoRecebimentoAnterior) {
+      comanda = await prisma.comanda.findFirst({
+        where: whereComandaOperacao(cervejariaId, { id, pontoVendaId: sessao.pontoVendaId, status: 'FECHADA' }),
+        include: {
+          ...INCLUDE_COMANDA_OPERACAO,
+          pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+          ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
+          itens: {
+            orderBy: { createdAt: 'asc' },
+            include: { produto: true, opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } },
+          },
+        },
+      });
+    }
+    if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada neste turno' });
+
+    const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const recebido = comanda.pagamentos.reduce((soma, pagamento) => soma + Number(pagamento.valor), 0);
+    return {
+      ...resumo,
+      // A venda fechada preserva total e desconto. O subtotal de consulta deriva
+      // desses snapshots persistidos, sem aplicar configuração ou catálogo atual.
+      subtotal: Number(comanda.total) + Number(comanda.desconto),
+      total: Number(comanda.total),
+      desconto: Number(comanda.desconto),
+      valorEmAberto: Math.max(0, Number(comanda.total) - recebido),
+      pontoVenda: comanda.pontoVenda,
+      turno: {
+        id: sessao.id,
+        abertoEm: sessao.abertoEm,
+        fechadoEm: sessao.fechadoEm,
+      },
+      contextoTurno: contexto === 'RECEBIMENTO_DIVIDA_ANTERIOR'
+        ? 'RECEBIMENTO_DIVIDA_ANTERIOR'
+        : contexto === 'CANCELAMENTO_TURNO'
+          ? 'CANCELAMENTO_TURNO'
+        : comanda.sessaoCaixaRealizacaoId === sessao.id
+          ? 'VINCULO_CONFIRMADO'
+          : 'HISTORICO_SEM_VINCULO_CONFIAVEL',
+      sessaoOrigemId: comanda.sessaoCaixaRealizacaoId,
+      agendamento: comanda.ocorrencia ? {
+        id: comanda.ocorrencia.id,
+        nome: comanda.ocorrencia.nome,
+        data: comanda.ocorrencia.data,
+        horaInicio: comanda.ocorrencia.horaInicio,
+        horaFim: comanda.ocorrencia.horaFim,
+        agendaNome: comanda.ocorrencia.agenda?.nome ?? null,
+      } : null,
+      pagamentos: comanda.pagamentos.map((pagamento) => ({
+        id: pagamento.id,
+        forma: pagamento.forma,
+        valor: Number(pagamento.valor),
+        pagoEm: pagamento.pagoEm,
+        sessaoCaixaId: pagamento.sessaoCaixaId,
+        classificacaoTurno: pagamento.sessaoCaixaId === sessao.id
+          ? 'NESTE_TURNO'
+          : pagamento.pagoEm > sessao.fechadoEm!
+            ? 'DEPOIS_DO_TURNO'
+            : 'CONTEXTO_NAO_REGISTRADO',
+      })),
+      itensSemPedido: comanda.itens.filter((item) => !item.pedidoCozinhaId).map((item) => ({
+        id: item.id,
+        nome: item.nome,
+        quantidade: item.quantidade,
+        volumeMl: item.volumeMl,
+        tapId: item.tapId,
+        precoUnit: Number(item.precoUnit),
+        subtotal: Number(item.precoUnit) * item.quantidade,
+        canceladoEm: item.canceladoEm,
+        cancelamentoPendenteEm: item.cancelamentoPendenteEm,
+        opcionais: item.opcionais.map((opcional) => ({ nome: opcional.nome, precoAdicional: Number(opcional.precoAdicional), quantidade: opcional.quantidade })),
+        cancelamentosEntregue: item.cancelamentosEntregue.map((cancelamento) => ({ quantidade: cancelamento.quantidade, valorRetirado: Number(cancelamento.valorRetirado), createdAt: cancelamento.createdAt })),
+      })),
+    };
+  });
+
   app.post('/fechar-grupo', { preHandler: [requireFechamentoGrupo(app)] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);

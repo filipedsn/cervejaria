@@ -645,9 +645,19 @@ export function escopoComandasDoTurno(sessao: {
   abertoEm: Date;
   fechadoEm: Date;
 }): Prisma.ComandaWhereInput {
-  return sessao.tipoEncerramento === 'ADMINISTRATIVO'
-    ? { sessaoCaixaRealizacaoId: sessao.id }
-    : { diaOperacional: sessao.diaOperacional, fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm } };
+  if (sessao.tipoEncerramento === 'ADMINISTRATIVO') return { sessaoCaixaRealizacaoId: sessao.id };
+  return {
+    OR: [
+      { sessaoCaixaRealizacaoId: sessao.id },
+      {
+        AND: [
+          { sessaoCaixaRealizacaoId: null },
+          { diaOperacional: sessao.diaOperacional },
+          { fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm } },
+        ],
+      },
+    ],
+  };
 }
 
 export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId: string) {
@@ -670,14 +680,26 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   const nomeUsuario = (id: string | null) => usuarios.find((usuario) => usuario.id === id)?.nome ?? null;
   const administrativo = sessao.tipoEncerramento === 'ADMINISTRATIVO';
   const escopo = escopoComandasDoTurno({ ...sessao, fechadoEm: sessao.fechadoEm });
+  const filtroVendasTurno: Prisma.ComandaWhereInput = {
+    origem: 'CAIXA',
+    pontoVenda: { cervejariaId },
+    pontoVendaId: sessao.pontoVendaId,
+    status: 'FECHADA',
+    ...escopo,
+  };
   const vendasAvulsas = await prisma.comanda.count({
+    where: {
+      tipo: 'AVULSA',
+      ...filtroVendasTurno,
+    },
+  });
+  const comandasCanceladas = await prisma.comanda.count({
     where: {
       origem: 'CAIXA',
       pontoVenda: { cervejariaId },
       pontoVendaId: sessao.pontoVendaId,
-      tipo: 'AVULSA',
-      status: 'FECHADA',
-      ...(administrativo ? escopo : { fechadaEm: { gte: sessao.abertoEm, lte: sessao.fechadoEm } }),
+      status: 'CANCELADA',
+      sessaoCaixaRealizacaoId: sessao.id,
     },
   });
 
@@ -688,13 +710,7 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
   const duracaoHoras = Math.max(0.25, Math.round((duracaoMinutos / 60) * 100) / 100);
 
   const comandas = await prisma.comanda.findMany({
-    where: {
-      origem: 'CAIXA',
-      pontoVenda: { cervejariaId },
-      pontoVendaId: sessao.pontoVendaId,
-      status: 'FECHADA',
-      ...escopo,
-    },
+    where: filtroVendasTurno,
     include: {
       cliente: { select: { id: true, nome: true } },
       contaReceber: {
@@ -710,7 +726,12 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
       },
     },
   });
-  const comandasAtendidas = comandas.length;
+  // AVULSA is a sale record, not a comanda. Keep it in the sales/ticket
+  // aggregate, but report it separately so the two KPI counts are exclusive.
+  const comandasAtendidas = comandas.filter((comanda) => comanda.tipo !== 'AVULSA').length;
+  const registrosVenda = comandas.length;
+  const comandasComVinculoSessao = comandas.filter((comanda) => comanda.sessaoCaixaRealizacaoId === sessao.id).length;
+  const historicasSemVinculo = comandas.filter((comanda) => comanda.sessaoCaixaRealizacaoId === null).length;
   const vendasTotal = comandas.reduce((soma, comanda) => soma + toNumber(comanda.total), 0);
 
   const porProduto = new Map<
@@ -832,6 +853,10 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     abertoPorNome: nomeUsuario(sessao.abertoPorId) ?? '—',
     fechadoPorNome: nomeUsuario(sessao.fechadoPorId),
     comandasAtendidas,
+    registrosVenda,
+    comandasComVinculoSessao,
+    historicasSemVinculo,
+    comandasCanceladas,
     vendasTotal,
     totalRecebido: caixa.esperado.totalVendas,
     vendasAvulsas,
@@ -843,8 +868,8 @@ export async function buscarRelatorioTurnoFechado(sessaoId: string, cervejariaId
     totalPendente: Math.round(contasPendentes.reduce((soma, conta) => soma + conta.saldo, 0) * 100) / 100,
     topClientes: porClienteArr,
     ticketMedio:
-      comandasAtendidas > 0
-        ? Math.round((vendasTotal / comandasAtendidas) * 100) / 100
+      registrosVenda > 0
+        ? Math.round((vendasTotal / registrosVenda) * 100) / 100
         : 0,
     duracaoMinutos,
     receitaPorHora:

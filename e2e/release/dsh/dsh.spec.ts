@@ -1,4 +1,4 @@
-import { expect, loginPage, PERSONA_PERMISSIONS, test, todayIso, uniquePhone, type Ops } from '../support/ops';
+import { expect, loginPage, PERSONA_PERMISSIONS, randomUUID, test, todayIso, uniquePhone, type Ops } from '../support/ops';
 import { prismaClient } from '../support/fixtures';
 
 /**
@@ -72,8 +72,8 @@ test('DSH-S02 filtros de mês e de ponto de venda', async ({ ops, page, evidence
 test('DSH-S03 dashboard leva ao resumo do turno com os mesmos números', async ({ ops, page, evidence }) => {
   const { tenant, sessaoId } = await massaConhecida(ops);
   const resumo = await tenant.owner.expect(tenant.owner.get(`/api/operacao/caixa/sessoes/${sessaoId}`), 200, 'resumo do turno');
-  // O resumo do turno conta a venda avulsa como comanda; o dashboard separa em vendasAvulsas.
-  expect(resumo).toMatchObject({ comandasAtendidas: 4, totalRecebido: 69, vendasAvulsas: 1 });
+  // Both views distinguish the three commands from the separate walk-up sale.
+  expect(resumo).toMatchObject({ comandasAtendidas: 3, totalRecebido: 69, vendasAvulsas: 1 });
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto('/operacao/dashboard', { waitUntil: 'networkidle' });
   await page.locator(`a[href^="/operacao/turnos/${sessaoId}"]`).first().click();
@@ -98,9 +98,13 @@ test('DSH-S05 ranking acessível por PDV e ocorrência, com regras e isolamento 
   const tenant = await ops.tenant();
   const other = await ops.tenant();
   const catalog = await tenant.seedCatalog();
-  const occurrence = await tenant.owner.expect(tenant.owner.post('/api/operacao/agenda/ocorrencias', {
-    nome: 'Ocorrência Ranking QA', data: todayIso(), horaInicio: '18:00', horaFim: '23:00',
-  }), 201, 'criar ocorrência sintética');
+  const agenda = await tenant.owner.expect(tenant.owner.post('/api/operacao/agenda/agendas', {
+    nome: 'Agenda Ranking QA', diaSemana: new Date(todayIso()+'T00:00:00Z').getUTCDay(), primeiraData: todayIso(), ultimaData: todayIso(), horaInicio: '18:00', horaFim: '23:00',
+  }), 201, 'criar agenda sintética');
+  await tenant.owner.expect(tenant.owner.post(`/api/operacao/agenda/agendas/${agenda.id}/retomar`, { requestId: randomUUID(), aPartirDe: todayIso() }), 200, 'gerar ocorrência da agenda');
+  const scheduled = await tenant.owner.expect(tenant.owner.get(`/api/operacao/agenda/ocorrencias?inicio=${todayIso()}&fim=${todayIso()}`), 200, 'consultar ocorrência gerada');
+  const occurrence = scheduled.ocorrencias.find((item: { agendaId: string }) => item.agendaId === agenda.id);
+  expect(occurrence).toBeTruthy();
   const secondShift = await tenant.owner.expect(tenant.owner.post('/api/operacao/caixa/abrir', {
     pontoVendaId: tenant.pointId, trocoInicial: 0, cardapioId: catalog.cardapioId, ocorrenciaId: occurrence.id,
   }), 201, 'abrir caixa vinculado à ocorrência');
@@ -117,14 +121,14 @@ test('DSH-S05 ranking acessível por PDV e ocorrência, com regras e isolamento 
   const byDay = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}?dia=${todayIso()}&ocorrenciaId=${occurrence.id}`), 200, 'ranking por ocorrência');
   test.info().annotations.push({ type: 'observed', description: `comanda=${JSON.stringify(commandDb)}; ranking=${JSON.stringify(byDay.ranking)}` });
   expect(byDay.ranking).toEqual(expect.arrayContaining([expect.objectContaining({ nome: 'Cliente Ranking QA', totalMl: 1000, pedidos: 2 })]));
-  const monthly = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}/periodo?mes=${todayIso().slice(0, 7)}`), 200, 'ranking mensal do PDV');
+  const monthly = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}/periodo?agendaId=${agenda.id}&mes=${todayIso().slice(0, 7)}`), 200, 'ranking mensal do PDV');
   expect(monthly.entries).toEqual(expect.arrayContaining([expect.objectContaining({ nome: 'Cliente Ranking QA', totalMl: 1000 })]));
-  const general = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}/periodo`), 200, 'ranking geral do PDV');
+  const general = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}/periodo?agendaId=${agenda.id}`), 200, 'ranking geral do PDV');
   expect(general.entries).toEqual(expect.arrayContaining([expect.objectContaining({ nome: 'Cliente Ranking QA', totalMl: 1000 })]));
   await other.seedCatalog();
   await other.openCash();
   const otherComanda = await other.openComanda(other.owner, [other.chopeItem(300)], { clienteNome: 'Cliente Outro Tenant QA', clienteTelefone: uniquePhone() });
-  const isolated = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}?dia=${todayIso()}`), 200, 'ranking isolado');
+  const isolated = await tenant.owner.expect(tenant.owner.get(`/api/ranking/pdv/${tenant.pointId}?dia=${todayIso()}&ocorrenciaId=${occurrence.id}`), 200, 'ranking isolado');
   expect(isolated.ranking.map((entry: { nome: string }) => entry.nome)).not.toContain('Cliente Outro Tenant QA');
   const crossTenant = await tenant.owner.get(`/api/ranking/pdv/${other.pointId}?dia=${todayIso()}`);
   expect(crossTenant.status).toBe(404);
@@ -156,23 +160,27 @@ test('DSH-S06 ocorrência ao abrir caixa e montagem de chope compacta com permis
     nome: 'Ocorrência Agenda QA', data: todayIso(), horaInicio: '18:00', horaFim: '23:00',
   }), 201, 'criar ocorrência sintética');
   await evidence.checkpoint();
-  let agendaAttempts = 0;
+  let failAgenda = true;
   await page.route('**/api/operacao/agenda/ocorrencias?*', async (route) => {
-    agendaAttempts += 1;
-    if (agendaAttempts <= 4) return route.abort();
+    if (failAgenda) return route.abort();
     await route.continue();
   });
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await page.goto(`/operacao/comandas?pontoVendaId=${tenant.pointId}`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('alert')).toContainText('Não foi possível carregar os agendamentos');
+  failAgenda = false;
   await page.getByRole('button', { name: 'Tentar novamente' }).last().click();
-  const selector = page.getByLabel('Ocorrência do caixa (opcional)');
+  const selector = page.getByLabel('Agendamento de hoje');
   await expect(selector).toBeVisible();
-  await expect(selector.locator('option', { hasText: 'Ocorrência Agenda QA' })).toHaveCount(1);
+  await selector.click();
+  await expect(page.getByRole('option', { name: /Ocorrência Agenda QA/ })).toHaveCount(1);
+  await page.getByRole('option', { name: /Ocorrência Agenda QA/ }).click();
   await page.getByRole('button', { name: 'Cardápio salvo' }).click();
   await page.getByRole('radio').first().click();
-  await selector.selectOption(occurrence.id);
+  await expect(selector).toHaveAttribute('value', occurrence.id);
   await page.getByRole('button', { name: 'Abrir caixa' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Ocorrência Agenda QA');
+  await page.getByRole('button', { name: 'Confirmar e abrir caixa' }).click();
   await expect(page.getByTestId('caixa-contexto-ocorrencia')).toContainText('Ocorrência Agenda QA');
   const session = await tenant.owner.expect(tenant.owner.get(`/api/operacao/caixa?pontoVendaId=${tenant.pointId}`), 200, 'sessão vinculada');
   expect(session.sessao.ocorrenciaId).toBe(occurrence.id);

@@ -25,6 +25,8 @@ export type TelemetryContext = {
   /** Fastify's per-request ID, separate from the logical correlation ID. */
   requestId?: string;
   correlationId?: string;
+  /** Untrusted navigation aid only; never used for authorization or tenancy. */
+  interactionId?: string;
   cervejariaId?: string;
   slug: string;
   env: 'dev' | 'prd';
@@ -161,6 +163,7 @@ export async function resolveTelemetryFromClienteSession(
   return {
     requestId: request.id,
     correlationId: request.correlationId,
+    interactionId: request.interactionId,
     cervejariaId: session.cervejariaId,
     slug,
     env: getObservabilityEnv(),
@@ -223,6 +226,7 @@ export async function resolveTelemetryFromRequest(
   const requestContext = {
     requestId: request.id,
     correlationId: request.correlationId,
+    interactionId: request.interactionId,
     ...(geo.countryCode ? { clientCountryCode: geo.countryCode } : {}),
   };
 
@@ -319,6 +323,7 @@ export function applyTelemetryContext(ctx: TelemetryContext): void {
   span.setAttribute('deployment.environment.name', release.environment);
   if (ctx.requestId) span.setAttribute('request.id', ctx.requestId);
   if (ctx.correlationId) span.setAttribute('correlation.id', ctx.correlationId);
+  if (ctx.interactionId) span.setAttribute('interaction.id', ctx.interactionId);
   span.setAttribute('cervejaria.id', ctx.cervejariaId ?? '');
   span.setAttribute('cervejaria.slug', ctx.slug);
   span.setAttribute('data_stream.dataset', dataset);

@@ -6,7 +6,7 @@ import { connectSocket, disconnectSocket } from '../lib/socket';
 import { resetBreweryTheme, syncBreweryTheme } from '../lib/theme';
 import { ensureAppShellBranding } from '../lib/app-branding';
 import { isPublicPath, setUnauthorizedHandler } from '../lib/auth-session';
-import { flushPendingAuditAfterAuth } from '../lib/audit-tracker';
+import { flushPendingAuditAfterAuth, trackPageView } from '../lib/audit-tracker';
 
 interface AuthContextType {
   usuario: Usuario | null;
@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    flushPendingAuditAfterAuth();
     clearSessionQueryCache();
     resetBreweryTheme();
     ensureAppShellBranding();
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* cookie cleared client-side anyway */
     }
+    flushPendingAuditAfterAuth();
     localStorage.removeItem('eventoAtivo');
     localStorage.removeItem('trailerAtivo');
     setUsuario(null);
@@ -105,6 +107,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           connectSocket(data.cervejaria.id);
         }
         flushPendingAuditAfterAuth();
+        // This is a new authenticated view, not a replay of pre-auth activity.
+        if (!isPublicPath(window.location.pathname)) trackPageView();
       })
       .catch(() => {
         clearSessionQueryCache();
@@ -117,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, senha: string) => {
+    flushPendingAuditAfterAuth();
     const data = await api.post<AuthResponse>('/api/auth/login', { email, senha });
     applyAuth(data);
     flushPendingAuditAfterAuth();

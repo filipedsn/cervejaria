@@ -1,0 +1,14 @@
+{
+  "size": 200,
+  "track_total_hits": true,
+  "sort": [{ "@timestamp": "asc" }],
+  "_source": ["@timestamp", "trace_id", "span_id", "attributes.event.id", "attributes.event.action", "attributes.event.outcome", "attributes.cervejaria.id", "attributes.target.cervejaria.id", "attributes.actor.id", "attributes.actor.role", "attributes.requestId", "attributes.correlationId", "attributes.interactionId", "attributes.db.transaction.id", "attributes.db.transaction.state", "attributes.entity.type", "attributes.entity.id", "attributes.http.route", "attributes.http.response.status_code"],
+  "query": {
+    "bool": {
+      "filter": [
+        { "range": { "@timestamp": { "gte": "now-1h", "lte": "now" } } },
+        { "term": { "attributes.correlationId": "REPLACE_WITH_CORRELATION_UUID" } }
+      ]
+    }
+  }
+}

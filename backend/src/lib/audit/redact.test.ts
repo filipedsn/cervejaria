@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { redactObject } from './redact.js';
 
+test('sanitizes secrets in strings, nested documents and deeply nested payloads', () => {
+  const value = redactObject({ accessToken: 'secret-a', apiKey: 'secret-b', cpf: '12345678901',
+    nested: { value: 'Bearer private-secret', text: 'private@example.test', safe: 'x'.repeat(5000) } });
+  const serialized = JSON.stringify(value);
+  assert.doesNotMatch(serialized, /secret-a|secret-b|12345678901|private-secret|private@example/);
+  assert.ok(serialized.length < 1500);
+});
+
 test('redige senha de autorização de correção de caixa', () => {
   assert.deepEqual(redactObject({ autorizadorSenha: 'segredo', motivo: 'digitação incorreta' }), {
     autorizadorSenha: '[REDACTED]',

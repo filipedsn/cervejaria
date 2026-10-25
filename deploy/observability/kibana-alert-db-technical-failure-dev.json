@@ -1,0 +1,34 @@
+{
+  "name": "quiver-tap-db-technical-failure-dev",
+  "tags": [
+    "quiver-tap",
+    "TAP-96",
+    "development"
+  ],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": {
+    "interval": "1m"
+  },
+  "enabled": true,
+  "params": {
+    "index": [
+      "logs-technical*.otel-dev*"
+    ],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"terms\":{\"attributes.event\":[\"db.connection.failed\",\"db.operation.failed\",\"db.transaction.failed\"]}},{\"terms\":{\"attributes.category\":[\"CONNECTION\",\"TIMEOUT\",\"DEADLOCK\",\"LOCK_TIMEOUT\",\"TRANSACTION\",\"UNKNOWN\"]}}]}}}",
+    "size": 1,
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [
+      0
+    ],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery",
+    "excludeHitsFromPreviousRun": false
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

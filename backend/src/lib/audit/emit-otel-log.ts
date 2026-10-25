@@ -29,6 +29,7 @@ export function emitAuditLogRecord(
   outcome: 'success' | 'failure' = 'success',
 ): void {
   getAuditOtelLogger().emit({
+    timestamp: typeof payload['@timestamp'] === 'string' ? new Date(payload['@timestamp']) : undefined,
     severityNumber: outcome === 'failure' ? SeverityNumber.WARN : SeverityNumber.INFO,
     severityText: outcome === 'failure' ? 'WARN' : 'INFO',
     body: message,

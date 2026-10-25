@@ -1,0 +1,34 @@
+{
+  "name": "quiver-tap-http-5xx-dev",
+  "tags": [
+    "quiver-tap",
+    "TAP-96",
+    "development"
+  ],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": {
+    "interval": "1m"
+  },
+  "enabled": true,
+  "params": {
+    "index": [
+      "logs-audit*.otel-dev*"
+    ],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"terms\":{\"attributes.event.action\":[\"http.get\",\"http.post\",\"http.put\",\"http.patch\",\"http.delete\"]}},{\"range\":{\"attributes.http.response.status_code\":{\"gte\":500}}}]}}}",
+    "size": 1,
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [
+      0
+    ],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery",
+    "excludeHitsFromPreviousRun": false
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

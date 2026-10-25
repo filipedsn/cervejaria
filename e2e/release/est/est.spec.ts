@@ -1,4 +1,4 @@
-import { expect, loginPage, PERSONA_PERMISSIONS, test, type Ops } from '../support/ops';
+import { expect, loginPage, PERSONA_PERMISSIONS, randomUUID, test, type Ops } from '../support/ops';
 
 async function estoquePronto(ops: Ops, enablements?: Parameters<Ops['tenant']>[0]) {
   const tenant = await ops.tenant(enablements);
@@ -32,7 +32,7 @@ test('EST-S03 cancelamento de item devolve ao estoque @api', async ({ ops }) => 
   const comanda = await tenant.openComanda(tenant.owner, [tenant.chopeItem(700, 1), tenant.item('agua')]);
   expect((await tenant.stock())(tenant.catalog!.chope.id)).toBeCloseTo(49.3, 6);
   const chope = comanda.pedidos.flatMap((p: { itens: Array<{ id: string; produtoId: string }> }) => p.itens).find((i: { produtoId: string }) => i.produtoId === tenant.catalog!.chope.id);
-  await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${comanda.id}/itens/${chope.id}`, { motivo: 'Lançado por engano' }), 200, 'cancelar chope');
+  await tenant.owner.expect(tenant.owner.delete(`/api/operacao/comandas/${comanda.id}/itens/${chope.id}`, { motivo: 'Lançado por engano', quantidade: 1, quantidadeEsperada: 1, tratamentoEstoque: 'ERRO_LANCAMENTO', idempotencyKey: randomUUID() }), 200, 'cancelar chope');
   expect((await tenant.stock())(tenant.catalog!.chope.id)).toBeCloseTo(50, 6);
 });
 

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, loginPage, PERSONA_PERMISSIONS, seed, test } from '../support/ops';
+import { expect, loginPage, PERSONA_PERMISSIONS, randomUUID, seed, test } from '../support/ops';
 
 test('SEC-X01 dono B não lê nem escreve dados da A @api', async ({ ops, evidence }) => {
   const a = await ops.tenant();
@@ -9,7 +9,7 @@ test('SEC-X01 dono B não lê nem escreve dados da A @api', async ({ ops, eviden
   const b = await ops.tenant();
   await evidence.checkpoint();
   await b.owner.expect(b.owner.get(`/api/operacao/comandas/${comanda.id}`), 404, 'ler comanda A');
-  await b.owner.expect(b.owner.post(`/api/operacao/comandas/${comanda.id}/pedidos`, { itens: [a.item('agua')] }), 404, 'escrever comanda A');
+  await b.owner.expect(b.owner.post(`/api/operacao/comandas/${comanda.id}/pedidos`, { itens: [a.item('agua')], idempotencyKey: randomUUID() }), 404, 'escrever comanda A');
   await b.owner.expect(b.owner.get(`/api/clientes/${comanda.clienteId ?? 'inexistente'}`), 404, 'cliente A').catch(() => undefined);
   await evidence.assertNoDbChange();
 });

@@ -1,4 +1,6 @@
 import { trace } from '@opentelemetry/api';
+import { randomUUID } from 'node:crypto';
+import { afterTransactionCommit, currentTransactionTelemetry } from '../transaction-telemetry.js';
 import { BRAZIL_TZ, formatBrazilDateTime } from '../event-datetime.js';
 import { logger } from '../logger.js';
 import { getReleaseContext } from '../release-context.js';
@@ -18,13 +20,15 @@ export type AuditEventInput = {
   entityId?: string;
   actor?: TelemetryActor;
   http?: { method?: string; route?: string; statusCode?: number; durationMs?: number };
-  db?: { operation?: string; model?: string; query?: string; durationMs?: number };
+  db?: { operation?: string; model?: string; query?: string; durationMs?: number; transactionId?: string; transactionState?: string };
   ui?: { page?: string; element?: string; label?: string };
   metadata?: Record<string, unknown>;
   slug?: string;
   requestId?: string;
   correlationId?: string;
+  interactionId?: string;
   cervejariaId?: string | null;
+  targetCervejariaId?: string;
 };
 
 function actorFields(actor: TelemetryActor): Record<string, string | undefined> {
@@ -48,6 +52,8 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
 
   const slugSafe = sanitizeSlugForIndex(slug);
   const payload: Record<string, unknown> = {
+    'event.id': randomUUID(),
+    '@timestamp': new Date().toISOString(),
     'event.category': 'audit',
     'event.action': input.action,
     'event.outcome': input.outcome ?? 'success',
@@ -66,10 +72,12 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     span_id: spanId,
     requestId: input.requestId ?? ctx.requestId,
     correlationId: input.correlationId ?? ctx.correlationId,
+    interactionId: input.interactionId ?? ctx.interactionId,
   };
 
   if (input.entityType) payload['entity.type'] = input.entityType;
   if (input.entityId) payload['entity.id'] = input.entityId;
+  if (input.targetCervejariaId) payload['target.cervejaria.id'] = input.targetCervejariaId;
   if (ctx.clientCountryCode) payload['client.geo.country_iso_code'] = ctx.clientCountryCode;
   if (input.http?.method) payload['http.request.method'] = input.http.method;
   if (input.http?.route) payload['http.route'] = input.http.route;
@@ -79,6 +87,8 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
   if (input.db?.model) payload['db.model'] = input.db.model;
   if (input.db?.query) payload['db.query'] = input.db.query;
   if (input.db?.durationMs != null) payload['db.duration_ms'] = input.db.durationMs;
+  if (input.db?.transactionId) payload['db.transaction.id'] = input.db.transactionId;
+  if (input.db?.transactionState) payload['db.transaction.state'] = input.db.transactionState;
   if (input.ui?.page) payload['ui.page'] = input.ui.page;
   if (input.ui?.element) payload['ui.element'] = input.ui.element;
   if (input.ui?.label) payload['ui.label'] = input.ui.label;
@@ -103,6 +113,15 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
 
 export function emitAuditEvent(input: AuditEventInput): void {
   const payload = buildAuditPayload(input);
-  emitAuditLogRecord(payload, input.message, input.outcome ?? 'success');
-  logger.info(payload, input.message);
+  const transaction = currentTransactionTelemetry();
+  const publish = () => {
+    if (transaction) {
+      payload['db.transaction.id'] = transaction.id;
+      payload['db.transaction.state'] = (input.outcome ?? 'success') === 'success' ? 'committed' : transaction.state;
+    }
+    try { emitAuditLogRecord(payload, input.message, input.outcome ?? 'success'); } catch { /* fail open */ }
+    try { logger.info(payload, input.message); } catch { /* fail open */ }
+  };
+  if ((input.outcome ?? 'success') === 'success') afterTransactionCommit(publish);
+  else publish();
 }

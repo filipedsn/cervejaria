@@ -19,6 +19,7 @@ import {
   runGit,
 } from './release.mjs';
 import { isTrustedLocalOperator } from './local-auth.mjs';
+import { safeJourneyPayload } from './journey-evidence.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OPS_PANEL_DIR = path.resolve(__dirname, '..');
@@ -162,6 +163,11 @@ const JOURNEY_SOURCE_FIELDS = [
   'attributes.http.response.status_code', 'attributes.durationMs',
   'attributes.entity.type', 'attributes.entity.id',
   'attributes.correlationId', 'attributes.requestId', 'attributes.event',
+  'attributes.event.id', 'attributes.interactionId', 'attributes.db.transaction.id',
+  'attributes.db.transaction.state', 'attributes.db.duration_ms', 'attributes.http.response.duration_ms',
+  'attributes.metadata',
+  'attributes.target.cervejaria.id',
+  'attributes.cervejariaId', 'attributes.actorId', 'attributes.userId', 'attributes.role',
 ].join(',');
 
 function journeyValue(value) {
@@ -188,6 +194,7 @@ function readJourneyFilters(query = {}) {
     where: journeyValue(query.where),
     outcome: query.outcome === 'success' || query.outcome === 'failure' ? query.outcome : undefined,
     correlationId: journeyValue(query.correlationId),
+    interactionId: journeyValue(query.interactionId),
   };
 }
 
@@ -203,18 +210,24 @@ function journeyEvent(hit) {
   const number = (value) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
   return {
     id: typeof hit?._id === 'string' ? hit._id : undefined,
+    eventId: text(attributes['event.id']),
+    interactionId: text(attributes.interactionId),
+    transactionId: text(attributes['db.transaction.id']),
+    transactionState: text(attributes['db.transaction.state']),
+    payload: safeJourneyPayload(attributes.metadata),
     timestamp: journeyTimestamp(hit?._source?.['@timestamp']),
     source: String(hit?._index || '').includes('logs-technical') ? 'technical' : 'audit',
     action: text(attributes['event.action']) || text(attributes.event),
     outcome: text(attributes['event.outcome']),
-    tenantId: text(attributes['cervejaria.id']),
-    actorId: text(attributes['actor.id']),
+    tenantId: text(attributes['cervejaria.id']) || text(attributes.cervejariaId),
+    targetTenantId: text(attributes['target.cervejaria.id']),
+    actorId: text(attributes['actor.id']) || text(attributes.actorId) || text(attributes.userId),
     actorRole: text(attributes['actor.role']) || text(attributes.role),
     page: text(attributes['ui.page']),
     route: text(attributes['http.route']),
     method: text(attributes['http.request.method']),
     statusCode: number(attributes['http.response.status_code']),
-    durationMs: number(attributes.durationMs),
+    durationMs: number(attributes.durationMs) ?? number(attributes['http.response.duration_ms']) ?? number(attributes['db.duration_ms']),
     entityType: text(attributes['entity.type']),
     entityId: text(attributes['entity.id']),
     correlationId: text(attributes.correlationId),
@@ -233,12 +246,18 @@ async function readOperationJourney(query) {
     // These custom OTel attributes are mapped as exact fields by the existing
     // data streams; adding a `.keyword` suffix would make valid audit events
     // disappear on clusters that use flattened attributes.
-    tenantId: 'attributes.cervejaria.id', actorId: 'attributes.actor.id',
     where: 'attributes.http.route',
     outcome: 'attributes.event.outcome', correlationId: 'attributes.correlationId',
+    interactionId: 'attributes.interactionId',
   };
   for (const [key, field] of Object.entries(fields)) {
     if (filters[key]) clauses.push({ term: { [field]: filters[key] } });
+  }
+  for (const [key, alternatives] of Object.entries({
+    tenantId: ['attributes.cervejaria.id', 'attributes.cervejariaId', 'attributes.target.cervejaria.id'],
+    actorId: ['attributes.actor.id', 'attributes.actorId', 'attributes.userId'],
+  })) {
+    if (filters[key]) clauses.push({ bool: { should: alternatives.map(field => ({ term: { [field]: filters[key] } })), minimum_should_match: 1 } });
   }
   if (filters.action) {
     // Audit uses event.action while a few inherited technical signals use the

@@ -1,11 +1,12 @@
 import { CORRELATION_ID_HEADER, createCorrelationId } from './correlation-id';
 import { frontendReleaseSha } from './release-context';
+import { beginInteraction, currentInteractionId } from './interaction-context';
 
 const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
 type UiEventType = 'click' | 'page_view' | 'submit' | 'error' | 'http_request';
 
-export type HttpRequestOutcome = 'success' | 'client_error' | 'server_error' | 'network_error' | 'aborted' | 'timeout';
+export type HttpRequestOutcome = 'success' | 'client_error' | 'server_error' | 'network_error' | 'aborted' | 'timeout' | 'invalid_response';
 
 export type HttpRequestTelemetry = {
   method: string;
@@ -15,6 +16,7 @@ export type HttpRequestTelemetry = {
   outcome: HttpRequestOutcome;
   correlationId: string;
   requestId?: string;
+  interactionId?: string;
 };
 
 type UiEvent = {
@@ -23,12 +25,16 @@ type UiEvent = {
   element?: string;
   label?: string;
   timestamp?: string;
+  interactionId?: string;
   meta?: Record<string, unknown>;
   http?: HttpRequestTelemetry;
 };
 
 const queue: UiEvent[] = [];
-const pendingPreAuth: UiEvent[] = [];
+const MAX_QUEUE = 500;
+let flushing = false;
+let sessionEpoch = 0;
+let lastPageView: string | undefined;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
 
@@ -81,6 +87,9 @@ export async function flushAuditEvents(): Promise<void> {
     flushTimer = null;
   }
   if (queue.length === 0) return;
+  if (flushing) return;
+  flushing = true;
+  const batchEpoch = sessionEpoch;
   const batch = queue.splice(0, 50);
   try {
     const res = await fetch(`${API_BASE}/api/audit/events`, {
@@ -90,22 +99,28 @@ export async function flushAuditEvents(): Promise<void> {
       body: JSON.stringify({ events: batch }),
     });
     if (res.status === 401) {
-      pendingPreAuth.push(...batch);
+      // Never replay anonymous/previous-operator actions as the next operator.
+      if (batchEpoch === sessionEpoch) queue.length = 0;
       return;
     }
     if (!res.ok) {
-      queue.unshift(...batch);
+      if (batchEpoch === sessionEpoch) queue.unshift(...batch);
     }
   } catch {
-    queue.unshift(...batch);
+    if (batchEpoch === sessionEpoch) queue.unshift(...batch);
+  } finally {
+    flushing = false;
+    if (queue.length > MAX_QUEUE) queue.splice(MAX_QUEUE);
+    if (queue.length > 0) scheduleFlush();
   }
 }
 
-/** Drena eventos enfileirados antes do login (ex.: page_view em /login). */
+/** Starts a fresh audit session without reattributing records to another actor. */
 export function flushPendingAuditAfterAuth(): void {
-  if (pendingPreAuth.length === 0) return;
-  queue.push(...pendingPreAuth.splice(0, pendingPreAuth.length));
-  void flushAuditEvents();
+  // Old pre-auth events are intentionally not assigned to a newly authenticated actor.
+  queue.length = 0;
+  sessionEpoch += 1;
+  lastPageView = undefined;
 }
 
 function scheduleFlush(): void {
@@ -117,6 +132,7 @@ function scheduleFlush(): void {
 }
 
 function enqueue(event: UiEvent): void {
+  if (queue.length >= MAX_QUEUE) queue.shift();
   queue.push({
     ...event,
     meta: { frontendReleaseSha, ...event.meta },
@@ -130,11 +146,15 @@ function enqueue(event: UiEvent): void {
 }
 
 export function trackPageView(page: string = currentPage()): void {
-  enqueue({ type: 'page_view', page: safePagePath(page) });
+  const safe = safePagePath(page);
+  if (lastPageView === safe) return;
+  lastPageView = safe;
+  enqueue({ type: 'page_view', page: safe });
 }
 
 export function trackClick(label: string, meta?: Record<string, unknown>, element?: string): void {
   enqueue({
+    interactionId: beginInteraction(),
     type: 'click',
     page: currentPage(),
     label,
@@ -145,6 +165,7 @@ export function trackClick(label: string, meta?: Record<string, unknown>, elemen
 
 export function trackSubmit(label: string, meta?: Record<string, unknown>): void {
   enqueue({
+    interactionId: currentInteractionId() ?? beginInteraction(),
     type: 'submit',
     page: currentPage(),
     label,

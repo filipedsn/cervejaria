@@ -1,5 +1,6 @@
 import { trackHttpRequest, type HttpRequestOutcome } from './audit-tracker';
 import { CORRELATION_ID_HEADER, createCorrelationId, isCorrelationId } from './correlation-id';
+import { currentInteractionId, INTERACTION_ID_HEADER } from './interaction-context';
 
 const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
@@ -57,6 +58,8 @@ export function buildRequestHeaders(options: RequestInit = {}): Record<string, s
     headers['Content-Type'] = 'application/json';
   }
   headers[CORRELATION_ID_HEADER] = createCorrelationId();
+  const interactionId = currentInteractionId();
+  if (interactionId) headers[INTERACTION_ID_HEADER] = interactionId;
   return headers;
 }
 
@@ -92,6 +95,7 @@ function reportHttpRequest(input: {
   startedAt: number;
   correlationId: string;
   requestId?: string;
+  interactionId?: string;
 }): void {
   try {
     trackHttpRequest({
@@ -102,6 +106,7 @@ function reportHttpRequest(input: {
       outcome: input.outcome,
       correlationId: input.correlationId,
       requestId: input.requestId,
+      interactionId: input.interactionId,
     });
   } catch {
     // Observability is fail-open: a local telemetry failure never affects API behavior.
@@ -111,6 +116,7 @@ function reportHttpRequest(input: {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = buildRequestHeaders(options);
   const correlationId = headers[CORRELATION_ID_HEADER];
+  const interactionId = headers[INTERACTION_ID_HEADER];
   const method = (options.method ?? 'GET').toUpperCase();
   const startedAt = now();
 
@@ -128,6 +134,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       outcome: fetchFailureOutcome(error),
       startedAt,
       correlationId,
+      interactionId,
     });
     throw new ApiError('Servidor indisponível. Execute npm run restart na raiz do projeto.', 0, undefined, correlationId);
   }
@@ -137,17 +144,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ? returnedCorrelationId
     : correlationId;
   const responseRequestId = res.headers.get('x-request-id') ?? undefined;
-  reportHttpRequest({
+  const complete = (outcome: HttpRequestOutcome) => reportHttpRequest({
     method,
     path,
     statusCode: res.status,
-    outcome: responseOutcome(res.status),
+    outcome,
     startedAt,
     correlationId: responseCorrelationId,
     requestId: responseRequestId,
+    interactionId,
   });
 
   if (!res.ok) {
+    complete(responseOutcome(res.status));
     const body = await res.json().catch(() => ({ error: null }));
     // Client-portal 401 responses belong to its anonymous session, never to
     // the staff session that controls the internal-login redirect.
@@ -167,10 +176,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(message, res.status, body, responseCorrelationId, responseRequestId);
   }
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) { complete('success'); return undefined as T; }
   try {
-    return await res.json();
+    const result = await res.json();
+    complete('success');
+    return result;
   } catch {
+    complete('invalid_response');
     throw new ApiError(
       'Resposta inválida do servidor.',
       res.status,
@@ -253,7 +265,7 @@ export function formatLiters(ml: number): string {
 }
 
 export async function downloadCsv(path: string, filename: string): Promise<void> {
-  const headers = { [CORRELATION_ID_HEADER]: createCorrelationId() };
+  const headers = buildRequestHeaders();
   const correlationId = headers[CORRELATION_ID_HEADER];
   const startedAt = now();
   let res: Response;
@@ -269,6 +281,7 @@ export async function downloadCsv(path: string, filename: string): Promise<void>
       outcome: fetchFailureOutcome(error),
       startedAt,
       correlationId,
+      interactionId: headers[INTERACTION_ID_HEADER],
     });
     throw error;
   }
@@ -285,6 +298,7 @@ export async function downloadCsv(path: string, filename: string): Promise<void>
     startedAt,
     correlationId: responseCorrelationId,
     requestId: res.headers.get('x-request-id') ?? undefined,
+    interactionId: headers[INTERACTION_ID_HEADER],
   });
 
   if (!res.ok) throw new ApiError('Erro ao exportar', res.status);

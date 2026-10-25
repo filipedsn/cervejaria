@@ -41,7 +41,7 @@ export function Modal({
     const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const focusFirst = () => {
       const first = dialog?.querySelector<HTMLElement>(focusableSelector);
-      (first ?? dialog)?.focus();
+      (first ?? dialog)?.focus({ preventScroll: true });
     };
     const frame = window.requestAnimationFrame(focusFirst);
     const onKeyDown = (event: KeyboardEvent) => {
@@ -71,7 +71,7 @@ export function Modal({
     return () => {
       window.cancelAnimationFrame(frame);
       document.removeEventListener('keydown', onKeyDown);
-      previouslyFocused?.focus();
+      previouslyFocused?.focus({ preventScroll: true });
     };
   }, [open]);
 

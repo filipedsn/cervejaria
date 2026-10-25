@@ -80,6 +80,7 @@ function buildPinoLogger(destination?: pino.DestinationStream, release = getRele
           ? {
               requestId: ctx.requestId,
               correlationId: ctx.correlationId,
+              interactionId: ctx.interactionId,
               cervejariaId: ctx.cervejariaId,
               cervejariaSlug: ctx.slug,
               observabilityEnv: ctx.env,

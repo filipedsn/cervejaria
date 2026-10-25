@@ -13,7 +13,9 @@ test('AGD-S01 criar, editar, arquivar, interromper e gerar ocorrências @api', a
     nome: `Agenda ${uniqueSuffix()}`, diaSemana: new Date(`${inicio}T00:00:00.000Z`).getUTCDay(), horaInicio: '18:00', horaFim: '22:00', local: 'Salão', primeiraData: inicio, ultimaData: fim,
   }), 201, 'criar agenda');
   await o.expect(o.patch(`/api/operacao/agenda/agendas/${agenda.id}`, { local: 'Área externa' }), 200, 'editar');
-  const retomar = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/retomar`, { requestId: randomUUID() }), 200, 'retomar e agendar');
+  const semReferencia = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/retomar`, { requestId: randomUUID() }), 409, 'retomada exige referência explícita');
+  expect(semReferencia.code).toBe('AGENDA_INICIO_NECESSARIO');
+  const retomar = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/retomar`, { requestId: randomUUID(), aPartirDe: inicio }), 200, 'retomar e agendar');
   expect(retomar.criadas).toBeGreaterThan(0);
   const geradas = await o.expect(o.post(`/api/operacao/agenda/agendas/${agenda.id}/gerar`, { inicio, fim }), 200, 'gerar');
   expect(geradas.criadas).toBe(0);
