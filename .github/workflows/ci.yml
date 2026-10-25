@@ -1,9 +1,13 @@
-# TAP-116: GitHub Actions desligado no repositorio (billing).
-# A fonte de verdade e `npm run ci` local + deploy/.local-ci-attestation.json.
-# workflow_dispatch permanece so para reativacao manual consciente; nao dispara em push/PR.
+# CI remoto (repo público + plano Free).
+# Branch protection em main exige o check "build-and-unit".
+# Gate local `npm run ci` + atestado continua válido; este workflow espelha o núcleo Linux.
 name: CI
 
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -11,12 +15,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  disabled:
-    name: actions-disabled
+  ci:
+    name: build-and-unit
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - name: Explain local CI gate
-        run: |
-          echo "GitHub Actions esta desligado para este repositorio (TAP-116)."
-          echo "Rode npm run ci localmente. O deploy exige deploy/.local-ci-attestation.json."
-          exit 1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install root
+        run: npm ci
+
+      - name: Install backend
+        run: npm ci --prefix backend
+
+      - name: Install frontend
+        run: npm ci --prefix frontend
+
+      # Prisma pinado em backend/; CWD precisa ser backend/ (schema em ./prisma).
+      - name: Prisma generate
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Backend unit tests
+        run: npm run test:unit --prefix backend
+
+      - name: Backend typecheck/build
+        run: npm run build:deploy --prefix backend
+
+      - name: Frontend build
+        run: npm run build:deploy --prefix frontend

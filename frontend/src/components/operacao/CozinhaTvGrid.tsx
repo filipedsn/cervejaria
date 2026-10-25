@@ -1,4 +1,4 @@
-import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { PedidoCozinha, StatusPedido } from '../../lib/operacao';
 
 /** Kept for CozinhaPedidoCard typing; the grid no longer splits tall orders into pages. */
@@ -44,8 +44,66 @@ export function CozinhaTvGrid({ children, paused = false, profile = 'automatico'
   const [interaction, setInteraction] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [visibleTab, setVisibleTab] = useState(() => !document.hidden);
+  const [tabletColumns, setTabletColumns] = useState<number | null>(null);
 
   const frozen = paused || interaction || dialogOpen || !visibleTab;
+  const cardsByTabletColumn = useMemo(() => {
+    if (tabletColumns === null) return null;
+    const columns = Array.from({ length: tabletColumns }, () => [] as CardElement[]);
+    cards.forEach((card, index) => columns[index % tabletColumns].push(card));
+    return columns;
+  }, [cards, tabletColumns]);
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    const updateTabletColumns = () => {
+      const tabletLandscape = window.matchMedia(
+        '(orientation: landscape) and (min-width: 700px) and (max-width: 1366px), (orientation: landscape) and (min-width: 700px) and (pointer: coarse)',
+      ).matches;
+      if (operational || !tabletLandscape) {
+        grid.style.removeProperty('--cozinha-grid-columns');
+        delete grid.dataset.kitchenColumns;
+        setTabletColumns(null);
+        return;
+      }
+      if (!cards.length) {
+        grid.style.removeProperty('--cozinha-grid-columns');
+        delete grid.dataset.kitchenColumns;
+        setTabletColumns(null);
+        return;
+      }
+
+      const styles = window.getComputedStyle(grid);
+      const minCardLength = styles.getPropertyValue('--cozinha-card-min').trim();
+      const minCardValue = Number.parseFloat(minCardLength);
+      const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+      const gridFontSize = Number.parseFloat(styles.fontSize) || rootFontSize;
+      const minCardWidth = minCardLength.endsWith('rem')
+        ? minCardValue * rootFontSize
+        : minCardLength.endsWith('em')
+          ? minCardValue * gridFontSize
+          : minCardValue;
+      const gap = Number.parseFloat(styles.columnGap) || 0;
+      const availableWidth = grid.clientWidth;
+      const columnsThatFit = Math.max(1, Math.floor((availableWidth + gap) / (minCardWidth + gap)));
+      const columns = Math.min(4, columnsThatFit, cards.length);
+
+      grid.style.setProperty('--cozinha-grid-columns', String(columns));
+      grid.dataset.kitchenColumns = String(columns);
+      setTabletColumns((current) => (current === columns ? current : columns));
+    };
+
+    const observer = new ResizeObserver(updateTabletColumns);
+    observer.observe(grid);
+    updateTabletColumns();
+    return () => {
+      observer.disconnect();
+      grid.style.removeProperty('--cozinha-grid-columns');
+      delete grid.dataset.kitchenColumns;
+    };
+  }, [cards.length, operational]);
 
   const releaseInteraction = useCallback((immediate = false) => {
     if (interactionTimer.current !== null) window.clearTimeout(interactionTimer.current);
@@ -123,8 +181,17 @@ export function CozinhaTvGrid({ children, paused = false, profile = 'automatico'
       }}
       onLostPointerCapture={() => releaseInteraction(true)}
     >
-      <div ref={gridRef} className="cozinha-tv-grid">
-        {cards}
+      <div
+        ref={gridRef}
+        className={`cozinha-tv-grid${cardsByTabletColumn ? ' cozinha-tv-grid-columns' : ''}`}
+      >
+        {cardsByTabletColumn
+          ? cardsByTabletColumn.map((column, index) => (
+              <div className="cozinha-tv-grid-column" key={`column-${index + 1}`}>
+                {column}
+              </div>
+            ))
+          : cards}
       </div>
       <nav className="cozinha-tv-pager-bar" aria-label="Fila da cozinha">
         <p aria-live="polite">{cards.length} pedidos <span>{countLabel}</span></p>

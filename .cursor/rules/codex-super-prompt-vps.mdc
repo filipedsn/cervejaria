@@ -1,0 +1,19 @@
+---
+description: Obriga todo agente (Codex/Cursor) a ler o super prompt da arquitetura VPS antes de qualquer trabalho no Quiver Tap.
+alwaysApply: true
+---
+
+# Super prompt VPS — leitura obrigatória
+
+Antes de editar, commit, PR, deploy, CI, DEV/PRD, Elastic, tunnel ou VPS:
+
+1. Ler **por completo** `docs/codex-super-prompt-arquitetura-vps.md`.
+2. Conferir o checklist canônico em `docs/handoff-vps-hostinger-arquiteto.md`.
+3. Seguir `CONTRIBUTING.md` e `AGENTS.md` **depois** desses dois.
+
+Prevalência: super prompt + handoff na `main` vencem skills/README antigos (TAP-116 “Actions off”, tunnel como prod, `deploy.cmd` como publisher do site público).
+
+Lembretes rápidos:
+- PRD = VPS; DEV = PC localhost; Elastic DEV ≠ PRD.
+- Actions `build-and-unit` obriga merge; `npm run ci` complementar.
+- `gh` 403 → push + compare URL; sem loop de auth; produção intocada sem OK explícito.

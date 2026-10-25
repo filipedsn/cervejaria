@@ -4,7 +4,7 @@ import { CozinhaTvGrid } from '../../components/operacao/CozinhaTvGrid';
 import type { PedidoCozinha, StatusPedido, TipoComanda } from '../../lib/operacao';
 
 const DEMO_COUNT = 30;
-const fixedNow = '2026-10-21T21:00:00.000Z';
+const fixedNow = new Date().toISOString();
 
 const PRODUTOS = [
   'Burger artesanal',
@@ -35,12 +35,12 @@ const OBSERVACOES = [
 const STATUS_CICLO: StatusPedido[] = ['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'EM_PREPARO', 'RECEBIDO'];
 const TIPOS: TipoComanda[] = ['MESA', 'FICHA', 'APELIDO', 'MESA'];
 
-function buildDemoPedidos(count: number): PedidoCozinha[] {
+function buildDemoPedidos(count: number, tabletFixture = false): PedidoCozinha[] {
   return Array.from({ length: count }, (_, index) => {
     const numero = 100 + index;
-    const status = STATUS_CICLO[index % STATUS_CICLO.length]!;
+    const status = tabletFixture ? (index === 1 ? 'EM_PREPARO' : 'RECEBIDO') : STATUS_CICLO[index % STATUS_CICLO.length]!;
     const tipo = TIPOS[index % TIPOS.length]!;
-    const itemCount = (index % 4) + 1;
+    const itemCount = tabletFixture ? [1, 2, 4, 3][index]! : (index % 4) + 1;
     const minutosAtras = count - index;
     const createdAt = new Date(Date.parse(fixedNow) - minutosAtras * 60_000).toISOString();
     const statusDesde = new Date(Date.parse(createdAt) + 90_000).toISOString();
@@ -53,7 +53,7 @@ function buildDemoPedidos(count: number): PedidoCozinha[] {
       id: `demo-${index + 1}`,
       numero,
       status,
-      observacao: OBSERVACOES[index % OBSERVACOES.length] ?? null,
+      observacao: tabletFixture && index === 2 ? 'Sem cebola. Molho à parte. Preparar os acompanhamentos juntos.' : OBSERVACOES[index % OBSERVACOES.length] ?? null,
       createdAt,
       statusDesde,
       entregueEm: null,
@@ -69,7 +69,7 @@ function buildDemoPedidos(count: number): PedidoCozinha[] {
         quantidade: (itemIndex % 3) + 1,
         precoUnit: 12 + ((index + itemIndex) % 8) * 3,
         observacao: itemIndex === 0 && index % 5 === 0 ? 'Observação do item: sem molho.' : null,
-        opcionais: itemIndex === 0 && index % 3 === 0
+        opcionais: itemIndex === 0 && (tabletFixture || index % 3 === 0)
           ? [{ id: `opt-${index + 1}`, nome: 'Queijo extra', precoAdicional: 4, quantidade: 1 }]
           : undefined,
         paraViagem: index % 7 === 0 && itemIndex === 0,
@@ -78,8 +78,8 @@ function buildDemoPedidos(count: number): PedidoCozinha[] {
   });
 }
 
-export function OperacaoCozinhaTvDemoPage() {
-  const pedidos = useMemo(() => buildDemoPedidos(DEMO_COUNT), []);
+export function OperacaoCozinhaTvDemoPage({ tabletFixture = false }: { tabletFixture?: boolean }) {
+  const pedidos = useMemo(() => buildDemoPedidos(tabletFixture ? 4 : DEMO_COUNT, tabletFixture), [tabletFixture]);
   const naFila = pedidos.filter((p) => p.status === 'RECEBIDO');
   const emPreparo = pedidos.filter((p) => p.status === 'EM_PREPARO');
   const prontos = pedidos.filter((p) => p.status === 'PRONTO');
@@ -111,7 +111,7 @@ export function OperacaoCozinhaTvDemoPage() {
             <span className="cozinha-tv-stat-value">2</span>
             <span className="cozinha-tv-stat-label">novos</span>
           </div>
-          <span className="cozinha-tv-demo-badge">{DEMO_COUNT} pedidos fictícios</span>
+          <span className="cozinha-tv-demo-badge">{pedidos.length} pedidos fictícios{tabletFixture ? ' · tablet' : ''}</span>
         </div>
       </header>
       <CozinhaTvGrid countLabel="na simulação">
