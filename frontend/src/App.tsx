@@ -333,7 +333,7 @@ function CozinhaTvShell({ children }: { children: ReactNode }) {
 function CozinhaTvEntry() {
   const [searchParams] = useSearchParams();
   if (searchParams.get('demo') === '1') {
-    return <div className="qt-tv qt-cozinha-tv"><OperacaoCozinhaTvDemoPage /></div>;
+    return <div className="qt-tv qt-cozinha-tv"><OperacaoCozinhaTvDemoPage tabletFixture={searchParams.get('tablet') === '1'} /></div>;
   }
 
   return (

@@ -51,7 +51,7 @@ test('KDS-S03 TV da cozinha mostra a fila completa com scroll', async ({ ops, pa
   await loginPage(page, cozinha.email, cozinha.senha);
   await page.goto('/operacao/cozinha/tv', { waitUntil: 'networkidle' });
   await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('30 pedidos');
-  await expect(page.locator('.cozinha-tv-grid > article')).toHaveCount(30);
+  await expect(page.locator('.cozinha-tv-grid article')).toHaveCount(30);
   const scrollMetrics = await page.locator('.cozinha-tv-grid').evaluate((grid) => ({
     scrollHeight: grid.scrollHeight,
     clientHeight: grid.clientHeight,
@@ -74,6 +74,54 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
   await page.goto('/operacao/cozinha/tv?demo=1', { waitUntil: 'networkidle' });
   await expect(page.locator('.cozinha-tv-pager-bar')).toContainText('pedidos');
   await evidence.screenshot('tv-demo');
+
+  await page.goto('/operacao/cozinha/tv?demo=1&tablet=1', { waitUntil: 'networkidle' });
+  const cards = page.locator('.cozinha-tv-grid article');
+  await expect(cards).toHaveCount(4);
+
+  for (const { width, columns } of [
+    { width: 900, columns: 3 },
+    { width: 1024, columns: 3 },
+    { width: 1100, columns: 4 },
+    { width: 1280, columns: 4 },
+    { width: 1366, columns: 4 },
+  ]) {
+    await page.setViewportSize({ width, height: 720 });
+    const grid = page.locator('.cozinha-tv-grid');
+    await expect(grid).toHaveAttribute('data-kitchen-columns', String(columns));
+    const layout = await cards.evaluateAll((elements) => {
+      const rects = elements.map((element) => element.getBoundingClientRect());
+      const actions = [...document.querySelectorAll('.cozinha-tv-card-actions button')];
+      return {
+        rows: new Set(rects.map((rect) => Math.round(rect.top))).size,
+        minActionHeight: Math.min(...actions.map((button) => button.getBoundingClientRect().height)),
+      };
+    });
+    expect(layout.rows).toBe(Math.ceil(4 / columns));
+    expect(layout.minActionHeight).toBeGreaterThanOrEqual(44);
+  }
+
+  const browser = page.context().browser();
+  if (!browser) throw new Error('Browser unavailable for touch tablet layout check');
+  const tabletContext = await browser.newContext({ viewport: { width: 1920, height: 1200 }, hasTouch: true });
+  try {
+    const tabletPage = await tabletContext.newPage();
+    const demoUrl = new URL('/operacao/cozinha/tv?demo=1&tablet=1', page.url());
+    await tabletPage.goto(demoUrl.toString(), { waitUntil: 'networkidle' });
+    const tabletGrid = tabletPage.locator('.cozinha-tv-grid');
+    await expect(tabletGrid).toHaveAttribute('data-kitchen-columns', '4');
+    const columns = tabletGrid.locator('.cozinha-tv-grid-column');
+    await expect(columns).toHaveCount(4);
+    await expect(tabletGrid.locator('article')).toHaveCount(30);
+    const firstCardTops = await columns.locator('> article:first-child').evaluateAll((elements) =>
+      elements.map((element) => Math.round(element.getBoundingClientRect().top)),
+    );
+    expect(new Set(firstCardTops).size).toBe(1);
+  } finally {
+    await tabletContext.close();
+  }
+
+  await evidence.screenshot('tv-tablet-four-cards');
 });
 
 test('KDS-S05 pedido novo aparece na cozinha sem recarregar', async ({ ops, page, evidence }) => {
