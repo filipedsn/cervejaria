@@ -5,6 +5,10 @@ import { emitAuditEvent } from './audit/emit-audit-event.js';
 import { describeTransacao } from './audit/describe.js';
 import { mergeTransacaoMetadata } from './transacao-payload.js';
 import { recordTransacaoMetric } from './business-metrics.js';
+import { afterTransactionCommit } from './transaction-telemetry.js';
+import { redactObject } from './audit/redact.js';
+import { logger } from './logger.js';
+import { classifyDbError, prismaErrorCode } from './prisma-observability.js';
 
 export type RegistrarTransacaoInput = {
   cervejariaId: string;
@@ -23,12 +27,11 @@ import { getTelemetryContextOrDefault } from './telemetry-context.js';
 
 async function auditSlugForTransacao(cervejariaId: string): Promise<string | undefined> {
   const ctx = getTelemetryContextOrDefault();
-  if (ctx.slug && ctx.slug !== 'system' && ctx.slug !== 'unknown') return ctx.slug;
-  const row = await prisma.cervejaria.findUnique({
-    where: { id: cervejariaId },
-    select: { slug: true },
-  });
-  return row?.slug;
+  if (ctx.cervejariaId === cervejariaId && ctx.slug && ctx.slug !== 'system' && ctx.slug !== 'unknown') return ctx.slug;
+  try {
+    const row = await prisma.cervejaria.findUnique({ where: { id: cervejariaId }, select: { slug: true } });
+    return row?.slug ?? 'unknown';
+  } catch { return 'unknown'; }
 }
 
 export async function registrarTransacao(
@@ -66,7 +69,7 @@ export async function registrarTransacao(
         : `transacao.${input.tipo.toLowerCase()}`;
     emitAuditEvent({
       action,
-      message: describeTransacao(input.tipo, metaObj),
+      message: describeTransacao(input.tipo, redactObject(metaObj)),
       outcome: 'success',
       entityType: input.entidadeTipo ?? undefined,
       entityId: input.entidadeId ?? undefined,
@@ -80,11 +83,12 @@ export async function registrarTransacao(
       },
     });
 
-    recordTransacaoMetric(input.tipo, 'success', slug);
+    afterTransactionCommit(() => recordTransacaoMetric(input.tipo, 'success', slug));
 
     return row;
   } catch (err) {
-    console.error('[transacao-log] Falha ao registrar transação:', err);
+    const category = classifyDbError(err);
+    logger.warn({ event: 'audit.persistence.failed', category, prismaCode: prismaErrorCode(err) }, 'Falha ao persistir auditoria de negócio');
     const failMeta = mergeTransacaoMetadata(input.metadata, input.payload);
     const slug = await auditSlugForTransacao(input.cervejariaId);
     emitAuditEvent({
@@ -92,13 +96,14 @@ export async function registrarTransacao(
         failMeta.operacao === 'CAPABILITY_CHANGED'
           ? 'operacao.capacidade_alterada'
           : `transacao.${input.tipo.toLowerCase()}`,
-      message: `${describeTransacao(input.tipo, failMeta)} — falha ao persistir`,
+      message: `${describeTransacao(input.tipo, redactObject(failMeta))} — falha ao persistir`,
       outcome: 'failure',
       cervejariaId: input.cervejariaId,
       slug,
       metadata: {
         tipo: input.tipo,
-        error: err instanceof Error ? err.message : String(err),
+        errorCategory: category,
+        prismaCode: prismaErrorCode(err),
         ...failMeta,
       },
     });

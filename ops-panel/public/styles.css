@@ -1322,3 +1322,5 @@ h1 { font-size: 1.08rem; }
   .home-control-grid .quick-actions { grid-column: span 2; height: auto; min-height: 0; }
   .quick-action-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+/* Bounded safe business payloads remain readable on small operator screens. */
+.journey-event pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }

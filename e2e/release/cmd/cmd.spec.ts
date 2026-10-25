@@ -278,7 +278,7 @@ test('CMD-S11 dois navegadores veem a comanda atualizar em tempo real', async ({
     await loginPage(segunda, salao.email, salao.senha);
     await segunda.goto(`/operacao/comandas/${comanda.id}`, { waitUntil: 'networkidle' });
     await expect(page.getByText('Lata QA')).toHaveCount(0);
-    await salao.expect(salao.post(`/api/operacao/comandas/${comanda.id}/pedidos`, { itens: [tenant.item('lata')] }), 201, 'novo pedido');
+    await salao.expect(salao.post(`/api/operacao/comandas/${comanda.id}/pedidos`, { itens: [tenant.item('lata')], idempotencyKey: randomUUID() }), 201, 'novo pedido');
     await expect(page.getByText('Lata QA').first()).toBeVisible({ timeout: 10_000 });
     await expect(segunda.getByText('Lata QA').first()).toBeVisible({ timeout: 10_000 });
     await segunda.context().setOffline(true);

@@ -1,23 +1,33 @@
 {
   "name": "quiver-tap-telemetry-gap-dev",
-  "tags": ["quiver-tap", "observability", "development"],
+  "tags": [
+    "quiver-tap",
+    "TAP-96",
+    "development"
+  ],
   "rule_type_id": ".es-query",
   "consumer": "stackAlerts",
-  "schedule": { "interval": "5m" },
+  "schedule": {
+    "interval": "1m"
+  },
   "enabled": true,
   "params": {
-    "index": ["metrics-generic.otel-dev*"],
+    "index": [
+      "metrics-generic.otel-dev*"
+    ],
     "timeField": "@timestamp",
-    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"resource.attributes.service.name\":\"quiver-tap-api-dev\"}},{\"term\":{\"resource.attributes.deployment.environment.name\":\"development\"}}]}}}",
-    "size": 100,
+    "esQuery": "{\"query\":{\"term\":{\"resource.attributes.service.name\":\"quiver-tap-api-dev\"}}}",
+    "size": 1,
     "timeWindowSize": 15,
     "timeWindowUnit": "m",
     "thresholdComparator": "<",
-    "threshold": [1],
+    "threshold": [
+      1
+    ],
     "aggType": "count",
     "groupBy": "all",
     "searchType": "esQuery",
-    "excludeHitsFromPreviousRun": true
+    "excludeHitsFromPreviousRun": false
   },
   "actions": [],
   "notify_when": "onActionGroupChange"

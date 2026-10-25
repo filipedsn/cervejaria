@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { redactObject } from './audit/redact.js';
+import { summarizeRequestPayload } from './audit/request-payload.js';
 import { describeHttpAction } from './audit/describe.js';
 import { emitAuditEvent } from './audit/emit-audit-event.js';
 import type { AuditEventInput } from './audit/emit-audit-event.js';
@@ -40,7 +41,8 @@ function shouldSkipAudit(url: string, method?: string): boolean {
 // UI audit events emit their own records, so they need context even though we do
 // not create a second HTTP audit event for the batch endpoint.
 function shouldInitializeTelemetry(url: string, method?: string): boolean {
-  return !shouldSkipAudit(url, method) || url.startsWith('/api/audit/events');
+  // Polling still needs trusted actor/tenant for DB failures and semantic events.
+  return !SKIP_ALWAYS_PREFIXES.some((prefix) => url.startsWith(prefix)) || url.startsWith('/api/audit/events');
 }
 
 /** 401 em /api/auth/me é esperado (cookie expirado ao reabrir aba). */
@@ -55,21 +57,16 @@ function routeTemplate(request: FastifyRequest): string {
   return request.routeOptions?.url ?? request.url.split('?')[0] ?? request.url;
 }
 
-function shouldCaptureRequestBody(route: string): boolean {
-  // Portal order payloads contain product/options/quantity details that add no
-  // troubleshooting value to a request audit; the semantic transaction event
-  // records only the persisted entity and safe tenant/actor context.
-  return !(route.startsWith('/api/public/cervejarias/') && route.endsWith('/comanda/pedidos'));
-}
-
 export function buildHttpAuditMetadata(
   route: string,
   body: unknown,
   responseError?: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   const metadata: Record<string, unknown> = {};
-  if (shouldCaptureRequestBody(route) && body && typeof body === 'object') {
-    metadata.requestBody = redactObject(body) as Record<string, unknown>;
+  const summary = summarizeRequestPayload(body);
+  if (summary) {
+    metadata.requestBody = summary.payload;
+    metadata.payloadPolicy = { version: 1, omitted: summary.omitted, truncated: summary.truncated, identitySource: summary.identitySource };
   }
   if (responseError) metadata.responseError = responseError;
   return Object.keys(metadata).length > 0 ? metadata : undefined;

@@ -4,6 +4,8 @@ import { buildRequestHeaders } from '../src/lib/api.ts';
 import { api, ApiError } from '../src/lib/api.ts';
 import { flushAuditEvents, trackPageView } from '../src/lib/audit-tracker.ts';
 import { CORRELATION_ID_HEADER, createCorrelationId } from '../src/lib/correlation-id.ts';
+import { beginInteraction, INTERACTION_ID_HEADER } from '../src/lib/interaction-context.ts';
+import { flushPendingAuditAfterAuth } from '../src/lib/audit-tracker.ts';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -17,6 +19,40 @@ test('wrapper HTTP envia o ID de correlação gerado no header', () => {
   const headers = buildRequestHeaders({ method: 'POST', body: JSON.stringify({ ok: true }) });
   assert.match(headers[CORRELATION_ID_HEADER]!, UUID_PATTERN);
   assert.equal(headers['Content-Type'], 'application/json');
+});
+
+test('binds requests in the same dispatch to an interaction and expires it before background work', async () => {
+  const interaction = beginInteraction();
+  const a = buildRequestHeaders();
+  const b = buildRequestHeaders();
+  assert.equal(a[INTERACTION_ID_HEADER], interaction);
+  assert.equal(b[INTERACTION_ID_HEADER], interaction);
+  assert.notEqual(a[CORRELATION_ID_HEADER], b[CORRELATION_ID_HEADER]);
+  await Promise.resolve();
+  assert.equal(buildRequestHeaders()[INTERACTION_ID_HEADER], interaction);
+  await new Promise(resolve => setTimeout(resolve, 1));
+  assert.equal(buildRequestHeaders()[INTERACTION_ID_HEADER], undefined);
+});
+
+test('does not replay unauthorized or previous-session UI records as the next operator', async () => {
+  const originalFetch = globalThis.fetch;
+  const pages: string[] = [];
+  let unauthorized = true;
+  globalThis.fetch = (async (_input, init) => {
+    const batch = JSON.parse(String(init?.body)).events;
+    if (unauthorized) return new Response(null, { status: 401 });
+    pages.push(...batch.map((event: { page: string }) => event.page));
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+  try {
+    trackPageView('/old-session');
+    await flushAuditEvents();
+    unauthorized = false;
+    flushPendingAuditAfterAuth();
+    trackPageView('/new-session');
+    await flushAuditEvents();
+    assert.deepEqual(pages, ['/new-session']);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 async function nextHttpEvent(): Promise<Record<string, unknown>> {
@@ -203,4 +239,21 @@ test('page_view conserva somente a rota e descarta query e fragmento', async () 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('invalid response is a single terminal failure rather than a successful user experience', async () => {
+  const originalFetch = globalThis.fetch;
+  const events: Array<{ http: { outcome: string } }> = [];
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).endsWith('/api/audit/events')) {
+      events.push(...JSON.parse(String(init?.body)).events);
+      return new Response(null, { status: 204 });
+    }
+    return new Response('not-json', { status: 200 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(api.get('/api/test'), ApiError);
+    await flushAuditEvents();
+    assert.deepEqual(events.map(event => event.http.outcome), ['invalid_response']);
+  } finally { globalThis.fetch = originalFetch; }
 });

@@ -1,5 +1,6 @@
 import { metrics } from '@opentelemetry/api';
 import { emitAuditEvent, type AuditEventInput } from './audit/emit-audit-event.js';
+import { afterTransactionCommit } from './transaction-telemetry.js';
 
 export type PaymentRequestTransition = 'requested' | 'resolved';
 
@@ -30,5 +31,5 @@ export function recordPaymentRequestTransition(
   addMetric: (attributes: Record<string, string>) => void = (attributes) => paymentRequestTotal.add(1, attributes),
 ): void {
   emit(paymentRequestAuditInput(transition, input));
-  addMetric({ 'quiver.payment_request.action': transition });
+  afterTransactionCommit(() => addMetric({ 'quiver.payment_request.action': transition }));
 }

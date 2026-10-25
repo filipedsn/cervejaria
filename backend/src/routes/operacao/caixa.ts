@@ -12,6 +12,7 @@ import {
   fecharCaixa,
   montarResumoCaixa,
   registrarMovimento,
+  escopoComandasDoTurno,
 } from '../../lib/operacao/caixa.js';
 import { getCardapioTurno, salvarCardapioTurno, alterarPrecoCardapioTurno } from '../../lib/operacao/sessao-cardapio.js';
 import { getProdutoIdsFromCardapioOperacao, validateProdutosCardapioOperacao } from '../../lib/operacao/cardapio.js';
@@ -19,6 +20,8 @@ import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
 import { centavos } from '../../lib/operacao/venda.js';
 import { diaOperacional } from '../../lib/operacao/venda.js';
+import { resumoComanda } from '../../lib/operacao/venda.js';
+import { INCLUDE_COMANDA_OPERACAO, whereComandaOperacao } from '../../lib/operacao/comanda-adapter.js';
 import { resolveUniqueOpenCashSession } from '../../lib/operacao/cash-session-resolution.js';
 import {
   inicializarMontagemSessaoCaixa,
@@ -213,6 +216,132 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       }
       throw err;
     }
+  });
+
+  app.get('/sessoes/:sessaoId/comandas', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { sessaoId } = request.params as { sessaoId: string };
+    const query = z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(50).default(25),
+      tipo: z.enum(['TODOS', 'COMANDAS', 'AVULSAS', 'CANCELADAS']).default('TODOS'),
+    }).parse(request.query);
+    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+      where: { id: sessaoId, cervejariaId, status: 'FECHADO', fechadoEm: { not: null } },
+      select: { id: true, cervejariaId: true, pontoVendaId: true, diaOperacional: true, abertoEm: true, fechadoEm: true, tipoEncerramento: true },
+    });
+    if (!sessao?.fechadoEm) return reply.status(404).send({ error: 'Turno não encontrado' });
+
+    const escopoTurno = escopoComandasDoTurno({ ...sessao, fechadoEm: sessao.fechadoEm });
+    const whereVendas = whereComandaOperacao(cervejariaId, {
+      pontoVendaId: sessao.pontoVendaId,
+      status: 'FECHADA',
+      AND: [escopoTurno],
+    });
+    const whereCanceladas = whereComandaOperacao(cervejariaId, {
+      pontoVendaId: sessao.pontoVendaId,
+      status: 'CANCELADA',
+      sessaoCaixaRealizacaoId: sessao.id,
+    });
+    const whereTodos = { OR: [whereVendas, whereCanceladas] };
+    const filteredWhere = query.tipo === 'CANCELADAS'
+      ? whereCanceladas
+      : query.tipo === 'AVULSAS'
+        ? { AND: [whereVendas, { tipo: 'AVULSA' as const }] }
+        : query.tipo === 'COMANDAS'
+          ? { AND: [whereVendas, { tipo: { not: 'AVULSA' as const } }] }
+          : whereTodos;
+    const [total, totalVendas, totalComandas, totalAvulsas, totalCanceladas, vinculadas, semVinculo, rows] = await Promise.all([
+      prisma.comanda.count({ where: filteredWhere }),
+      prisma.comanda.count({ where: whereVendas }),
+      prisma.comanda.count({ where: { AND: [whereVendas, { tipo: { not: 'AVULSA' } }] } }),
+      prisma.comanda.count({ where: { AND: [whereVendas, { tipo: 'AVULSA' }] } }),
+      prisma.comanda.count({ where: whereCanceladas }),
+      prisma.comanda.count({ where: { AND: [whereTodos, { sessaoCaixaRealizacaoId: sessao.id }] } }),
+      prisma.comanda.count({ where: { AND: [whereVendas, { sessaoCaixaRealizacaoId: null }] } }),
+      prisma.comanda.findMany({
+        where: filteredWhere,
+        include: INCLUDE_COMANDA_OPERACAO,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+    ]);
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const from = total === 0 ? 0 : (query.page - 1) * query.pageSize + 1;
+
+    return {
+      dados: rows.map((comanda) => ({
+        ...resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch),
+        vinculoSessao: comanda.sessaoCaixaRealizacaoId === sessao.id ? 'CONFIRMADO' as const : 'NAO_COMPROVADO' as const,
+      })),
+      filtroAtivo: query.tipo,
+      escopo: {
+        totalRegistros: totalVendas + totalCanceladas,
+        registrosDeVenda: totalVendas,
+        comandas: totalComandas,
+        vendasAvulsas: totalAvulsas,
+        comandasCanceladas: totalCanceladas,
+        vinculoConfirmado: vinculadas,
+        semVinculoConfiavel: semVinculo,
+        criterio: sessao.tipoEncerramento === 'ADMINISTRATIVO'
+          ? 'Vínculo explícito ao turno, empresa e PDV; canceladas só entram com vínculo explícito.'
+          : 'Vínculo explícito ao turno; para vendas históricas sem vínculo, mesma empresa, PDV, origem CAIXA, dia operacional e fechamento dentro da janela do turno. Essas vendas continuam identificadas como sem vínculo confiável. Comandas canceladas só entram com vínculo explícito.',
+      },
+      paginacao: { pagina: query.page, tamanhoPagina: query.pageSize, totalFiltrado: total, paginas: totalPages, de: from, ate: Math.min(query.page * query.pageSize, total) },
+    };
+  });
+
+  app.get('/sessoes/:sessaoId/recebimentos-anteriores', { preHandler: [requirePermissao(app, 'cash.values.read')] }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { sessaoId } = request.params as { sessaoId: string };
+    const sessao = await prisma.sessaoCaixaOperacao.findFirst({
+      where: { id: sessaoId, cervejariaId, status: 'FECHADO', fechadoEm: { not: null } },
+      select: { id: true, cervejariaId: true, pontoVendaId: true, diaOperacional: true, abertoEm: true, fechadoEm: true, tipoEncerramento: true },
+    });
+    if (!sessao?.fechadoEm) return reply.status(404).send({ error: 'Turno não encontrado' });
+
+    const recebimentos = await prisma.pagamento.findMany({
+      where: {
+        sessaoCaixaId: sessao.id,
+        contaReceberId: { not: null },
+        comanda: { origem: 'CAIXA', status: 'FECHADA', pontoVendaId: sessao.pontoVendaId, pontoVenda: { cervejariaId } },
+      },
+      include: {
+        comanda: { select: { id: true, tipo: true, numero: true, identificador: true, cliente: { select: { id: true, nome: true } }, sessaoCaixaRealizacaoId: true, diaOperacional: true, fechadaEm: true, total: true } },
+      },
+      orderBy: [{ pagoEm: 'asc' }, { id: 'asc' }],
+    });
+    const vendasNoTurno = await prisma.comanda.findMany({
+      where: whereComandaOperacao(cervejariaId, { pontoVendaId: sessao.pontoVendaId, status: 'FECHADA', AND: [escopoComandasDoTurno({ ...sessao, fechadoEm: sessao.fechadoEm })] }),
+      select: { id: true },
+    });
+    const vendaIds = new Set(vendasNoTurno.map((comanda) => comanda.id));
+    const anteriores = recebimentos.filter((pagamento) => !vendaIds.has(pagamento.comandaId));
+    const porComanda = new Map<string, (typeof anteriores)>();
+    for (const pagamento of anteriores) {
+      const grupo = porComanda.get(pagamento.comandaId) ?? [];
+      grupo.push(pagamento);
+      porComanda.set(pagamento.comandaId, grupo);
+    }
+
+    return [...porComanda.values()].map((pagamentos) => {
+      const comanda = pagamentos[0]!.comanda;
+      return {
+        comanda: {
+          id: comanda.id,
+          tipo: comanda.tipo,
+          numero: comanda.numero,
+          identificador: comanda.identificador,
+          cliente: comanda.cliente,
+          sessaoOrigemId: comanda.sessaoCaixaRealizacaoId,
+          fechadaEm: comanda.fechadaEm,
+          total: Number(comanda.total),
+        },
+        pagamentos: pagamentos.map((pagamento) => ({ id: pagamento.id, forma: pagamento.forma, valor: Number(pagamento.valor), pagoEm: pagamento.pagoEm })),
+        recebidoNesteTurno: pagamentos.reduce((soma, pagamento) => soma + Number(pagamento.valor), 0),
+      };
+    });
   });
 
   app.get('/', async (request, reply) => {

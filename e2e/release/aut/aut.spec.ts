@@ -82,8 +82,17 @@ test('AUT-X04 token adulterado leva ao login', async ({ ops, page, evidence }) =
   const tenant = await ops.tenant();
   await loginPage(page, tenant.ownerEmail, tenant.ownerPassword);
   await evidence.checkpoint();
-  await page.context().addCookies([{ name: 'token', value: 'adulterado.qa.token', url: page.url() }]);
-  await page.goto('/operacao/comandas', { waitUntil: 'networkidle' });
+  // Replace the real cookie scope. Using the current page URL races the login
+  // redirect and can create a second cookie under /operacao instead of /.
+  const cookie = (await page.context().cookies()).find(cookie => cookie.name === 'token');
+  expect(cookie).toBeDefined();
+  // Stop authenticated polling before changing the cookie. A pending 401
+  // redirect must not race the navigation being tested.
+  await page.goto('about:blank');
+  await page.context().clearCookies({ name: 'token' });
+  await page.context().addCookies([{ ...cookie!, value: 'adulterado.qa.token' }]);
+  expect((await page.request.get('/api/auth/me')).status()).toBe(401);
+  await page.goto('/operacao/comandas', { waitUntil: 'commit' });
   await expect(page).toHaveURL(/\/login/);
   await evidence.assertNoDbChange();
   await evidence.screenshot('token-adulterado');
