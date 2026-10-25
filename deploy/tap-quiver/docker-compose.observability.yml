@@ -1,0 +1,26 @@
+# EDOT Collector PRD — VPS Hostinger
+# Rede: elasticsearch-kibana_elastic (mesmo stack ES/Kibana do VPS).
+# OTLP só em loopback; a API usa network_mode: host → 127.0.0.1:4318.
+
+services:
+  edot-collector:
+    image: otel/opentelemetry-collector-contrib:0.130.1
+    container_name: quiver-edot-collector-prd
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    env_file:
+      - .env.observability
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../observability/otel-collector-config.prd.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    networks:
+      - elastic
+
+networks:
+  elastic:
+    external: true
+    name: elasticsearch-kibana_elastic

@@ -30,18 +30,19 @@ COPY backend/prisma ./prisma
 RUN npm ci --omit=dev && npx prisma generate && npm cache clean --force
 
 COPY --from=backend-build /src/backend/dist ./dist
+COPY --from=backend-build /src/backend/scripts/otel-resource-policy.mjs ./scripts/otel-resource-policy.mjs
 COPY --from=frontend-build /src/frontend/dist ./frontend-dist
 
 ENV FRONTEND_DIST=/app/frontend-dist
 ENV UPLOADS_DIR=/app/uploads
 ENV PORT=3001
 ENV HOST=0.0.0.0
-# Staging no VPS: sem collector local
+# Defaults seguros: sem export até o env_file do compose ligar OTLP.
 ENV OTEL_TRACES_EXPORTER=none
 ENV OTEL_METRICS_EXPORTER=none
 ENV OTEL_LOGS_EXPORTER=none
 
-RUN mkdir -p /app/uploads && chown -R quiver:quiver /app
+RUN mkdir -p /app/uploads /app/scripts && chown -R quiver:quiver /app
 USER quiver
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["node", "--import", "./scripts/otel-resource-policy.mjs", "--import", "@elastic/opentelemetry-node", "dist/index.js"]
