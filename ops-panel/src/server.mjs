@@ -642,7 +642,8 @@ async function buildReleaseState() {
 
   const pending = await annotatePendingCommits(git.pending);
   const localCi = readLocalCiAttestation(PROJECT_ROOT);
-  // checks permanece vazio: GitHub Actions desligado (TAP-116); o gate usa localCi.
+  // Este endpoint nao consulta checks do GitHub; main exige build-and-unit.
+  // O atestado local e exibido apenas para o tooling Windows legado.
   const state = {
     ...git,
     deployed,

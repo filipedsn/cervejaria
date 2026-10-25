@@ -1,17 +1,17 @@
 ---
 name: quiver-tap-git-workflow
-description: Guides Quiver Tap Git flow on GitHub (feature branches, pull requests, merge to main, CI checks). Use when the user asks about branches, PR, merge, main, github, git flow, or publishing code before deploy.
+description: Orienta branches, PRs, merge em main e os checks do Quiver Tap.
 ---
 
-# Quiver Tap — Git workflow (GitHub)
+# Quiver Tap — fluxo GitHub
 
-A regra é [CONTRIBUTING.md](../../../CONTRIBUTING.md). Leia e siga esse arquivo; esta skill não define regra própria, para Cursor e VS Code seguirem o mesmo fluxo.
+A regra completa está em [CONTRIBUTING.md](../../../CONTRIBUTING.md). Esta skill resume o fluxo para que Cursor, Codex e VS Code usem a mesma regra.
 
-Resumo operacional para agentes:
-
-- Trabalho novo nasce de `main` atualizada, em `feat/`, `fix/` ou `chore/`.
-- Antes do PR: `npm run ci`.
-- Merge só com `npm run ci` verde localmente (GitHub Actions desligado — TAP-116).
-- Nunca construir pacote DEV ou PROD a partir de cópia solta ou pasta suja.
-- Deploy em produção: só com autorização explícita do usuário, seguindo [quiver-tap-deploy](../quiver-tap-deploy/SKILL.md). O preflight bloqueia `HEAD` diferente de `origin/main` e CI não verde.
-- Nunca commitar `.env.production`, `.env.development`, senhas ou `deploy/production.settings.psd1`.
+- Trabalho novo nasce de `origin/main` atualizada em branch própria (`feat/`, `fix/`, `chore/` ou `docs/`).
+- Abrir PR contra `main`.
+- O check remoto **GitHub Actions `build-and-unit` é obrigatório para merge** (branch protection).
+- `npm run ci` local é complementar: exercita verificações Windows e gera atestado para tooling de release Windows legado.
+- Nunca construir pacote DEV ou PRD a partir de cópia solta ou pasta de trabalho suja.
+- PRD pública está no VPS; publicar só após merge e autorização humana explícita, seguindo [a skill de deploy](../quiver-tap-deploy/SKILL.md) e o [handoff interno](../../../docs/handoff-vps-hostinger-arquiteto.md).
+- `deploy.cmd` não publica mais o site público. Não descreva Actions como desligado por causa do TAP-116 histórico.
+- Nunca commitar `.env`, senhas, chaves, tokens ou `deploy/production.settings.psd1`.

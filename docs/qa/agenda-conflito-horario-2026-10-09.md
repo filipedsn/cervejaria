@@ -1,5 +1,7 @@
 # Agenda DEV — prevenção de sobreposição por PDV
 
+> Registro histórico de 09/10/2026: os resultados e URLs públicas abaixo refletem o DEV disponível na data. O DEV oficial atual é local: frontend `http://localhost:5202`, API `http://localhost:3002`. Para repetir hoje, use localhost.
+
 ## Causa
 
 O contrato anterior aceitava `horaFim` ausente e o serviço gravava ocorrências sem consultar outras reservas da data. As rotas de criação avulsa e geração legada também gravavam fora dessa validação. Por isso dois envios que começavam às 18h podiam persistir no mesmo PDV.
@@ -26,7 +28,7 @@ O contrato anterior aceitava `horaFim` ausente e o serviço gravava ocorrências
 
 O commit funcional `9e50e73f88398a7f3a5109a549df2850456e01dc` foi enviado a `origin/main`. Os processos backend/frontend DEV foram reiniciados juntos pelos scripts locais existentes. A primeira verificação pública do ajuste retornou `releaseSha=9e50e73f88398a7f3a5109a549df2850456e01dc` e `startedAt=2026-10-09T18:11:17.338Z`; o stamp do módulo frontend público continha o mesmo SHA e o componente servido continha o código/mensagem de conflito. As duas rotas de escrita consultadas sem sessão (`POST /api/operacao/agenda/agendamentos` e `POST /api/operacao/agenda/ocorrencias`) retornaram 401, sem executar gravações.
 
-Confirme a revisão efetivamente carregada em `https://tapdev.quivercloud.com.br/api/health` e recarregue a PWA depois de copiar qualquer rascunho.
+Para uma repetição atual, confirme a revisão em `http://localhost:3002/api/health` e abra a PWA em `http://localhost:5202` depois de copiar qualquer rascunho.
 
 Para reproduzir o caso de duas reservas às 18h, use um PDV de teste e uma data futura que você controla:
 

@@ -1,5 +1,7 @@
 # Gestão de acessos na PWA — TAP-76
 
+> Evidências de 09/10/2026: a origem tapdev citada nas capturas/execução é histórica. O DEV oficial atual é local: `http://localhost:5202` (API `http://localhost:3002`). Use localhost para repetir o teste.
+
 Correção de UX em 09/10/2026. A lista de equipe passa a mostrar cartões compactos
 e um editor individual. As 27 permissões existentes são distribuídas em oito
 grupos recolhíveis, com contagem de habilitadas/total. O cadastro usa os mesmos
@@ -58,7 +60,7 @@ esta evidência não equivale à certificação integral de um snapshot Git.
    a correção é servida automaticamente. Em outra cópia DEV, atualizar os fontes
    para o commit desta correção pelo fluxo normal, preservando trabalho local.
 2. Com conexão, fechar completamente e reabrir a PWA de
-   `https://tapdev.quivercloud.com.br`. O app verifica o service worker ao abrir
+   `http://localhost:5202`. O app verifica o service worker ao abrir
    e recuperar foco. Se a tela antiga persistir, recarregar essa mesma origem DEV.
 3. Como proprietário, abrir **Configurações → Equipe** no celular/tablet.
    Conferir cartões compactos e ausência de editor para o proprietário.

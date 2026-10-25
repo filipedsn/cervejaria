@@ -1,5 +1,7 @@
 # QA focado: restaurar agendamento cancelado — 2026-10-09
 
+> Registro histórico de 09/10/2026: URL e evidências de publicação abaixo refletem o DEV daquele momento. O DEV oficial atual é local: frontend `http://localhost:5202`, API `http://localhost:3002`. Para repetir, use localhost.
+
 ## Alteracao
 
 A tela de detalhes agora oferece **Restaurar agendamento** apenas para ocorrencias canceladas restauraveis. A operacao mantem o ID, revalida vinculos, intervalo e conflitos dentro da transacao protegida pelo advisory lock do tenant/PDV, atualiza a mesma linha para `PROGRAMADA` e grava auditoria especifica com ator, instante e valores antes/depois. A auditoria do cancelamento anterior fica intacta.
@@ -30,7 +32,7 @@ Conflito ou intervalo incompleto devolve erro sem escrita e abre formulario com 
 
 ## Reproducao manual em DEV
 
-1. Acesse `https://tapdev.quivercloud.com.br`, entre com usuario com `agenda.manage` e abra Operacao > Agenda.
+1. Acesse `http://localhost:5202`, entre com usuario com `agenda.manage` e abra Operacao > Agenda.
 2. Consulte a data da ocorrencia cancelada, abra seus detalhes e selecione **Restaurar agendamento**.
 3. Confirme. Se o intervalo tiver sido ocupado ou estiver incompleto, ajuste data, inicio e termino no formulario; a mensagem identifica a ocorrencia conflitante.
 4. Envie novamente. O detalhe e a lista devem mostrar **Programada** na mesma ocorrencia. Se houver conflito, a linha continua **Cancelada** e os campos permanecem no formulario.

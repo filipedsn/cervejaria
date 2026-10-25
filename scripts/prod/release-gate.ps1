@@ -1,7 +1,7 @@
 # Gate de origem da release: producao so publica o commit atual de origin/main,
 # com arquivos rastreados limpos e atestado local de `npm run ci` para esse SHA.
-# GitHub Actions foi desligado (TAP-116); a prova de qualidade e o arquivo
-# deploy/.local-ci-attestation.json gerado pelo CI local.
+# GitHub Actions build-and-unit e obrigatorio para merge em main. Este atestado local
+# protege apenas o fluxo Windows legado; nao substitui o check remoto.
 # Git e leitura do atestado sao injetaveis para que os testes nao dependam de rede.
 
 function Get-LocalCiAttestationPath {

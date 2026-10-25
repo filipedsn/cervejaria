@@ -1,5 +1,6 @@
 // Roda localmente os gates de qualidade do Tap Quiver, na ordem do antigo workflow CI.
-// GitHub Actions esta desligado (TAP-116); este script e a fonte de verdade do release gate.
+// O check remoto build-and-unit e obrigatorio no merge; este CI local e complementar
+// e tambem gera o atestado usado pelo tooling Windows legado.
 // Em sucesso grava deploy/.local-ci-attestation.json com o SHA atual (gitignore).
 //
 // Neste PC o alert poller de producao executa backend/dist com backend/node_modules da pasta

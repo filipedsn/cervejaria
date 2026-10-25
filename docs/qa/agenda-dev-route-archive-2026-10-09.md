@@ -1,5 +1,7 @@
 # Correção Agenda DEV — rota, arquivamento e confirmações
 
+> Registro histórico de 09/10/2026: URLs públicas e evidências abaixo descrevem o DEV/tunnel usado na execução original. O DEV oficial atual é local: frontend `http://localhost:5202`, API `http://localhost:3002`. Use localhost para qualquer repetição.
+
 ## Causa da rota
 
 O frontend de b74eef4 chama `POST /api/operacao/agenda/agendamentos`. O router declara `/agendamentos`, está registrado em `/agenda` no módulo Operação e em `/api/operacao` no `buildApp`. O contrato e os prefixos no código estão corretos.
@@ -26,9 +28,9 @@ A revisão atual foi validada pelo **buildApp real** em PostgreSQL QA, incluindo
 
 ## Repetir o cadastro em DEV
 
-1. Abra `https://tapdev.quivercloud.com.br/operacao/agenda` com sua sessão. Se a PWA estiver com a versão anterior, copie os campos do rascunho antes de recarregar/atualizar a página.
+1. Abra `http://localhost:5202/operacao/agenda` com sua sessão. Se a PWA estiver com a versão anterior, copie os campos do rascunho antes de recarregar/atualizar a página.
 2. Selecione a data e Novo agendamento. Informe nome e horário; para semanal, marque Repetir semanalmente e confira primeira/última data.
 3. Clique Salvar uma vez. O sucesso fecha o painel e atualiza as datas. Se houver falha temporária, mantenha o painel e clique Salvar novamente; a chave de retry permanece a mesma.
-4. Para diagnóstico, a chamada deve ser `POST /api/operacao/agenda/agendamentos`, com 200 após autenticação/dados válidos. Confira a revisão em `https://tapdev.quivercloud.com.br/api/health`. Requests sem sessão devem retornar 401, nunca Rota não encontrada para esse endpoint.
+4. Para diagnóstico, a chamada deve ser `POST /api/operacao/agenda/agendamentos`, com 200 após autenticação/dados válidos. Confira a revisão em `http://localhost:3002/api/health`. Requests sem sessão devem retornar 401, nunca Rota não encontrada para esse endpoint.
 
 Limites: os testes positivos de salvamento usam banco QA descartável; no endereço público DEV são feitos probes de acesso/registro e leitura de revisão, sem cadastrar em conta real. Teclado/notch nativos continuam sujeitos à validação em aparelho físico. Recarregar ou fechar a aba inteira é externo à navegação protegida e não persiste o rascunho em disco.

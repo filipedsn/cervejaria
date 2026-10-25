@@ -1,3 +1,5 @@
+# LEGADO: exemplo historico; nao usar para a PRD ou DEV oficial do Tap.
+# PRD publica roda no VPS; DEV oficial e localhost e nao usa tunnel Cloudflare.
 tunnel: SEU_TUNNEL_ID
 credentials-file: C:\Users\SEU_USUARIO\.cloudflared\SEU_TUNNEL_ID.json
 

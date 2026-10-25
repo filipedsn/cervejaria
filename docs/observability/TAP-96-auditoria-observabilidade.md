@@ -1,5 +1,7 @@
 # TAP-96 — auditoria de observabilidade do TAP Quiver
 
+> **Snapshot histórico pré-cutover (19–21/10/2026).** As observações de tunnel/DEV/PRD abaixo descrevem aquele momento e não são instruções vigentes. A produção atual está no VPS e o DEV é local; consulte o [handoff interno](../handoff-vps-hostinger-arquiteto.md). O histórico TAP-96 foi preservado.
+
 > **Atualização operacional de 2026-10-21:** decisões já confirmadas e resultados desta execução em [aditivo operacional TAP-96](TAP-96-aditivo-decisoes-operacionais-2026-10-21.md). Esse aditivo supersede apenas as listas de decisões que antes constavam como pendentes; preserva os registros históricos e os limites das evidências.
 
 > **Decisão posterior do proprietário em 21/10/2026:** backup da observabilidade adiado; RPO/RTO pendentes para retomada futura **não bloqueiam a entrega atual do TAP-96**. Não executar novos snapshots/backups, sincronização OneDrive ou restauração dessa frente. Evidências e arquivos existentes preservados, sem novo WI. Esta mudança não alcança backups transacionais ou obrigatórios dos procedimentos de deploy. Os demais gates continuam vigentes e TAP-96 permanece In Progress.

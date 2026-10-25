@@ -47,13 +47,11 @@ Uma pagina em outra origem nao consegue disparar essas acoes (checagem de Origin
 
 O gate de release exige `deploy/.local-ci-attestation.json` gerado por `npm run ci` para
 o SHA de `HEAD`. `GITHUB_TOKEN` continua opcional: so enriquece metadados de PR no painel
-(Actions esta desligado — TAP-116).
+(O check remoto build-and-unit é obrigatório para merge em main; o atestado local é complementar para tooling legado.)
 
 ## Console de release
 
-O repositorio esta no plano Free do GitHub, que nao tem branch protection. GitHub Actions
-esta desligado (TAP-116). A regra "so vai para producao o que esta em `origin/main` com
-`npm run ci` atestado" e aplicada aqui e em `scripts/prod/release-gate.ps1`.
+O repositório é público e main exige PR e check remoto build-and-unit verde. Este console e scripts/prod/release-gate.ps1 pertencem ao fluxo Windows legado: o atestado npm run ci protege esse caminho, mas não substitui o check remoto nem publica o site público no VPS.
 
 `GET /api/release` mostra:
 

@@ -16,7 +16,7 @@ Aplicação web (PWA) para cervejarias móveis — controle de comandas, pagamen
 
 - **Backend**: Node.js, TypeScript, Fastify, Prisma, PostgreSQL, Socket.IO, JWT
 - **Frontend**: React, Vite, Tailwind CSS, PWA, React Query
-- **Infra**: Docker Compose (Postgres), Cloudflare Tunnel (produção)
+- **Infra**: Docker Compose local para Postgres/Elasticsearch de desenvolvimento; produção pública em Docker no VPS atrás de Cloudflare e nginx
 
 ## Pré-requisitos
 
@@ -55,9 +55,10 @@ npm run restart
 ```
 
 - Frontend: http://localhost:5202
-- Dev (internet): https://tapdev.quivercloud.com.br
 - API: http://localhost:3002
 - Health check: http://localhost:3002/api/health
+
+O DEV oficial é local. `tapdev.quivercloud.com.br` e o tunnel Cloudflare para DEV são caminhos legados/removidos, não destinos vigentes.
 
 ### Credenciais demo (após seed)
 
@@ -84,7 +85,7 @@ SMTP_PASS="sua-senha"
 SMTP_FROM="Cervejaria Movel <noreply@seudominio.com.br>"
 ```
 
-## Produção (build)
+## Build local (desenvolvimento/CI)
 
 ```bash
 # Build frontend + backend
@@ -94,133 +95,22 @@ npm run build
 cd backend && npm start
 ```
 
-A API serve o frontend buildado de `frontend/dist` quando disponível.
+A API pode servir o frontend buildado de `frontend/dist` quando disponível. Esse build local não publica a produção pública.
 
-## Exposição via Cloudflare Tunnel + Hostinger
+## Arquitetura atual (DEV e produção pública)
 
-### 1. Instalar cloudflared
+- **DEV:** PC Windows; API Node local (`:3002`), Vite (`:5202`), Postgres local em Docker (`:5432` e/ou `:5434`, conforme compose) e cluster Elasticsearch local.
+- **PRD pública:** VPS Hostinger; aplicação e Postgres em Docker, atrás do proxy Cloudflare e nginx. O site público não depende do PC ligado.
+- **Elasticsearch:** cluster DEV no PC e cluster PRD separado no VPS. Nunca conecte a aplicação DEV ou OTEL de DEV ao cluster PRD.
+- **Deploy:** hoje manual no VPS via SSH/Tailscale, somente após autorização explícita. O plano de CD está no [handoff interno](docs/handoff-vps-hostinger-arquiteto.md) §7.1.
 
-```bash
-# Windows (winget)
-winget install Cloudflare.cloudflared
+Não replique aqui inventário de infraestrutura, IPs, paths de env ou detalhes de chaves; consulte o [handoff interno](docs/handoff-vps-hostinger-arquiteto.md).
 
-# Linux
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
-chmod +x cloudflared
-```
+## Ferramentas Windows de publicação — legado
 
-### 2. Autenticar e criar tunnel
+Os scripts `deploy.cmd`, `scripts/prod/*`, watchdog e auxiliares Cloudflared permanecem no repositório para compatibilidade e histórico. Eles **não** publicam `tap.quivercloud.com.br`. Não instale ou recrie um tunnel do Tap no PC como caminho de produção.
 
-```bash
-cloudflared tunnel login
-cloudflared tunnel create cervejaria
-```
-
-Anote o **Tunnel ID** gerado.
-
-### 3. Configurar DNS na Hostinger
-
-No painel Cloudflare (domínio apontado para Cloudflare):
-
-```
-CNAME  app  <TUNNEL_ID>.cfargotunnel.com
-```
-
-Ou via CLI:
-
-```bash
-cloudflared tunnel route dns cervejaria app.seudominio.com.br
-```
-
-### 4. Arquivo de configuração
-
-Crie `~/.cloudflared/config.yml`:
-
-```yaml
-tunnel: <TUNNEL_ID>
-credentials-file: /path/to/<TUNNEL_ID>.json
-
-ingress:
-  - hostname: app.seudominio.com.br
-    service: http://localhost:3001
-  - service: http_status:404
-```
-
-### 5. Rodar em produção
-
-```bash
-# Terminal 1: app
-cd backend && npm start
-
-# Terminal 2: tunnel
-cloudflared tunnel run cervejaria
-```
-
-## Produção no Windows (sem IDE, reinício automático)
-
-Para manter **backend + frontend estático + Cloudflare Tunnel** no ar mesmo com a IDE fechada e após reiniciar o PC:
-
-```
-Cloudflare → API :3001 (frontend estático + API)
-```
-
-### 1. Pré-requisitos
-
-- Node.js 24, PostgreSQL rodando (Docker ou serviço)
-- Build do backend (`backend/dist`) e frontend (`frontend/dist`) — o instalador tenta gerar automaticamente
-- No painel Cloudflare, `tap.quivercloud.com.br` apontando para **`http://localhost:3001`**
-- `backend/.env.production` com `APP_URL` e `CORS_ORIGIN` = `https://tap.quivercloud.com.br`
-
-### 2. Configurar caminhos
-
-```powershell
-copy deploy\production.settings.psd1.example deploy\production.settings.psd1
-# Edite ProjectRoot e ApiPort (3001) se necessário
-```
-
-### 3. Instalar (PowerShell como Administrador)
-
-```powershell
-npm run prod:install
-# ou: scripts\prod\install-autostart.cmd
-```
-
-Isso cria três tarefas agendadas:
-
-| Tarefa | Quando |
-|--------|--------|
-| `QuiverTap-AtLogon` | Ao entrar no Windows |
-| `QuiverTap-AtStartup` | 1 minuto após ligar o PC |
-| `QuiverTap-Watchdog` | A cada 2 min — sobe backend, frontend e tunnel se caírem |
-
-### 4. Comandos úteis
-
-```powershell
-npm run prod:status    # backend, frontend, tunnel e tarefas
-npm run prod:ensure    # força verificação agora
-npm run prod:stop      # para processos iniciados pelos scripts
-npm run prod:uninstall # remove tarefas agendadas
-```
-
-Logs em `deploy/logs/` (`api.log`, `frontend.log`, `tunnel.log`, `watchdog.log`).
-
-### 5. Tunnel 24/7 (recomendado)
-
-O serviço Windows **Cloudflared** (via token) já cobre o tunnel 24/7. O watchdog monitora e tenta recuperar se cair.
-
-### Variáveis de produção
-
-Atualize `backend/.env.production` (veja `.env.production.example`):
-
-```env
-DATABASE_URL="postgresql://cervejaria_prod:SENHA@localhost:5432/cervejaria?schema=public"
-JWT_SECRET="gere-um-segredo-longo-e-aleatorio"
-PORT=3001
-HOST=0.0.0.0
-CORS_ORIGIN="https://tap.quivercloud.com.br"
-```
-
-Desenvolvimento usa container Postgres separado (`cervejaria-db-dev`, porta **5434**) — veja `deploy/README.md`.
+O procedimento acima é legado e não deve ser usado para servir clientes. Para a operação vigente, leia o [handoff interno](docs/handoff-vps-hostinger-arquiteto.md); para o fluxo Git, PR e gates, leia [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Instalar como PWA no tablet
 

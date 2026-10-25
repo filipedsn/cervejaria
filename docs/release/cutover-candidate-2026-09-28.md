@@ -1,5 +1,7 @@
 # Avaliação de cutover para a versão de Dev — 28/09/2026
 
+> **Registro histórico de 28/09/2026 — supersedido.** O cutover da produção pública para o VPS foi concluído em 24/10/2026. As decisões NO GO e instruções sobre o tunnel abaixo não descrevem o estado atual; consulte o [handoff interno](../handoff-vps-hostinger-arquiteto.md). Os registros da época sobre sincronização off-site também foram supersedidos: a cópia OneDrive atual está configurada; a pendência de backup é somente ensaiar a restauração.
+
 ## Atualização operacional — 29/09/2026
 
 **Decisão: NO GO. O cutover não começou.** O túnel `cloudflared` permanece ativo, o endpoint público de readiness de Produção responde HTTP 200, e nem a aplicação nem o banco produtivo receberam deploy ou migrations. Não desligar o túnel enquanto os gates abaixo estiverem abertos: isso causaria indisponibilidade sem uma release aprovada para entrar no lugar.
