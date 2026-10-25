@@ -1,66 +1,27 @@
 ---
-description: Quiver Tap dev/prod segregation — DEV first, prod only with explicit authorization
+description: Segregação DEV local / PRD VPS e autorização de publicação
 alwaysApply: true
 ---
 
-# Quiver Tap — Deploy e ambientes
+# Quiver Tap — deploy e ambientes
 
-## Fluxo obrigatorio (nao negociavel)
+## Arquitetura vigente
 
-1. **DEV** — implementar e alterar codigo
-2. **DEV** — validar (`npm run dev:start`, testes, QA em `:3002` / `:5202`)
-3. **Aguardar autorizacao explicita** do usuario (ex.: "pode fazer deploy em prod", "sobe para producao")
-4. **PROD** — somente entao: `npm run prod:deploy -- -Confirmed`
+- DEV: PC local, API Node em `:3002`, Vite em `:5202`, Postgres e Elasticsearch locais.
+- PRD pública: VPS Hostinger, aplicação em Docker atrás de Cloudflare/nginx.
+- Elasticsearch DEV e PRD são clusters diferentes; nunca cruze endpoints ou credenciais.
+- O deploy público é hoje manual no VPS via SSH/Tailscale. O CD futuro está no [handoff interno](../../docs/handoff-vps-hostinger-arquiteto.md) §7.1.
+- `deploy.cmd`, `scripts/prod/deploy.ps1`, watchdog e tunnel no Windows são **legados** e não publicam mais o site público.
 
-**"Sim" para testes ou reinicio NAO autoriza deploy.** Reiniciar prod, matar processos ou escrever na API `:3001` e acao de producao.
+## Fluxo de mudança
 
-## Ambientes
+1. Implementar e validar no DEV local (`:3002` / `:5202`) quando aplicável.
+2. Criar PR a partir de `origin/main` atualizada.
+3. Aguardar o check remoto `build-and-unit` verde; ele é obrigatório para merge. `npm run ci` é complementar.
+4. Publicação em PRD requer autorização explícita específica e segue o runbook do VPS. Teste, merge ou reinício de DEV não autorizam deploy.
 
-| | Dev | Prod |
-|---|-----|------|
-| API | `:3002` | `:3001` |
-| Frontend | Vite `:5202` | estatico via `:3001` |
-| Banco | `cervejaria_dev` | `cervejaria` |
-| Env | `.env.development` | `.env.production` |
-| Artefatos UI/API | `frontend/dist` + `backend/dist` (local/CI) | `deploy/prod-artifacts/` (somente `prod:deploy`) |
+## Restrições
 
-## Isolamento de artefatos
+Sem autorização de produção, não execute deploy, rollback ou comandos que alterem VPS/PRD; não edite secrets/ACLs/firewall; não reative tunnel do Tap; não use ferramentas legadas Windows para publicar a URL pública. Para tarefas exclusivamente documentais, não execute ações na infraestrutura.
 
-- **`npm run ci:frontend`**, **`vite build`** e **`npx vite build`** escrevem em `frontend/dist` — **nao publicam prod**.
-- Prod serve estatico de **`deploy/prod-artifacts/frontend`** (variavel `FRONTEND_DIST` na API).
-- Prod executa backend compilado em **`deploy/prod-artifacts/backend/dist`**.
-- **`prod:restart`** recarrega o que esta em `prod-artifacts`, nao o que voce buildou localmente em `frontend/dist`.
-
-## Proibido sem autorizacao explicita de deploy
-
-- `npm run prod:restart`, `prod:deploy`, `prod:rollback`, `prod:stop`, `prod:ensure`
-- `db:migrate:prod`, editar `.env.production`
-- `taskkill` em processos da API prod
-- POST/PUT/PATCH/DELETE em `localhost:3001` ou `tap.quivercloud.com.br`
-- Encadear `ci:backend` + `prod:restart` como "validacao"
-
-## Permitido sem deploy
-
-- `npm run dev:start`, `dev:status`, `dev:stop`
-- `npm run qa:*`, `test:unit`, `ci:validate` (sem restart prod)
-- `npm run prod:status` e GET `/api/health` / `/api/ready` em `:3001` (somente leitura)
-- `npm run prod:verify` — compara manifest vs frontend servido
-- `npm run prod:preflight` / `.\deploy.cmd -PreflightOnly` — verificacoes, nao altera nada
-- `.\deploy.cmd -DryRun` — plano + preflight, nao altera nada
-
-## Deploy autorizado
-
-Apos confirmacao explicita, usar skill `.cursor/skills/quiver-tap-deploy/SKILL.md`:
-
-```powershell
-.\deploy.cmd -Confirmed
-```
-
-O script se auto-eleva quando precisa encerrar a API (o watchdog a sobe elevada). O usuario
-precisa aceitar o prompt de UAC; a saida e espelhada no terminal e em `deploy/logs/deploy-*.log`.
-
-`prod:ensure` mantem servicos no ar — **nao aplica codigo novo**.
-
-## Enforcement
-
-Hook `.cursor/hooks/block-prod-without-approval.mjs` exige aprovacao do usuario no Cursor antes de comandos prod.
+Para permissões e detalhes operacionais, consulte [CONTRIBUTING.md](../../CONTRIBUTING.md) e o [handoff interno](../../docs/handoff-vps-hostinger-arquiteto.md), sem copiar inventários de acesso ou localização de credenciais.

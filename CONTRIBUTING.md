@@ -25,10 +25,10 @@ git push -u origin fix/descricao-curta
 gh pr create --base main               # ou pela interface do GitHub
 ```
 
-1. Validar no DEV (`:3002` / `:5202` / `tapdev.quivercloud.com.br`) quando a mudança tiver efeito visível.
+1. Validar no DEV local (`http://localhost:5202` / API `http://localhost:3002`) quando a mudança tiver efeito visível. `tapdev.quivercloud.com.br` e o tunnel de DEV não são caminhos vigentes.
 2. Esperar o check remoto **build-and-unit** verde no PR (branch protection). Rodar `npm run ci` local continua recomendado (suite Windows + atestado legado).
 3. Merge por **Squash and merge**. Exceção: quando o PR apenas leva `main` a um commit que já está em produção, o merge é fast-forward para preservar o SHA publicado.
-4. Com autorização explícita para **produção pública** (`tap.quivercloud.com.br`): publicar no **VPS** (Docker). Ver `docs/handoff-vps-hostinger-arquiteto.md` §7.1. O `.\deploy.cmd -Confirmed` no PC é **legado** e **não** é mais o publisher do site público.
+4. Com autorização explícita para **produção pública** (`tap.quivercloud.com.br`): publicar no **VPS** (Docker), hoje manualmente por SSH via Tailscale; o caminho futuro de CD está no handoff §7.1. O `deploy.cmd` / `scripts/prod/deploy.ps1` no PC são **legado** e **não** publicam o site público.
 
 ## Publicar no DEV
 
@@ -73,8 +73,6 @@ O Ops Panel usa a mesma regra. Rode `npm run ci` em `main` limpa imediatamente a
 `.\deploy.cmd -DryRun` e `-PreflightOnly` mostram o resultado do gate sem alterar nada.
 
 Emergência autorizada: `.\deploy.cmd -Confirmed -BypassReleaseGate "motivo"`. O motivo aparece no preflight e no log do deploy (`deploy/logs/deploy-*.log`). O commit publicado precisa chegar a `main` por PR logo em seguida.
-
-## Limitação conhecida do GitHub
 
 ## GitHub Actions e branch protection (vigente)
 

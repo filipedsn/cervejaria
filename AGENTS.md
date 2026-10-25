@@ -18,17 +18,11 @@ Resumo operacional que nenhum agente pode “esquecer”:
 
 ## Delivery flow
 
-[CONTRIBUTING.md](CONTRIBUTING.md) is the mandatory delivery flow for every tool (Cursor, VS Code, terminal), **subject to the super prompt and handoff above**.
-
-Current rules (supersede TAP-116 “Actions off”):
-- Work starts from `main` on its own branch and returns via Pull Request.
-- Merge to `main` requires GitHub Actions check **`build-and-unit`** (branch protection). Local `npm run ci` remains complementary (attestation for legacy Windows tooling).
-- Public production publish is the **VPS** (Docker), not `.\deploy.cmd` on the PC. Legacy Windows deploy still uses attestation preflight when that path is used.
-- Production deploy (VPS or legacy) only with **explicit** user authorization.
+[CONTRIBUTING.md](CONTRIBUTING.md) is the mandatory delivery flow for every tool (Cursor, VS Code, terminal), subject to the super prompt and handoff above: public production runs on the Hostinger VPS, DEV runs locally on the Windows PC, and work starts from updated origin/main in its own branch. Open a PR and wait for the required GitHub Actions build-and-unit check before merging. Run npm run ci before the PR when applicable; it is complementary (including Windows checks and the attestation used by legacy Windows release tooling). Public production deploys to the VPS and requires explicit user authorization. deploy.cmd is a legacy Windows path and is not the publisher for tap.quivercloud.com.br.
 
 ## Plane MCP workflow
 
-Plane is the source of truth for work state. GitHub is the source of truth for code and commits. GitHub Actions `build-and-unit` gates merge to `main`; local `npm run ci` (attestation file) remains for the complementary / legacy Windows release gate.
+Plane is the source of truth for work state. GitHub is the source of truth for code, commits, and the required build-and-unit merge check. Local npm run ci is complementary and produces an attestation for Windows release tooling that remains legacy.
 
 Use the Plane MCP with least privilege. The authorized capabilities are limited to `workspace`, `project`, `workitem`, `workitem_comment`, `state`, and `label`; do not expand tools without an explicit need.
 

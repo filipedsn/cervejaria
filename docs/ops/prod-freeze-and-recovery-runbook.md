@@ -1,5 +1,7 @@
 # Freeze, migration, and recovery for production
 
+> **LEGADO / histórico pré-cutover (15/10/2026).** Este runbook descreve a topologia Windows anterior e não se aplica à produção pública atual no VPS. Não o execute para operar PRD; consulte o [handoff interno](../handoff-vps-hostinger-arquiteto.md).
+
 Status: prepared against candidate `08c1eddf0a9b15246b4d8802b2f330919ae4972f` plus the administrative closure / write-freeze revision currently in QA. This document does not authorize production activity. A future window still needs an exact candidate SHA, an executable production cutover path, and explicit window approval.
 
 ## Writers and restart paths observed (2026-10-15)

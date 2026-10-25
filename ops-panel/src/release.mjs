@@ -5,10 +5,9 @@ import { spawn } from 'node:child_process';
 /**
  * Gate de liberacao de release.
  *
- * O repositorio esta no plano Free do GitHub, que nao oferece branch protection.
- * GitHub Actions esta desligado (TAP-116). A disciplina de "so vai para producao
- * o que esta em origin/main com npm run ci atestado" e garantida aqui e em
- * scripts/prod/release-gate.ps1, via deploy/.local-ci-attestation.json.
+ * O check remoto build-and-unit e a branch protection governam merges em main.
+ * Este gate local existe para o tooling Windows legado e exige atestado de npm run ci;
+ * ele nao substitui o check remoto nem publica a producao publica no VPS.
  *
  * Detalhe que dita o desenho: `deploy.ps1` compila a partir da working tree local,
  * nao de origin/main. Por isso o gate olha o HEAD local e se ha alteracao nao

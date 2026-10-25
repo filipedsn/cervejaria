@@ -1,90 +1,44 @@
-﻿---
+---
 name: quiver-tap-environments
-description: Explains Quiver Tap dev vs prod segregation (ports, databases, env files, uploads). Use when the user asks about dev, prod, ambiente, segregacao, localhost, portas 5202, 3002, 3001, or whether changes affect production.
+description: Explica a segregação entre DEV local e produção no VPS do Quiver Tap.
 ---
 
-# Quiver Tap â€” Ambientes dev e prod
+# Quiver Tap — ambientes DEV e PRD
 
-> **Aviso:** Scripts de deploy completos (`prod:deploy`, ops-panel, CI GitHub) estÃ£o na branch `feat/ops-panel-ci`; pendente merge.
+## Resumo
 
-## Resposta rapida
+- **DEV:** PC Windows do Filipe; API Node local, Vite e serviços de desenvolvimento locais.
+- **PRD:** VPS Hostinger; aplicação e Postgres em Docker. O endereço público aponta para essa produção.
+- São máquinas e serviços distintos. Nunca direcione DEV para banco, Elasticsearch, URL de aplicação ou credenciais do VPS.
 
-**Codigo e banco de dev nao alteram prod diretamente**, mas builds locais em `frontend/dist` **tambem nao publicam prod** desde o isolamento de artefatos. Producao so muda com **`npm run prod:deploy`** (publica em `deploy/prod-artifacts/`).
+## Mapa atual
 
-## Tabela de segregacao
+| Recurso | DEV (local) | PRD |
+|---|---|---|
+| Aplicação | Node nativo no PC | Docker no VPS |
+| API | `http://localhost:3002` | serviço no host do VPS |
+| Frontend | `http://localhost:5202` | `https://tap.quivercloud.com.br` |
+| Postgres | Docker local, `:5432` e/ou `:5434` conforme compose; nunca VPS | Docker no VPS |
+| Elasticsearch/Kibana | Cluster Docker local | Cluster separado no VPS, operações privadas |
+| Publicação | Não publica clientes | VPS via SSH/Tailscale hoje; autorização explícita |
 
-| | Desenvolvimento | Producao |
-|---|-----------------|----------|
-| API | `:3002` | `:3001` |
-| Frontend | Vite `:5202` | Build estatico via API `:3001` |
-| Banco | `cervejaria_dev` | `cervejaria` |
-| Container PG | `cervejaria-db-dev` (:5434) | `cervejaria-db` (:5432) |
-| Usuario PG | `cervejaria_dev` | `cervejaria_prod` |
-| Uploads | `backend/uploads-dev` | `backend/uploads-prod` |
-| Env | `backend/.env.development` | `backend/.env.production` |
-| Build UI | `frontend/dist` (CI/dev) | `deploy/prod-artifacts/frontend` |
-| Build API | `backend/dist` (CI/dev) | `deploy/prod-artifacts/backend/dist` |
-| URL local | http://localhost:5202 | https://tap.quivercloud.com.br |
-| URL internet (dev) | https://tapdev.quivercloud.com.br | — |
+A API DEV ainda roda em Node nativo; **não** documente como containerizada. Equalizar a API DEV em Docker permanece pendente.
 
-## Comandos do dia a dia
-
-**Desenvolvimento:**
+## Comandos DEV
 
 ```powershell
-npm run dev:start      # sobe API :3002 + Vite :5202
-npm run dev:status     # verifica se dev esta no ar
-npm run dev:stop       # para apenas dev
-npm run restart-dev    # dev com logs no terminal
+npm run dev:start
+npm run dev:status
+npm run dev:stop
 ```
 
-**Producao (consulta / deploy):**
+Valide no frontend `http://localhost:5202` e na API `http://localhost:3002`. O DEV oficial deste ciclo é local; `tapdev.quivercloud.com.br` e tunnel Cloudflare para DEV são legados/removidos, não um caminho vigente.
 
-```powershell
-npm run prod:status    # health check
-npm run prod:verify    # manifest vs bundle servido
-npm run prod:deploy    # publicar alteracoes (com confirmacao)
-npm run prod:restart   # reinicia so a API (nao rebuild)
-```
+## Regras de produção
 
-## Guardrails
+- A produção pública é independente do PC e não depende do PC ligado.
+- Não reative o tunnel do Tap no PC nem exponha portas administrativas.
+- Mudança pública só no VPS, após PR mergeada com o check remoto `build-and-unit` verde e autorização explícita.
+- `deploy.cmd` e `scripts/prod/deploy.ps1` são legados Windows; não publicam o site público.
 
-- Scripts de prod validam `DATABASE_URL` â€” nao conectam em `cervejaria_dev` por engano.
-- Scripts de dev usam `.env.development` e banco `cervejaria_dev`.
-- `prod:ensure` (watchdog) mantem prod no ar; **nao aplica codigo novo**.
-- Cloudflare prod aponta para `localhost:3001` (nao para Vite dev).
-- Cloudflare dev aponta para `localhost:5202` (Vite faz proxy de `/api` e WebSocket).
-
-## Dev pela internet
-
-URL publica: **https://tapdev.quivercloud.com.br**
-
-O tunel Cloudflare encaminha para o Vite (`:5202`), que ja faz proxy da API (`:3002`). Configure em `deploy/cloudflared-config.example.yml`:
-
-```yaml
-  - hostname: tapdev.quivercloud.com.br
-    service: http://localhost:5202
-```
-
-No `backend/.env.development`:
-
-```env
-CORS_ORIGIN="http://localhost:5202,https://tapdev.quivercloud.com.br"
-APP_URL="https://tapdev.quivercloud.com.br"
-```
-
-Depois de alterar o env, reinicie o dev: `npm run dev:stop` → `npm run dev:start`.
-
-## Fluxo recomendado
-
-1. Codar e testar em http://localhost:5202 ou https://tapdev.quivercloud.com.br
-2. Quando estiver pronto, pedir deploy: "deploy em prod" ou `npm run prod:deploy`
-3. Para detalhes do deploy, use a skill `quiver-tap-deploy`
-
-## Mesmo PC
-
-Dev e prod podem rodar juntos (portas e bancos diferentes). Evite carga pesada nos dois simultaneamente por RAM.
-
-## Referencia completa
-
-Ver [deploy/README.md](../../deploy/README.md) e [.cursor/skills/quiver-tap-deploy/reference.md](../quiver-tap-deploy/reference.md).
+Para detalhes de operação, use [CONTRIBUTING.md](../../../CONTRIBUTING.md) e linke o [handoff interno](../../../docs/handoff-vps-hostinger-arquiteto.md), sem copiar dados de acesso ou paths de credenciais.

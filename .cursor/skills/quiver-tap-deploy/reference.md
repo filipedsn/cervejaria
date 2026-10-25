@@ -1,84 +1,33 @@
-# Quiver Tap — Deploy reference
+# Quiver Tap — referência de ambientes e publicação
 
-> **Aviso:** Scripts de deploy completos (`prod:deploy`, ops-panel, CI GitHub) estão na branch `feat/ops-panel-ci`; pendente merge.
+## Ambientes vigentes
 
-## Dev vs prod
+| Recurso | DEV (PC local) | PRD (VPS) |
+|---|---|---|
+| Aplicação | API Node nativa | Docker |
+| Frontend | Vite em `:5202` | Build servido pela aplicação |
+| API | `:3002` | `:3001` no host do VPS |
+| Postgres | Docker local, `:5432` e/ou `:5434` conforme o compose | Docker no VPS |
+| Elasticsearch | Cluster Docker local | Cluster separado no VPS |
+| Acesso | `http://localhost:5202` | `https://tap.quivercloud.com.br` |
 
-| | Desenvolvimento | Producao |
-|---|-----------------|----------|
-| API | `:3002` | `:3001` |
-| Frontend | Vite `:5202` | Build estatico via API `:3001` |
-| Banco | `cervejaria_dev` (:5434) | `cervejaria` (:5432) |
-| Container PG | `cervejaria-db-dev` | `cervejaria-db` |
-| Usuario PG | `cervejaria_dev` | `cervejaria_prod` |
-| Uploads | `backend/uploads-dev` | `backend/uploads-prod` |
-| Env | `backend/.env.development` | `backend/.env.production` |
-| URL publica | — | https://tap.quivercloud.com.br |
+DEV nunca usa Postgres, Elasticsearch, `APP_URL` ou credenciais do VPS. Os clusters de Elasticsearch são físicos e distintos. Não publique detalhes de acesso administrativo; consulte o [handoff interno](../../../docs/handoff-vps-hostinger-arquiteto.md) quando necessário.
 
-## Dev commands
+## Comandos locais de DEV
 
 ```powershell
-npm run dev:start    # sobe dev em background
-npm run dev:status   # status
-npm run dev:stop     # para dev
-npm run restart-dev  # dev em primeiro plano (logs no terminal)
+npm run dev:start
+npm run dev:status
+npm run dev:stop
 ```
 
-## Prod deploy flow
+## Fluxo de entrega
 
-```powershell
-npm run prod:deploy              # pede DEPLOY no terminal
-npm run prod:deploy -- -Confirmed   # apos OK no chat (agente)
-```
+1. Criar branch a partir da `origin/main` atualizada.
+2. Abrir PR contra `main`; merge exige o check remoto `build-and-unit` verde.
+3. `npm run ci` local é complementar e mantém a cobertura Windows/atestado legado.
+4. Produção pública é publicada no VPS via SSH/Tailscale, hoje manualmente, sempre com autorização explícita. Consulte [§7.1 do handoff](../../../docs/handoff-vps-hostinger-arquiteto.md).
 
-Steps executed by `scripts/prod/deploy.ps1`:
+## Caminho Windows legado
 
-1. Validate `DATABASE_URL` (prod guardrails)
-2. Backup → `deploy/backups/backup-prod-*.sql`
-3. `build:deploy` (frontend) + `build` (backend)
-4. `db:migrate:prod`
-5. `restart-api.ps1` (API only, tunnel stays up)
-6. Smoke test + `prod:status`
-
-## Cloudflare Tunnel
-
-Ingress must point to **`http://localhost:3001`** (API serves static frontend).
-
-## Rollback
-
-**API / code — fastest path (seconds):**
-
-`publish-artifacts.ps1` moves the live release to `deploy/prod-artifacts.previous` before
-publishing, so the last release is always on disk:
-
-```powershell
-npm run prod:rollback -- -Confirmed     # add -DryRun to inspect first
-```
-
-It swaps the directories back, restarts the API and runs the smoke test. It is a
-production command — needs explicit user authorization like any deploy. Also available as
-a button in the release console (`:3099`).
-
-**It does not revert the database.** An applied migration stays applied; if the deploy you
-are undoing ran a destructive migration, restore the dump from `deploy/backups` too.
-
-**API / code — when there is no rollback point:**
-
-1. Revert git changes or checkout previous commit
-2. Rebuild + `npm run prod:deploy -- -Confirmed`
-
-**Database:**
-
-1. Find backup: `deploy/backups/backup-prod-*.sql`
-2. Restore via Docker/psql (careful — destructive)
-
-**Env misconfiguration:**
-
-1. Fix `backend/.env.production`
-2. `npm run prod:restart`
-
-## Build notes
-
-- Frontend prod build: `npm run build:deploy --prefix frontend` (Vite only)
-- Full `npm run build --prefix frontend` may fail on `tsc -b`; deploy uses `build:deploy`
-- Backend `tsc` must pass for deploy; fix TypeScript errors before releasing API changes
+`deploy.cmd`, `scripts/prod/deploy.ps1`, watchdog e auxiliares Cloudflared permanecem apenas para compatibilidade/histórico. Eles **não** publicam `tap.quivercloud.com.br`. Não use o fluxo Windows como deploy da produção pública.
