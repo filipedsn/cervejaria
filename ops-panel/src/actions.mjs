@@ -35,6 +35,11 @@ async function devStart() {
   return 'Ambiente de testes ligando; fica pronto em cerca de 30 segundos.';
 }
 
+async function devSync() {
+  await must(powershellFile('sync-dev-main.ps1', [], 600_000), 'Trazer a versão oficial');
+  return 'Ambiente de testes atualizado com a versão oficial; fica pronto em cerca de 30 segundos.';
+}
+
 async function devStop() {
   await must(powershellFile('stop-dev.ps1'), 'Desligar o ambiente de testes');
   return 'Ambiente de testes desligado.';
@@ -56,6 +61,7 @@ async function review(params, state) {
 export const ACTIONS = {
   'dev.start': { label: 'Ligar o ambiente de testes', run: devStart },
   'dev.stop': { label: 'Desligar o ambiente de testes', run: devStop },
+  'dev.sync': { label: 'Trazer a versão oficial para o ambiente de testes', run: devSync },
   'dev.restart': {
     label: 'Reiniciar o ambiente de testes',
     run: async () => {

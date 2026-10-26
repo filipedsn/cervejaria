@@ -28,10 +28,12 @@ export async function collectGit({ force = false, maxAgeMs = 30_000 } = {}) {
       return { sha, date, subject: subject.join('\t') };
     });
 
+  const statusLines = status.stdout.split(/\r?\n/).filter(Boolean);
   return {
     branch: branch.stdout.trim(),
     headSha: head.stdout.trim(),
-    dirtyCount: status.stdout.split(/\r?\n/).filter(Boolean).length,
+    dirtyCount: statusLines.length,
+    trackedDirty: statusLines.filter((line) => !line.startsWith('??')).length,
     ahead,
     behind,
     mainSha: recentMain[0]?.sha ?? null,
@@ -44,6 +46,38 @@ export async function collectGit({ force = false, maxAgeMs = 30_000 } = {}) {
 
 export async function isOnMain(sha) {
   return (await git('merge-base', '--is-ancestor', sha, 'origin/main')).code === 0;
+}
+
+const SHA_LIKE = /^[0-9a-f]{7,40}$/;
+// Número de versão = commits alcançáveis (squash na main: +1 por PR). Commit da main não muda de número.
+const versionCache = new Map();
+
+/** { sha: 855 | null } — null quando o commit não faz parte da main (ou não existe no clone). */
+export async function versionsFor(shas) {
+  const unique = [...new Set(shas.filter((s) => SHA_LIKE.test(s ?? '')))];
+  const out = {};
+  for (const sha of unique) {
+    if (!versionCache.has(sha) && (await isOnMain(sha))) {
+      const count = Number((await git('rev-list', '--count', sha)).stdout.trim());
+      if (count > 0) versionCache.set(sha, count);
+    }
+    out[sha] = versionCache.get(sha) ?? null;
+  }
+  return out;
+}
+
+/** Commits que existem em `to` e não em `from` (mais novos primeiro). */
+export async function commitsBetween(from, to, limit = 15) {
+  if (!SHA_LIKE.test(from ?? '') || !SHA_LIKE.test(to ?? '') || from === to) return [];
+  const log = await git('log', '-n', String(limit), '--format=%H%x09%s', `${from}..${to}`);
+  if (log.code !== 0) return [];
+  return log.stdout
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, ...subject] = line.split('\t');
+      return { sha, subject: subject.join('\t') };
+    });
 }
 
 /** O que muda em PRD indo de `from` para `to` (commits e pastas de migration). */

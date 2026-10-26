@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { ActionError, executeAction, readAudit } from './actions.mjs';
-import { previewRange } from './collectors/git.mjs';
+import { previewRange, versionsFor } from './collectors/git.mjs';
 import { fetchPr } from './collectors/github.mjs';
 import { collectPrd } from './collectors/prd.mjs';
 import { config, PANEL_DIR } from './config.mjs';
@@ -40,7 +40,10 @@ app.get('/api/preview/deploy', async (request, reply) => {
   if (!SHA_RE.test(to)) return reply.code(400).send({ error: 'SHA inválido.' });
   const prd = await collectPrd();
   if (!prd.releaseSha) return reply.code(409).send({ error: 'Não foi possível ler a versão atual de produção.' });
-  return previewRange(prd.releaseSha, to);
+  const range = await previewRange(prd.releaseSha, to);
+  const numbers = await versionsFor([range.from, range.to]);
+  const name = (sha) => (numbers[sha] ? `V${numbers[sha]}` : null);
+  return { ...range, fromVersion: name(range.from), toVersion: name(range.to) };
 });
 
 app.get('/api/preview/pr/:number', async (request, reply) => {

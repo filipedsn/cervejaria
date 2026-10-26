@@ -44,6 +44,15 @@ const DISK_WARN_PCT = 85;
 
 export const short = (sha) => (sha ? String(sha).slice(0, 7) : '—');
 
+// Números de versão do snapshot atual ({ sha: 855 }); definido no início de deriveState.
+let versionNumbers = {};
+const num = (sha) => (sha ? (versionNumbers[sha] ?? null) : null);
+/** "V855"; commit fora da main fica com o hash curto. */
+export const ver = (sha) => (num(sha) ? `V${num(sha)}` : short(sha));
+/** "V855 (89e7d42)" — o hash entre parênteses aparece pequeno na tela. */
+const verFull = (sha) => (num(sha) ? `V${num(sha)} (${short(sha)})` : short(sha));
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
 const prOpenOk = (pr) =>
   Boolean(pr && !pr.isDraft && pr.baseBranch === 'main' && pr.mergeable === 'MERGEABLE' && (pr.state === undefined || pr.state === 'OPEN'));
 
@@ -157,12 +166,18 @@ export function deriveDelivery(snapshot, now = Date.now()) {
   const activeIndex = activeId ? STEPS.findIndex((s) => s.id === activeId) : STEPS.length;
 
   const detail = {
-    local: git ? (git.dirtyCount ? `${git.dirtyCount} arquivo(s) alterado(s)` : git.branch === 'main' ? 'nada em andamento' : `pasta ${git.branch}`) : '—',
+    local: git
+      ? git.dirtyCount
+        ? plural(git.dirtyCount, 'arquivo alterado', 'arquivos alterados')
+        : git.branch === 'main'
+          ? 'nada em andamento'
+          : `pasta ${git.branch}`
+      : '—',
     pr: branchPr ? `PR #${branchPr.number}, ${ciLabel(branchPr.ci)}` : prs.length ? `${prs.length} PR(s) aberto(s)` : 'nenhum PR',
-    main: mainSha ? `versão ${short(mainSha)}` : '—',
+    main: mainSha ? `versão ${ver(mainSha)}` : '—',
     aguardando:
       state === 'aguardando' ? 'esperando você' : state === 'atrasada' ? 'não publicada' : run ? runLabel(run) : '—',
-    prd: prdSha ? `versão ${short(prdSha)}${prdSha === mainSha ? ', a mais recente' : ''}` : 'sem resposta',
+    prd: prdSha ? `versão ${ver(prdSha)}${prdSha === mainSha ? ', a mais recente' : ''}` : 'sem resposta',
   };
 
   const steps = STEPS.map((step, i) => {
@@ -192,12 +207,13 @@ function gitCard(snapshot, delivery) {
   let state = 'limpo';
   let level = 'ok';
   let title = 'Sem pendências';
-  if (g.branch === 'main' && g.behind > 0) {
-    [state, level, title] = ['atras', 'warn', `Este PC está ${g.behind} mudança(s) atrás da versão oficial`];
-  } else if (g.dirtyCount > 0) {
-    [state, level, title] = ['alteracoes', 'warn', `${g.dirtyCount} arquivo(s) alterado(s) neste PC`];
+  // Nada aqui é tarefa do usuário: trabalho de quem desenvolve é azul; cópia atrasada é só informação.
+  if (g.dirtyCount > 0) {
+    [state, level, title] = ['alteracoes', 'run', `Trabalho em andamento neste PC (${plural(g.dirtyCount, 'arquivo', 'arquivos')})`];
   } else if (g.branch !== 'main' && g.ahead > 0 && !delivery.branchPr) {
-    [state, level, title] = ['sem_pr', 'warn', 'Mudanças ainda sem pedido de revisão (PR)'];
+    [state, level, title] = ['sem_pr', 'run', 'Mudanças ainda sem pedido de revisão (PR)'];
+  } else if (g.branch === 'main' && g.behind > 0) {
+    [state, level, title] = ['atras', 'off', `Cópia deste PC ${plural(g.behind, 'versão', 'versões')} atrás`];
   }
   return {
     state,
@@ -207,7 +223,7 @@ function gitCard(snapshot, delivery) {
     facts: [
       ['Pasta de trabalho (branch)', g.branch],
       ['Diferença para a oficial', `${g.ahead} à frente, ${g.behind} atrás`],
-      ['Versão oficial (main)', short(g.mainSha)],
+      ['Versão oficial (main)', verFull(g.mainSha)],
     ],
     prs: prs.map((pr) => ({
       ...pr,
@@ -230,23 +246,32 @@ function devCard(snapshot, delivery) {
   else if (d.supervisorAlive && !(d.apiReady && d.webOk)) state = 'subindo';
   else state = 'degradado';
 
+  const vsSite = compareWithSite(d.releaseSha, delivery.prdSha, snapshot.compare);
   const behindMain = Boolean(state === 'ok' && d.releaseSha && delivery.mainSha && d.releaseSha !== delivery.mainSha);
   const title = {
-    ok: behindMain ? 'Ligado (versão diferente da oficial)' : 'Ligado',
+    ok: d.releaseSha ? `Ligado · ${ver(d.releaseSha)}` : 'Ligado',
     parado: 'Desligado',
     subindo: 'Ligando…',
     degradado: d.dockerOk ? 'Com problema' : 'Docker desligado',
   }[state];
-  const level = { ok: behindMain ? 'warn' : 'ok', parado: 'off', subindo: 'run', degradado: 'bad' }[state];
+  const level = { ok: 'ok', parado: 'off', subindo: 'run', degradado: 'bad' }[state];
 
   const yes = (ok) => (ok ? 'funcionando' : 'desligado');
   const facts = [
     ['Sistema (API :3002)', yes(d.apiReady)],
     ['Telas (web :5202)', yes(d.webOk)],
     ...d.containers.map((c) => [DEV_CONTAINER_NAMES[c.name] ?? c.name, c.ok ? 'funcionando' : 'desligado']),
-    ['Versão', d.releaseSha ? `${short(d.releaseSha)}${d.releaseSha === delivery.mainSha ? ' (a oficial)' : ''}` : '—'],
+    ['Versão', d.releaseSha ? verFull(d.releaseSha) : '—'],
+    ['Comparado ao site', vsSite.text],
   ];
   if (!d.dockerOk) facts.unshift(['Docker', d.dockerError || 'desligado']);
+
+  // Trazer a main só é seguro com o PC na main e sem alterações em arquivos versionados.
+  const git = snapshot.git?.ok ? snapshot.git.data : null;
+  const canSync = Boolean(
+    git && git.branch === 'main' && git.trackedDirty === 0 && delivery.mainSha && (git.behind > 0 || d.releaseSha !== delivery.mainSha),
+  );
+  if (git && git.branch !== 'main') facts.push(['Código em teste', `pasta de trabalho ${git.branch}`]);
 
   const actions =
     state === 'parado'
@@ -255,15 +280,42 @@ function devCard(snapshot, delivery) {
           { name: 'dev.restart', label: 'Reiniciar', confirm: 'simple' },
           { name: 'dev.stop', label: 'Desligar', confirm: 'simple' },
         ];
+  if (canSync && state !== 'degradado') {
+    actions.unshift({ name: 'dev.sync', label: `Trazer a versão oficial (${ver(delivery.mainSha)})`, confirm: 'simple' });
+  }
   return {
     state,
     level,
     title,
     subtitle: 'Cópia do sistema que roda neste PC para testar mudanças antes dos clientes. Ligar ou desligar não afeta o site.',
+    sha: d.releaseSha,
     behindMain,
+    canSync,
     facts,
+    compare: vsSite.lists,
     actions,
   };
+}
+
+/** Diferença entre o que roda no ambiente de testes e o que está no site. */
+export function compareWithSite(devSha, prdSha, compare) {
+  if (!devSha || !prdSha) return { text: '—', lists: null };
+  if (devSha === prdSha) return { text: 'igual ao site', lists: null };
+  const lists = {
+    devOnly: (compare?.devOnly ?? []).map((c) => ({ ...c, version: ver(c.sha) })),
+    prdOnly: (compare?.prdOnly ?? []).map((c) => ({ ...c, version: ver(c.sha) })),
+  };
+  const [devN, prdN] = [num(devSha), num(prdSha)];
+  let text;
+  if (devN && prdN) {
+    const diff = devN - prdN;
+    text = diff < 0 ? `${plural(-diff, 'versão', 'versões')} atrás do site` : `${plural(diff, 'versão', 'versões')} à frente do site`;
+  } else {
+    text = lists.devOnly.length
+      ? `${plural(lists.devOnly.length, 'mudança', 'mudanças')} em teste que não estão no site`
+      : 'diferente do site';
+  }
+  return { text, lists: lists.devOnly.length || lists.prdOnly.length ? lists : null };
 }
 
 function pipelineCard(snapshot) {
@@ -277,7 +329,7 @@ function pipelineCard(snapshot) {
   let title = 'Parada, nada pendente';
   const actions = [];
   if (waiting) {
-    [state, level, title] = ['aguardando', 'warn', `Versão ${short(waiting.sha)} esperando sua autorização`];
+    [state, level, title] = ['aguardando', 'warn', `Versão ${ver(waiting.sha)} esperando sua autorização`];
     actions.push(
       {
         name: 'deploy.approve',
@@ -290,9 +342,9 @@ function pipelineCard(snapshot) {
       { name: 'deploy.reject', label: 'Não publicar agora', params: { runId: waiting.id }, confirm: 'simple' },
     );
   } else if (active) {
-    [state, level, title] = ['rodando', 'run', deployJobRunning(active) ? `Publicando ${short(active.sha)}` : `Testando ${short(active.sha)}`];
+    [state, level, title] = ['rodando', 'run', deployJobRunning(active) ? `Publicando ${ver(active.sha)}` : `Testando ${ver(active.sha)}`];
   } else if (runFailed(last)) {
-    [state, level, title] = ['falhou', 'bad', `A última passagem falhou (${short(last.sha)})`];
+    [state, level, title] = ['falhou', 'bad', `A última passagem falhou (${ver(last.sha)})`];
   }
   return {
     state,
@@ -300,7 +352,7 @@ function pipelineCard(snapshot) {
     title,
     subtitle: 'Linha automática que testa, monta e publica cada nova versão oficial. Sempre para e pede sua autorização antes de publicar.',
     facts: [],
-    runs: runs.slice(0, 4).map((r) => ({ ...r, short: short(r.sha), label: runLabel(r) })),
+    runs: runs.slice(0, 4).map((r) => ({ ...r, short: short(r.sha), version: ver(r.sha), label: runLabel(r) })),
     actions,
   };
 }
@@ -386,6 +438,7 @@ export function flowView(runs, now = Date.now(), subjects = new Map()) {
   return {
     live: run.status !== 'completed',
     sha: short(run.sha),
+    version: ver(run.sha),
     // displayTitle do GitHub vem truncado; o assunto do commit local vem inteiro.
     title: subjects.get(run.sha) ?? run.title,
     url: run.url,
@@ -419,7 +472,7 @@ function prdCard(snapshot, delivery, now) {
 
   const behind = delivery.mainSha && p.releaseSha && p.releaseSha !== delivery.mainSha;
   const facts = [
-    ['Versão no ar', p.releaseSha ? `${short(p.releaseSha)}${behind ? ' (há uma mais nova)' : ' (a mais recente)'}` : '—'],
+    ['Versão no ar', p.releaseSha ? `${verFull(p.releaseSha)}${behind ? `, há uma mais nova (${ver(delivery.mainSha)})` : ', a mais recente'}` : '—'],
     ['Tempo de resposta', p.healthOk ? `${p.latencyMs} ms` : 'sem resposta'],
   ];
   if (vps) {
@@ -439,7 +492,7 @@ function prdCard(snapshot, delivery, now) {
     title,
     subtitle: 'O site que os clientes usam (tap.quivercloud.com.br), no servidor da Hostinger.',
     facts,
-    deploys: (vps?.deploys ?? []).slice(-5).reverse(),
+    deploys: (vps?.deploys ?? []).slice(-5).reverse().map((dep) => ({ ...dep, version: ver(dep.sha), short: short(dep.sha) })),
     actions: [{ name: 'deploy.dispatch', label: 'Voltar para uma versão anterior…', confirm: 'rollback' }],
     url: p.url,
     now,
@@ -504,7 +557,7 @@ function decide(delivery, cards) {
       if (failedRun) {
         say(
           'bad',
-          `A publicação da versão ${short(d.mainSha)} falhou`,
+          `A publicação da versão ${ver(d.mainSha)} falhou`,
           'Quando algo dá errado, a esteira volta sozinha para a versão anterior, então os clientes não devem ter sido afetados. Abra o detalhe para ver o erro e chame quem desenvolve.',
         );
         next ??= { label: 'Ver o que deu errado', href: failedRun.url };
@@ -538,7 +591,7 @@ function decide(delivery, cards) {
       say(
         'warn',
         'Há uma versão mais nova que ainda não foi publicada',
-        `Os clientes estão na versão ${short(d.prdSha)} e a mais nova é ${short(d.mainSha)}. Isso acontece quando uma publicação foi recusada ou cancelada. Para publicar, clique no botão: a esteira testa de novo e pede sua autorização.`,
+        `Os clientes estão na versão ${ver(d.prdSha)} e a mais nova é ${ver(d.mainSha)}. Isso acontece quando uma publicação foi recusada ou cancelada. Para publicar, clique no botão: a esteira testa de novo e pede sua autorização.`,
       );
       next ??= {
         name: 'deploy.dispatch',
@@ -590,7 +643,9 @@ function decide(delivery, cards) {
     say('bad', `Ambiente de testes: ${cards.dev.title.toLowerCase()}`, 'Não afeta os clientes. Tente Reiniciar no cartão Ambiente de testes; se o Docker estiver desligado, abra o Docker Desktop.');
   } else if (cards.dev.behindMain) {
     next ??= {
-      label: 'O ambiente de testes está numa versão diferente da oficial. É normal enquanto alguém testa algo; quem desenvolve atualiza quando precisar.',
+      label: cards.dev.canSync
+        ? `O ambiente de testes está na ${ver(cards.dev.sha)} e a versão oficial é a ${ver(d.mainSha)}. Para testar com a oficial, use "Trazer a versão oficial" no cartão Ambiente de testes.`
+        : 'O ambiente de testes está com uma versão de trabalho, diferente da oficial. É normal enquanto alguém testa algo.',
       info: true,
     };
   }
@@ -615,6 +670,7 @@ function decide(delivery, cards) {
 }
 
 export function deriveState(snapshot, now = Date.now()) {
+  versionNumbers = snapshot.versions ?? {};
   const delivery = deriveDelivery(snapshot, now);
   const cards = {
     git: gitCard(snapshot, delivery),
@@ -636,11 +692,13 @@ export function deriveState(snapshot, now = Date.now()) {
       state: delivery.state,
       mainSha: delivery.mainSha,
       prdSha: delivery.prdSha,
+      mainVersion: ver(delivery.mainSha),
+      prdVersion: ver(delivery.prdSha),
       steps: delivery.steps,
       activeHint: delivery.activeHint,
       runUrl: delivery.run?.url ?? null,
     },
     cards,
-    recentMain: recentMain.map((c) => ({ ...c, short: short(c.sha), isPrd: c.sha === delivery.prdSha })),
+    recentMain: recentMain.map((c) => ({ ...c, short: short(c.sha), version: ver(c.sha), isPrd: c.sha === delivery.prdSha })),
   };
 }
