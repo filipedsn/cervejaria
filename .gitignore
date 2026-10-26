@@ -7,6 +7,9 @@ build/
 .env.production
 deploy/observability/.env.connectors
 deploy/observability/.env.observability
+deploy/observability/.env.observability.prd
+deploy/tap-quiver/.env.alert-poller
+deploy/tap-quiver/.env.staging
 *.log
 .DS_Store
 Thumbs.db
