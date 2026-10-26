@@ -42,10 +42,9 @@ Lista fechada em `src/actions.mjs`; o servidor revalida os parâmetros e executa
 | Aprovar / Rejeitar deploy | modal com o que muda em produção | `pending_deployments` do run que aguarda o environment `production` |
 | Publicar / rollback | escolhe um commit da main e vê o que entra ou sai | `gh workflow run deploy-vps.yml` (com `sha` quando não é o HEAD); o run para aguardando aprovação |
 
-O DEV roda de uma pasta própria, um `git worktree` em `../<repo>-dev` (ou `TAP_DEV_CODE_ROOT`), criada na primeira troca.
-Assim, trocar de branch na pasta de trabalho não muda o DEV. `.env.development`, uploads, logs e `deploy/runtime` continuam na pasta principal.
+O DEV roda da pasta do projeto; não existe outra pasta. Testar PR e Igualar ao site põem a pasta em `detached HEAD` naquela versão.
+Trazer a versão oficial volta para a `main` atualizada. As três exigem a pasta sem alterações em arquivos versionados.
 A troca grava `deploy/runtime/dev-code.json` com a versão e o motivo (`main`, `prd` ou `pr`), que o cartão mostra.
-Sem a pasta própria, o DEV roda da pasta principal como antes.
 
 O painel não faz deploy sozinho: todo caminho até produção passa pela esteira e por uma aprovação humana.
 Migration destrutiva continua bloqueada pela esteira (`allow_destructive` só pelo GitHub).

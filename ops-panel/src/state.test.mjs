@@ -309,27 +309,41 @@ test('oficial mais nova que o site: oferece igualar ao site e trazer a oficial',
   assert.ok(!onMain.actions.some((a) => a.name === 'dev.sync'));
 });
 
-test('trocar a versão do DEV não depende da pasta de trabalho de quem desenvolve', () => {
-  const dev = (git) => deriveState(withVersions(snap({ git, dev: { releaseSha: OLD, ownFolder: true } })), NOW).cards.dev;
-  for (const git of [{ branch: 'feat/x' }, { trackedDirty: 2, dirtyCount: 2 }]) {
-    assert.equal(dev(git).canMatchPrd, true);
-    assert.ok(dev(git).actions.some((a) => a.name === 'dev.matchPrd'));
-    assert.ok(!dev(git).facts.some(([k]) => k === 'Código em teste'), 'pasta própria: a branch da pasta de trabalho não é o DEV');
-  }
-  const legacy = deriveState(snap({ git: { branch: 'feat/x' } }), NOW).cards.dev;
-  assert.equal(Object.fromEntries(legacy.facts)['Código em teste'], 'pasta de trabalho feat/x');
+test('trocar a versão do DEV troca a pasta do projeto: só sem alterações não salvas', () => {
+  const dev = (git) => deriveState(withVersions(snap({ git, dev: { releaseSha: OLD } })), NOW).cards.dev;
+  const branch = dev({ branch: 'feat/x' });
+  assert.equal(branch.canMatchPrd, true, 'branch limpa pode trocar');
+  assert.equal(Object.fromEntries(branch.facts)['Código em teste'], 'pasta de trabalho feat/x');
+  assert.equal(dev({ dirtyCount: 3 }).canMatchPrd, true, 'arquivos novos não versionados não bloqueiam');
+  const dirty = dev({ branch: 'feat/x', trackedDirty: 2, dirtyCount: 2 });
+  assert.equal(dirty.canMatchPrd, false);
+  assert.ok(!dirty.actions.some((a) => a.name === 'dev.matchPrd' || a.name === 'dev.sync'));
+  assert.match(Object.fromEntries(dirty.facts)['Igualar ao site'], /salve \(commit\)/);
+  const s = deriveState(withVersions(snap({ git: { branch: 'feat/x', ahead: 1 }, dev: { releaseSha: OLD } })), NOW);
+  assert.match(s.next.label, /pasta de trabalho feat\/x.*normal/);
 });
 
-test('PR em teste no DEV: cartão mostra o PR e o topo explica como voltar', () => {
+test('PR em teste no DEV: pasta fixada no PR, cartão mostra o PR e o topo explica como voltar', () => {
   const head = 'c'.repeat(40);
   const code = { sha: head, kind: 'pr', pr: 141, at: '2026-10-26T17:00:00Z' };
-  const s = deriveState(snap({ dev: { releaseSha: head, ownFolder: true, code } }), NOW);
+  const git = { branch: 'HEAD', headSha: head, ahead: 1 };
+  const s = deriveState(snap({ git, dev: { releaseSha: head, code } }), NOW);
   assert.equal(s.cards.dev.title, 'Ligado · PR #141');
   assert.equal(Object.fromEntries(s.cards.dev.facts)['Código em teste'], 'PR #141, ainda não aceito');
   assert.equal(s.cards.dev.actions[0].name, 'dev.matchPrd');
   assert.match(s.next.label, /PR #141.*Igualar ao site/);
-  const stale = deriveState(snap({ dev: { releaseSha: MAIN, ownFolder: true, code } }), NOW).cards.dev;
+  assert.match(Object.fromEntries(s.cards.git.facts)['Pasta de trabalho (branch)'], /^versão fixa cccc/);
+  assert.notEqual(s.cards.git.state, 'sem_pr', 'pasta fixada não é trabalho sem PR');
+  const stale = deriveState(snap({ dev: { releaseSha: MAIN, code } }), NOW).cards.dev;
   assert.equal(stale.testingPr, null, 'marcador de outra versão é ignorado');
+});
+
+test('pasta fixada na versão de um PR aberto acha o PR pela versão', () => {
+  const head = 'c'.repeat(40);
+  const open = pr({ number: 141, branch: 'feat/y', headSha: head, touchesApp: true });
+  const s = deriveState(snap({ git: { branch: 'HEAD', headSha: head, ahead: 1 }, prs: [open], dev: { releaseSha: head } }), NOW);
+  assert.equal(s.delivery.state, 'pr');
+  assert.equal(s.next.name, 'pr.merge', 'já está no ambiente de testes: a próxima é aceitar');
 });
 
 test('PR pronto que mexe no sistema: testar no DEV antes de aceitar', () => {
@@ -349,6 +363,10 @@ test('PR pronto que mexe no sistema: testar no DEV antes de aceitar', () => {
   assert.match(tested.verdict.text, /está no ambiente de testes/);
   assert.equal(tested.cards.git.prs[0].inDev, true);
   assert.equal(tested.cards.git.prs[0].testAction, null);
+
+  const dirty = deriveState(snap({ git: { branch: 'feat/x', ahead: 1, trackedDirty: 1, dirtyCount: 1 }, prs: [ready] }), NOW);
+  assert.equal(dirty.next.name, 'pr.merge', 'com alterações não salvas a pasta não pode trocar de versão');
+  assert.equal(dirty.cards.git.prs[0].testAction, null);
 });
 
 test('PR que não mexe no sistema (painel, docs) vai direto para Aceitar', () => {

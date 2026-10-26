@@ -135,7 +135,11 @@ export function deriveDelivery(snapshot, now = Date.now()) {
   const prdSha = prd?.releaseSha ?? null;
   const runs = gh?.runs ?? [];
   const prs = gh?.prs ?? [];
-  const branchPr = git && git.branch !== 'main' ? prs.find((p) => p.branch === git.branch) : null;
+  // Pasta fixada numa versão (Testar o PR): o PR é o que tem essa versão como a mais recente.
+  const branchPr =
+    git && git.branch !== 'main'
+      ? prs.find((p) => (git.branch === 'HEAD' ? p.headSha === git.headSha : p.branch === git.branch)) ?? null
+      : null;
 
   let state;
   let run = null;
@@ -185,7 +189,9 @@ export function deriveDelivery(snapshot, now = Date.now()) {
         ? plural(git.dirtyCount, 'arquivo alterado', 'arquivos alterados')
         : git.branch === 'main'
           ? 'nada em andamento'
-          : `pasta ${git.branch}`
+          : git.branch === 'HEAD'
+            ? `pasta na versão fixa ${ver(git.headSha)}`
+            : `pasta ${git.branch}`
       : '—',
     pr: branchPr ? `PR #${branchPr.number}, ${ciLabel(branchPr.ci)}` : prs.length ? `${prs.length} PR(s) aberto(s)` : 'nenhum PR',
     main: mainSha ? `versão ${ver(mainSha)}` : '—',
@@ -238,7 +244,7 @@ function gitCard(snapshot, delivery) {
   // Nada aqui é tarefa do usuário: trabalho de quem desenvolve é azul; cópia atrasada é só informação.
   if (g.dirtyCount > 0) {
     [state, level, title] = ['alteracoes', 'run', `Trabalho em andamento neste PC (${plural(g.dirtyCount, 'arquivo', 'arquivos')})`];
-  } else if (g.branch !== 'main' && g.ahead > 0 && !delivery.branchPr) {
+  } else if (g.branch !== 'main' && g.branch !== 'HEAD' && g.ahead > 0 && !delivery.branchPr) {
     [state, level, title] = ['sem_pr', 'run', 'Mudanças ainda sem pedido de revisão (PR)'];
   } else if (g.branch === 'main' && g.behind > 0) {
     [state, level, title] = ['atras', 'off', `Cópia deste PC ${plural(g.behind, 'versão', 'versões')} atrás`];
@@ -249,7 +255,7 @@ function gitCard(snapshot, delivery) {
     title,
     subtitle: 'Onde o código fica guardado (GitHub) e os pedidos de mudança (PRs) esperando para entrar na versão oficial.',
     facts: [
-      ['Pasta de trabalho (branch)', g.branch],
+      ['Pasta de trabalho (branch)', g.branch === 'HEAD' ? `versão fixa ${verFull(g.headSha)}, para o ambiente de testes` : g.branch],
       ['Diferença para a oficial', `${g.ahead} à frente, ${g.behind} atrás`],
       ['Versão oficial (main)', verFull(g.mainSha)],
     ],
@@ -259,7 +265,7 @@ function gitCard(snapshot, delivery) {
       behind: pr.mergeState === 'BEHIND',
       action: prAction(pr),
       inDev: Boolean(devSha && pr.headSha === devSha),
-      testAction: prNeedsDevTest(pr, devSha)
+      testAction: g.trackedDirty === 0 && prNeedsDevTest(pr, devSha)
         ? { name: 'dev.testPr', label: 'Testar', params: { number: pr.number }, confirm: 'test-pr' }
         : null,
     })),
@@ -300,12 +306,16 @@ function devCard(snapshot, delivery) {
   ];
   if (!d.dockerOk) facts.unshift(['Docker', d.dockerError || 'desligado']);
 
-  // A troca de versão acontece na pasta própria do DEV: a pasta de trabalho de quem desenvolve não importa.
+  // O DEV roda da pasta do projeto: trocar a versão troca a pasta, que precisa estar sem alterações não salvas.
   const git = snapshot.git?.ok ? snapshot.git.data : null;
-  const canMatchPrd = Boolean(delivery.prdSha && d.releaseSha !== delivery.prdSha);
-  const canSync = Boolean(delivery.mainSha && d.releaseSha !== delivery.mainSha);
+  const canSwitch = Boolean(git && git.trackedDirty === 0);
+  const wantsPrd = Boolean(delivery.prdSha && d.releaseSha !== delivery.prdSha);
+  const canMatchPrd = canSwitch && wantsPrd;
+  const canSync = Boolean(canSwitch && delivery.mainSha && d.releaseSha !== delivery.mainSha);
   if (testingPr) facts.push(['Código em teste', `PR #${testingPr}, ainda não aceito`]);
-  else if (!d.ownFolder && git && git.branch !== 'main') facts.push(['Código em teste', `pasta de trabalho ${git.branch}`]);
+  else if (git && git.branch === 'HEAD') facts.push(['Código em teste', 'pasta do projeto numa versão fixa']);
+  else if (git && git.branch !== 'main') facts.push(['Código em teste', `pasta de trabalho ${git.branch}`]);
+  if (wantsPrd && !canSwitch) facts.push(['Igualar ao site', 'salve (commit) as alterações da pasta do projeto antes']);
 
   const actions =
     state === 'parado'
@@ -335,6 +345,8 @@ function devCard(snapshot, delivery) {
     sha: d.releaseSha,
     behindMain,
     testingPr,
+    workBranch: git && git.branch !== 'main' && git.branch !== 'HEAD' ? git.branch : null,
+    canSwitch,
     canSync,
     canMatchPrd,
     facts,
@@ -591,12 +603,12 @@ function hoursAgo(seconds) {
   return h < 1 ? `há ${Math.max(1, Math.round(seconds / 60))} min` : `há ${h.toFixed(1).replace('.', ',')} h`;
 }
 
-function prAdvice(pr, devSha) {
-  if (prNeedsDevTest(pr, devSha)) {
+function prAdvice(pr, devSha, canSwitch) {
+  if (canSwitch && prNeedsDevTest(pr, devSha)) {
     return {
       level: 'warn',
       text: `O PR #${pr.number} passou nos testes: confira no ambiente de testes antes de aceitar`,
-      help: 'Testar coloca exatamente esta mudança no ambiente de testes deste PC (1 a 3 minutos, com ele fora do ar nesse tempo). O site dos clientes não muda. Se não precisar testar, o botão Aceitar continua no cartão Código.',
+      help: 'Testar coloca a pasta do projeto exatamente nesta mudança e reinicia o ambiente de testes deste PC (1 a 3 minutos fora do ar). O site dos clientes não muda. Se não precisar testar, o botão Aceitar continua no cartão Código.',
       next: {
         name: 'dev.testPr',
         label: `Testar o PR #${pr.number} no ambiente de testes`,
@@ -710,7 +722,7 @@ function decide(delivery, cards) {
     case 'pr': {
       const pr = d.branchPr;
       if (isMergeReady(pr) || needsUpdate(pr)) {
-        const advice = prAdvice(pr, cards.dev.sha);
+        const advice = prAdvice(pr, cards.dev.sha, cards.dev.canSwitch);
         say(advice.level, advice.text, advice.help);
         next ??= advice.next;
       } else if (prWarmingUp(pr)) {
@@ -736,7 +748,7 @@ function decide(delivery, cards) {
   // PR pronto que não é o deste PC (ex.: só documentação): também é a vez do usuário.
   const otherPr = (cards.git.prs ?? []).find((p) => p.action && p.number !== d.branchPr?.number);
   if (!next && otherPr && (d.state === 'em_dia' || d.state === 'local')) {
-    const advice = prAdvice(otherPr, cards.dev.sha);
+    const advice = prAdvice(otherPr, cards.dev.sha, cards.dev.canSwitch);
     say(advice.level, advice.text, advice.help);
     next = advice.next;
   }
@@ -754,7 +766,9 @@ function decide(delivery, cards) {
   } else if (cards.dev.behindMain) {
     const button = d.mainSha === d.prdSha ? 'Igualar ao site' : 'Trazer a versão oficial';
     next ??= {
-      label: `O ambiente de testes está na ${ver(cards.dev.sha)} e a versão oficial é a ${ver(d.mainSha)}. Para testar com a oficial, use "${button}" no cartão Ambiente de testes.`,
+      label: cards.dev.workBranch
+        ? `O ambiente de testes está com a pasta de trabalho ${cards.dev.workBranch}, diferente da oficial. É normal enquanto alguém desenvolve.`
+        : `O ambiente de testes está na ${ver(cards.dev.sha)} e a versão oficial é a ${ver(d.mainSha)}. Para testar com a oficial, use "${button}" no cartão Ambiente de testes.`,
       info: true,
     };
   }

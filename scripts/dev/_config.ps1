@@ -22,25 +22,10 @@ function Get-DevPaths {
     $npmCmd = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
   }
 
-  # O DEV roda de uma pasta propria (git worktree) para que trocar de branch na
-  # pasta de trabalho nao mude o ambiente de testes. Sem ela, roda da pasta principal.
-  # Configuracao (.env), uploads, dados, logs e runtime continuam na pasta principal.
-  $devCodeRoot = $env:TAP_DEV_CODE_ROOT
-  if (-not $devCodeRoot) {
-    $devCodeRoot = Join-Path (Split-Path -Parent $projectRoot) ((Split-Path -Leaf $projectRoot) + '-dev')
-  }
-  $codeRoot = $projectRoot
-  if (Test-Path -LiteralPath (Join-Path $devCodeRoot 'backend\package.json') -PathType Leaf) { $codeRoot = $devCodeRoot }
-
   @{
     ProjectRoot      = $projectRoot
     BackendDir       = Join-Path $projectRoot 'backend'
     FrontendDir      = Join-Path $projectRoot 'frontend'
-    DevCodeRoot      = $devCodeRoot
-    CodeRoot         = $codeRoot
-    CodeBackendDir   = Join-Path $codeRoot 'backend'
-    CodeFrontendDir  = Join-Path $codeRoot 'frontend'
-    DevCodeFile      = Join-Path $runtimeDir 'dev-code.json'
     RuntimeDir       = $runtimeDir
     LogDir           = $logDir
     BackendPidFile   = Join-Path $runtimeDir 'dev-backend.pid'
@@ -55,15 +40,6 @@ function Get-DevPaths {
     NpmCmd           = $npmCmd
     BackendPort      = $script:DevBackendPort
     FrontendPort     = $script:DevFrontendPort
-  }
-}
-
-function Copy-DevEnvToCode {
-  param([hashtable]$Paths)
-  if ($Paths.CodeBackendDir -eq $Paths.BackendDir) { return }
-  $source = Join-Path $Paths.BackendDir '.env.development'
-  if (Test-Path -LiteralPath $source -PathType Leaf) {
-    Copy-Item -LiteralPath $source -Destination (Join-Path $Paths.CodeBackendDir '.env.development') -Force
   }
 }
 

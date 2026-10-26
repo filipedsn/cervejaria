@@ -58,7 +58,7 @@ async function devStart() {
   return 'Ambiente de testes ligando; fica pronto em cerca de 30 segundos.';
 }
 
-// A primeira troca cria a pasta própria do DEV e instala as dependências: pode levar minutos.
+// Quando o lockfile muda, a troca reinstala as dependências: pode levar minutos.
 const SWITCH_TIMEOUT_MS = 900_000;
 
 async function devSync() {

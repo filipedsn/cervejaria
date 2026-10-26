@@ -20,7 +20,7 @@ const SIMPLE_CONFIRM = {
   },
   'dev.sync': {
     title: 'Trazer a versão oficial para o ambiente de testes?',
-    body: 'O ambiente de testes deste PC recebe a versão oficial mais recente: o código é trocado na pasta própria dele, as mudanças no banco de testes são aplicadas e ele reinicia (1 a 3 minutos; na primeira vez, até 10). A pasta de trabalho de quem desenvolve e o site dos clientes não mudam.',
+    body: 'A pasta do projeto volta para a versão oficial mais recente (main), as mudanças no banco de testes são aplicadas e o ambiente de testes reinicia (1 a 3 minutos). O site dos clientes não é afetado.',
   },
   'pr.update': {
     title: 'Atualizar o PR?',
@@ -570,7 +570,7 @@ async function handle(action, button) {
          <p class="note warn">A cópia tem dados reais de clientes; e-mail e notificações ficam desligados nela. O banco de testes atual é guardado antes.</p>
          <label class="typed">Para copiar o banco, digite <strong>${COPY_WORD}</strong> <input id="match-word" autocomplete="off" spellcheck="false" /></label>
        </div>
-       <p class="note">O ambiente de testes fica fora do ar de 1 a 3 minutos (na primeira vez, até 10). A pasta de trabalho de quem desenvolve e o site dos clientes não mudam.</p>`,
+       <p class="note">A pasta do projeto passa para essa versão e o ambiente de testes fica fora do ar de 1 a 3 minutos. Só funciona sem alterações não salvas na pasta. O site dos clientes não muda.</p>`,
       'Igualar ao site',
       () => runAction(action, { withDb: false }),
     );
@@ -603,7 +603,7 @@ async function handle(action, button) {
          ${db}
          <h3>O que acontece ao confirmar</h3>
          <ol class="plain">
-           <li>O ambiente de testes deste PC recebe exatamente esta mudança e reinicia (1 a 3 minutos fora do ar).</li>
+           <li>A pasta do projeto passa exatamente para esta mudança e o ambiente de testes reinicia (1 a 3 minutos fora do ar).</li>
            <li>Você confere em <strong>http://localhost:5202</strong>.</li>
            <li>Se estiver tudo certo, aceite o PR. <strong>Testar não aceita o PR nem muda nada para os clientes.</strong></li>
          </ol>`,

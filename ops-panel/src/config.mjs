@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PANEL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,8 +29,6 @@ export const config = {
   devApiUrl: 'http://127.0.0.1:3002',
   devWebUrl: 'http://127.0.0.1:5202',
   devContainers: ['cervejaria-db-dev', 'elasticsearch'],
-  // Pasta própria do ambiente de testes (git worktree); mesma regra de scripts/dev/_config.ps1.
-  devCodeRoot: env('TAP_DEV_CODE_ROOT', join(dirname(ROOT), `${basename(ROOT)}-dev`)),
   // Alias do ~/.ssh/config com a chave só leitura do painel (ops-report.sh). Vazio = só dados públicos.
   vpsSshHost: env('OPS_VPS_SSH_HOST', ''),
   // Alias da chave restrita a baixar/apagar backups (backup-files.sh). Vazio = só a lista.

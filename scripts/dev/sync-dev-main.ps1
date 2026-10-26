@@ -1,6 +1,7 @@
-﻿# Traz a versao oficial (origin/main) para o ambiente de testes (DEV), na pasta
-# propria do DEV (switch-dev-code.ps1). A pasta de trabalho de quem desenvolve
-# nao muda: pode estar em qualquer branch e com alteracoes.
+﻿# Traz a versao oficial (origin/main) para o ambiente de testes (DEV): a pasta
+# do projeto volta para a main atualizada (switch-dev-code.ps1 -Kind main).
+# So roda sem alteracoes em arquivos versionados; arquivos novos nao versionados
+# ficam intocados.
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
