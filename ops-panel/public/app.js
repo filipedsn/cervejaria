@@ -131,7 +131,7 @@ function runList(runs) {
 }
 
 function deployList(card) {
-  const rows = card.deploys?.length
+  return card.deploys?.length
     ? `<h3>Últimas publicações</h3><ul class="rows">${card.deploys
         .map(
           (d) => `<li><span>${versionTag(d.version, String(d.sha).slice(0, 7))} ${esc(when(d.at))}</span>
@@ -139,7 +139,6 @@ function deployList(card) {
         )
         .join('')}</ul>`
     : '';
-  return `${rows}<p class="links"><a href="${esc(card.url)}" target="_blank" rel="noopener">Abrir o site dos clientes</a></p>`;
 }
 
 /* ---------- infraestrutura do servidor (cartão Site dos clientes) ---------- */
