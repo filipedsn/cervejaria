@@ -40,6 +40,16 @@ async function devSync() {
   return 'Ambiente de testes atualizado com a versão oficial; fica pronto em cerca de 30 segundos.';
 }
 
+export const COPY_PRD_WORD = 'COPIAR';
+
+async function devCopyPrd(params) {
+  if (params.confirm !== COPY_PRD_WORD) throw new ActionError(`Para confirmar, digite ${COPY_PRD_WORD}.`);
+  const result = await must(powershellFile('copy-prd-to-dev.ps1', [], 900_000), 'Copiar o banco do site');
+  const m = result.stdout.match(/PRD_COPY_OK tables=(\d+) rows=(\d+)/);
+  const detail = m ? ` (${m[1]} tabelas, ${Number(m[2]).toLocaleString('pt-BR')} linhas)` : '';
+  return `Banco do site copiado para o ambiente de testes${detail}. Na cópia, e-mail e notificações ficam desligados. Pronto em cerca de 30 segundos.`;
+}
+
 async function devStop() {
   await must(powershellFile('stop-dev.ps1'), 'Desligar o ambiente de testes');
   return 'Ambiente de testes desligado.';
@@ -62,6 +72,7 @@ export const ACTIONS = {
   'dev.start': { label: 'Ligar o ambiente de testes', run: devStart },
   'dev.stop': { label: 'Desligar o ambiente de testes', run: devStop },
   'dev.sync': { label: 'Trazer a versão oficial para o ambiente de testes', run: devSync },
+  'dev.copyPrd': { label: 'Copiar o banco do site para o ambiente de testes', run: devCopyPrd },
   'dev.restart': {
     label: 'Reiniciar o ambiente de testes',
     run: async () => {

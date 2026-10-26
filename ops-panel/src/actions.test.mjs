@@ -10,7 +10,7 @@ const { ACTIONS, ActionError, executeAction, readAudit } = await import('./actio
 
 test('lista fechada de ações', () => {
   assert.deepEqual(Object.keys(ACTIONS).sort(), [
-    'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'pr.merge', 'pr.update',
+    'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.copyPrd', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'pr.merge', 'pr.update',
   ]);
 });
 
@@ -22,6 +22,8 @@ test('parâmetros inválidos são recusados antes de qualquer comando', async ()
   await assert.rejects(executeAction('pr.merge', { number: 'abc' }), /PR inválido/);
   await assert.rejects(executeAction('pr.update', { number: '1; whoami' }), /PR inválido/);
   await assert.rejects(executeAction('deploy.approve', { runId: -1 }), /runId inválido/);
+  await assert.rejects(executeAction('dev.copyPrd', {}), /digite COPIAR/);
+  await assert.rejects(executeAction('dev.copyPrd', { confirm: 'copiar' }), /digite COPIAR/);
   await assert.rejects(executeAction('deploy.dispatch', { sha: 'main; rm -rf /' }), /Versão inválida/);
 });
 

@@ -15,6 +15,18 @@ function pidFileAlive(file) {
   }
 }
 
+/** Gravado por scripts/dev/copy-prd-to-dev.ps1 quando o banco do site é copiado para o DEV. */
+const PRD_COPY_FILE = join(process.env.LOCALAPPDATA ?? '', 'QuiverTap', 'dev-backups', 'last-prd-copy.json');
+
+function lastPrdCopy() {
+  try {
+    const data = JSON.parse(readFileSync(PRD_COPY_FILE, 'utf8').replace(/^\uFEFF/, ''));
+    return typeof data?.at === 'string' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function collectDev() {
   const [docker, ready, health, web] = await Promise.all([
     run('docker', ['ps', '--format', '{{.Names}}|{{.Status}}'], { timeoutMs: 8_000 }),
@@ -47,5 +59,6 @@ export async function collectDev() {
     webOk: web.ok,
     releaseSha: parseReleaseSha(health.body),
     supervisorAlive: pidFileAlive(join(config.runtimeDir, 'dev-supervisor.pid')),
+    prdCopy: lastPrdCopy(),
   };
 }
