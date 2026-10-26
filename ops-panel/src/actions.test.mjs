@@ -20,7 +20,7 @@ test('PowerShell: UTF-8 antes do script, aspas escapadas e código de saída pro
 
 test('lista fechada de ações', () => {
   assert.deepEqual(Object.keys(ACTIONS).sort(), [
-    'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.copyPrd', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'pr.merge', 'pr.update',
+    'backup.delete', 'backup.download', 'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.copyPrd', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'pr.merge', 'pr.update',
   ]);
 });
 
@@ -34,6 +34,10 @@ test('parâmetros inválidos são recusados antes de qualquer comando', async ()
   await assert.rejects(executeAction('deploy.approve', { runId: -1 }), /runId inválido/);
   await assert.rejects(executeAction('dev.copyPrd', {}), /digite COPIAR/);
   await assert.rejects(executeAction('dev.copyPrd', { confirm: 'copiar' }), /digite COPIAR/);
+  for (const name of ['../etc/passwd', 'backup-prod-1.dump; rm -rf /', 'backup prod.dump', '.dump', 'backup-prod-1.dump.sha256', '']) {
+    await assert.rejects(executeAction('backup.download', { name }), /Nome de backup inválido/);
+    await assert.rejects(executeAction('backup.delete', { name, confirm: name }), /Nome de backup inválido/);
+  }
   await assert.rejects(executeAction('deploy.dispatch', { sha: 'main; rm -rf /' }), /Versão inválida/);
 });
 

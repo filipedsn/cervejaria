@@ -81,12 +81,19 @@ fi
 backup_dir="$(env_value "$BACKUP_ENV" BACKUP_DIR)"
 prefix="$(env_value "$BACKUP_ENV" PREFIX)"
 backup_name="" backup_mtime="" backup_size=""
+backups=""
 if [[ -n "$backup_dir" && -d "$backup_dir" ]]; then
-  latest="$(find "$backup_dir" -maxdepth 1 -type f \( -name "${prefix:-backup-prod}-*.dump" -o -name "${prefix:-backup-prod}-*.sql" \) -printf '%T@ %s %f\n' 2>/dev/null | sort -rn | head -n1)"
-  if [[ -n "$latest" ]]; then
-    read -r backup_mtime backup_size backup_name <<<"$latest"
-    backup_mtime="${backup_mtime%.*}"
-  fi
+  # Mais recente primeiro; o .sha256 é gravado pelo backup-postgres.sh só quando o dump termina.
+  while read -r b_mtime b_size b_name; do
+    [[ -n "$b_name" ]] || continue
+    b_mtime="${b_mtime%.*}"
+    if [[ -z "$backup_name" ]]; then
+      backup_mtime="$b_mtime" backup_size="$b_size" backup_name="$b_name"
+    fi
+    b_sha="$(head -c 64 "$backup_dir/$b_name.sha256" 2>/dev/null || true)"
+    [[ "$b_sha" =~ ^[0-9a-f]{64}$ ]] || b_sha=""
+    backups+="${backups:+,}{\"name\":$(str "$b_name"),\"mtime\":$(num "$b_mtime"),\"size\":$(num "$b_size"),\"sha256\":$(opt_str "$b_sha")}"
+  done < <(find "$backup_dir" -maxdepth 1 -type f \( -name "${prefix:-backup-prod}-*.dump" -o -name "${prefix:-backup-prod}-*.sql" \) -printf '%T@ %s %f\n' 2>/dev/null | sort -rn)
 fi
 
 deploys=""
@@ -97,7 +104,7 @@ if [[ -r "$HISTORY_FILE" ]]; then
     result="$(sed -n 's/.*\bresult=\([a-z_-]*\).*/\1/p' <<<"$rest")"
     [[ -n "$sha" ]] || continue
     deploys+="${deploys:+,}{\"at\":$(str "$at"),\"sha\":$(str "$sha"),\"migrations\":$(num "$migrations"),\"result\":$(str "$result")}"
-  done < <(tail -n 10 "$HISTORY_FILE")
+  done < <(tail -n 40 "$HISTORY_FILE")
 fi
 
 printf '{"now":%s,"release_sha":%s,' "$now" "$(opt_str "$release_sha")"
@@ -114,4 +121,5 @@ if [[ -n "$backup_name" ]]; then
 else
   printf '"backup":null,'
 fi
+printf '"backups":[%s],' "$backups"
 printf '"deploys":[%s]}\n' "$deploys"

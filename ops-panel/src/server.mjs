@@ -11,7 +11,7 @@ import { config, PANEL_DIR } from './config.mjs';
 import { infraView } from './infra.mjs';
 import { isAllowedAction, isTrustedLocalOperator } from './local-auth.mjs';
 import { collectSnapshot } from './snapshot.mjs';
-import { deriveState } from './state.mjs';
+import { deriveState, ver } from './state.mjs';
 
 const SHA_RE = /^[0-9a-f]{40}$/;
 const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`]);
@@ -56,7 +56,7 @@ const INFRA_REFRESH_MS = 30_000;
 app.get('/api/infra', async (_request, reply) => {
   const vps = await vpsReport(INFRA_REFRESH_MS - 2_000);
   if (!vps?.ok) return reply.code(503).send({ error: vps?.error ?? 'leitura do servidor não configurada' });
-  return { infra: infraView(vps.data, vpsHistory()) };
+  return { infra: infraView(vps.data, vpsHistory(), Date.now(), { version: ver, manage: Boolean(config.backupSshHost) }) };
 });
 
 app.get('/api/preview/deploy', async (request, reply) => {

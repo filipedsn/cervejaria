@@ -124,7 +124,68 @@ export function pushSample(history, sample) {
 
 const series = (history, key) => history.map((s) => s[key]).filter((v) => Number.isFinite(v));
 
-export function infraView(report, history = [], nowMs = Date.now()) {
+/** Mesmas travas do deploy/tap-quiver/backup-files.sh; o servidor confere de novo. */
+export const BACKUP_MIN_KEEP = 3;
+export const BACKUP_NAME_RE = /^[A-Za-z0-9_-]+\.(dump|sql)$/;
+const DEPLOY_AFTER_BACKUP_S = 20 * 60;
+
+/** "backup-prod-20261025-220001.dump" → minuto e segundo do nome (hora do servidor). */
+const nameClock = (name) => name.match(/-\d{8}-\d{2}(\d{2})(\d{2})\.\w+$/);
+
+function backupKind(b, deploys, version) {
+  const deploy = deploys.find((d) => {
+    const at = Date.parse(d.at ?? '') / 1000;
+    return Number.isFinite(at) && at >= b.mtime && at - b.mtime <= DEPLOY_AFTER_BACKUP_S;
+  });
+  if (deploy) return { kind: 'deploy', kindText: `antes de publicar ${version(deploy.sha)}` };
+  const clock = nameClock(b.name);
+  if (clock && clock[1] === '00') return { kind: 'daily', kindText: 'diário automático' };
+  return { kind: 'other', kindText: 'avulso' };
+}
+
+/**
+ * Pasta de backups do Postgres no VPS: mais recente primeiro, com o que o painel
+ * pode fazer em cada arquivo. `version(sha)` → "V860"; `manage` = PC com a chave de
+ * baixar/apagar configurada.
+ */
+export function backupsView(report, { version = (sha) => String(sha ?? '').slice(0, 7), manage = false } = {}) {
+  const list = Array.isArray(report?.backups) ? report.backups : null;
+  if (!list) return null;
+  const deploys = report.deploys ?? [];
+  const items = list
+    .filter((b) => b?.name && Number.isFinite(b.mtime))
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((b, i, all) => {
+      const valid = BACKUP_NAME_RE.test(b.name);
+      const deleteBlock =
+        i === 0 ? 'o mais recente não pode ser apagado' : all.length <= BACKUP_MIN_KEEP ? `mínimo de ${BACKUP_MIN_KEEP} no servidor` : null;
+      return {
+        name: b.name,
+        at: new Date(b.mtime * 1000).toISOString(),
+        size: b.size ?? null,
+        sizeText: formatBytes(b.size),
+        sha256: b.sha256 ?? null,
+        checked: Boolean(b.sha256),
+        newest: i === 0,
+        ...backupKind(b, deploys, version),
+        canDownload: manage && valid,
+        canDelete: manage && valid && !deleteBlock,
+        deleteBlock: valid ? deleteBlock : 'nome fora do padrão',
+      };
+    });
+  const total = items.reduce((sum, b) => sum + (b.size ?? 0), 0);
+  const unchecked = items.filter((b) => !b.checked).length;
+  return {
+    items,
+    manage,
+    summary: items.length
+      ? `${items.length} ${items.length === 1 ? 'arquivo' : 'arquivos'}, ${formatBytes(total)}${unchecked ? ` · ${unchecked} sem conferência` : ''}`
+      : 'nenhum arquivo',
+  };
+}
+
+/** `options` vai para backupsView ({ version, manage }). */
+export function infraView(report, history = [], nowMs = Date.now(), options = {}) {
   const h = report?.host;
   if (!h) return null;
   const nowS = report.now ?? nowMs / 1000;
@@ -184,6 +245,7 @@ export function infraView(report, history = [], nowMs = Date.now()) {
       : troubled.length
         ? `${troubled.length} de ${containers.length} com atenção`
         : `${containers.length}, todos funcionando`,
+    backups: backupsView(report, options),
     issues,
   };
 }

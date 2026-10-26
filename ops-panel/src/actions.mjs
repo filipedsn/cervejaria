@@ -1,10 +1,13 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { deleteBackup, downloadBackup } from './backups.mjs';
 import { config, ROOT } from './config.mjs';
 import { firstLine, run } from './exec.mjs';
 import { isOnMain } from './collectors/git.mjs';
 import { fetchPendingDeployments, fetchPr, reviewDeployment } from './collectors/github.mjs';
-import { isMergeReady, needsUpdate } from './state.mjs';
+import { vpsReport } from './collectors/prd.mjs';
+import { BACKUP_NAME_RE, backupsView } from './infra.mjs';
+import { isMergeReady, needsUpdate, ver } from './state.mjs';
 
 const SHA_RE = /^[0-9a-f]{40}$/;
 
@@ -68,6 +71,36 @@ async function devCopyPrd(params) {
   return `Banco do site copiado para o ambiente de testes${detail}. Na cópia, e-mail e notificações ficam desligados. Pronto em cerca de 30 segundos.`;
 }
 
+/** Backup que está no servidor agora (lista recém-lida), com o sha256 esperado. */
+async function knownBackup(params) {
+  const name = String(params.name ?? '');
+  if (!BACKUP_NAME_RE.test(name)) throw new ActionError('Nome de backup inválido.');
+  if (!config.backupSshHost) throw new ActionError('Baixar e apagar backups não estão configurados neste PC (OPS_BACKUP_SSH_HOST).');
+  const vps = await vpsReport(10_000, true);
+  const view = vps?.ok ? backupsView(vps.data, { version: ver, manage: true }) : null;
+  if (!view) throw new ActionError('Não foi possível ler a lista de backups do servidor agora. Tente de novo em instantes.');
+  const backup = view.items.find((b) => b.name === name);
+  if (!backup) throw new ActionError(`O backup ${name} não está mais no servidor. Clique em Recarregar no topo.`);
+  return backup;
+}
+
+async function backupDownload(params) {
+  const backup = await knownBackup(params);
+  const result = await downloadBackup({ host: config.backupSshHost, dir: config.backupDownloadDir, name: backup.name, sha256: backup.sha256 });
+  if (result.reused) return `O backup ${backup.name} já estava em ${result.path}, idêntico ao do servidor.`;
+  const check = result.verified ? 'conferido com o sha256 do servidor' : 'sem conferência (o servidor não tem o .sha256 desse arquivo)';
+  return `Backup ${backup.name} (${backup.sizeText}) salvo em ${result.path}, ${check}. Ele tem dados reais de clientes: não compartilhe.`;
+}
+
+async function backupDelete(params) {
+  const backup = await knownBackup(params);
+  if (String(params.confirm ?? '').trim() !== backup.name) throw new ActionError('Para confirmar, digite o nome do arquivo exatamente como aparece.');
+  if (!backup.canDelete) throw new ActionError(`Esse backup não pode ser apagado: ${backup.deleteBlock}.`);
+  await deleteBackup({ host: config.backupSshHost, name: backup.name });
+  await vpsReport(0, true);
+  return `Backup ${backup.name} apagado do servidor. A cópia externa (OneDrive) não muda.`;
+}
+
 async function devStop() {
   await must(powershellFile('stop-dev.ps1'), 'Desligar o ambiente de testes');
   return 'Ambiente de testes desligado.';
@@ -121,6 +154,8 @@ export const ACTIONS = {
       return `PR #${number} atualizado. Os testes rodam de novo (1 a 3 minutos); depois aparece o botão para aceitar.`;
     },
   },
+  'backup.download': { label: 'Baixar backup do banco', run: backupDownload },
+  'backup.delete': { label: 'Apagar backup do banco', run: backupDelete },
   'deploy.approve': { label: 'Autorizar publicação', run: (params) => review(params, 'approved') },
   'deploy.reject': { label: 'Recusar publicação', run: (params) => review(params, 'rejected') },
   'deploy.dispatch': {
