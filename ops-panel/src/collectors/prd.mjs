@@ -11,13 +11,13 @@ async function collectVps() {
   return JSON.parse(result.stdout);
 }
 
-export async function collectPrd({ force = false } = {}) {
+export async function collectPrd({ force = false, vpsMaxAgeMs = 60_000 } = {}) {
   const ts = Date.now();
   const [health, ready, vps] = await Promise.all([
     httpProbe(`${config.prdUrl}/api/health?ts=${ts}`, 8_000),
     httpProbe(`${config.prdUrl}/api/ready?ts=${ts}`, 8_000),
     config.vpsSshHost
-      ? cached('vps', 60_000, () => collect(collectVps), force)
+      ? cached('vps', vpsMaxAgeMs, () => collect(collectVps), force)
       : Promise.resolve(null),
   ]);
   let startedAt = null;

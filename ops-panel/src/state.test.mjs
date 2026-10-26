@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { deriveState, isMergeReady } from './state.mjs';
+import { isMoving } from './snapshot.mjs';
+import { deriveState, isMergeReady, needsUpdate } from './state.mjs';
 
 const MAIN = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
@@ -217,6 +218,68 @@ test('isMergeReady exige CI verde, mergeável, não draft e base main', () => {
   assert.equal(isMergeReady(pr({ baseBranch: 'develop' })), false);
   assert.equal(isMergeReady(pr({ ci: 'pending' })), false);
   assert.equal(isMergeReady(pr({ state: 'MERGED' })), false);
+});
+
+test('PR atrasado em relação à main pede Atualizar, não Aceitar', () => {
+  const behind = pr({ mergeState: 'BEHIND' });
+  assert.equal(isMergeReady(behind), false);
+  assert.equal(needsUpdate(behind), true);
+  const s = deriveState(snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [behind] }), NOW);
+  assert.equal(s.cards.git.prs[0].action.name, 'pr.update');
+  assert.equal(s.next.name, 'pr.update');
+  assert.equal(s.verdict.level, 'warn');
+});
+
+test('PR pronto de outra pasta vira a próxima ação quando o site está em dia', () => {
+  const s = deriveState(snap({ prs: [pr({ number: 128, branch: 'docs/y' })] }), NOW);
+  assert.equal(s.delivery.state, 'em_dia');
+  assert.equal(s.next.name, 'pr.merge');
+  assert.deepEqual(s.next.params, { number: 128 });
+  assert.match(s.verdict.text, /#128/);
+});
+
+test('publicação recusada não é falha: versão fica pendente', () => {
+  const runs = [run({ conclusion: 'failure', rejected: true })];
+  const s = deriveState(snap({ runs, prd: { releaseSha: OLD } }), NOW);
+  assert.equal(s.delivery.state, 'atrasada');
+  assert.equal(s.cards.pipeline.state, 'ociosa');
+  assert.equal(s.cards.pipeline.runs[0].label, 'você não autorizou');
+  assert.equal(s.flow.columns[2][0].status, 'skipped');
+});
+
+test('gráfico da esteira: colunas, progresso e duração', () => {
+  const t = (sec) => new Date(NOW - sec * 1000).toISOString();
+  const jobs = [
+    { name: 'resolve-sha', status: 'completed', conclusion: 'success', startedAt: t(100), completedAt: t(95), steps: [] },
+    { name: 'ci / build-and-unit', status: 'in_progress', conclusion: null, startedAt: t(90), completedAt: null,
+      steps: [{ status: 'completed' }, { status: 'completed' }, { status: 'in_progress' }, { status: 'queued' }] },
+    { name: 'docker-build-sha', status: 'completed', conclusion: 'success', startedAt: t(90), completedAt: t(20), steps: [] },
+  ];
+  const s = deriveState(snap({ runs: [run({ status: 'in_progress', conclusion: null, createdAt: t(105), jobs })], prd: { releaseSha: OLD } }), NOW);
+  const [[prep], [tests, build], [deploy]] = s.flow.columns;
+  assert.equal(s.flow.live, true);
+  assert.equal(prep.status, 'done');
+  assert.equal(prep.time, '5s');
+  assert.equal(tests.status, 'running');
+  assert.deepEqual(tests.progress, { done: 2, total: 4 });
+  assert.equal(tests.time, '1m 30s');
+  assert.equal(build.time, '1m 10s');
+  assert.equal(deploy.status, 'todo');
+});
+
+test('gráfico da esteira: run esperando autorização marca a publicação', () => {
+  const s = deriveState(snap({ runs: [run({ status: 'waiting', conclusion: null, jobs: [] })], prd: { releaseSha: OLD } }), NOW);
+  assert.equal(s.flow.columns[2][0].status, 'waiting');
+  assert.equal(s.flow.level, 'warn');
+});
+
+test('isMoving: acelera só quando algo anda sozinho', () => {
+  const base = snap();
+  assert.equal(isMoving(base, NOW), false);
+  assert.equal(isMoving(snap({ runs: [run({ status: 'in_progress', conclusion: null })] }), NOW), true);
+  assert.equal(isMoving(snap({ runs: [run({ status: 'waiting', conclusion: null })] }), NOW), false);
+  assert.equal(isMoving(snap({ prs: [pr({ ci: 'pending' })] }), NOW), true);
+  assert.equal(isMoving(snap({ git: { mainDate: new Date(NOW - 60_000).toISOString() }, prd: { releaseSha: OLD } }), NOW), true);
 });
 
 test('rollback: recentMain marca o commit em PRD', () => {

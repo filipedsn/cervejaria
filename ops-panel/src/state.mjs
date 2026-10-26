@@ -44,22 +44,30 @@ const DISK_WARN_PCT = 85;
 
 export const short = (sha) => (sha ? String(sha).slice(0, 7) : '—');
 
+const prOpenOk = (pr) =>
+  Boolean(pr && !pr.isDraft && pr.baseBranch === 'main' && pr.mergeable === 'MERGEABLE' && (pr.state === undefined || pr.state === 'OPEN'));
+
+/** A main exige PR atualizado (strict): BEHIND não pode ser aceito. */
 export function isMergeReady(pr) {
-  return Boolean(
-    pr &&
-      !pr.isDraft &&
-      pr.baseBranch === 'main' &&
-      pr.ci === 'success' &&
-      pr.mergeable === 'MERGEABLE' &&
-      (pr.state === undefined || pr.state === 'OPEN'),
-  );
+  return prOpenOk(pr) && pr.ci === 'success' && pr.mergeState !== 'BEHIND';
+}
+
+/** Feito sobre uma main antiga: precisa trazer as últimas mudanças (os testes rodam de novo). */
+export function needsUpdate(pr) {
+  return prOpenOk(pr) && pr.mergeState === 'BEHIND' && pr.ci !== 'failure';
+}
+
+function prAction(pr) {
+  if (isMergeReady(pr)) return { name: 'pr.merge', label: 'Aceitar', params: { number: pr.number }, confirm: 'merge' };
+  if (needsUpdate(pr)) return { name: 'pr.update', label: 'Atualizar', params: { number: pr.number }, confirm: 'simple' };
+  return null;
 }
 
 const unavailable = (title, error) => ({
   state: 'indisponivel',
   level: 'off',
   title: `${title}: sem informação`,
-  subtitle: 'Não foi possível ler esta parte agora. Clique em Atualizar; se continuar, chame quem desenvolve.',
+  subtitle: 'Não foi possível ler esta parte agora. Clique em Recarregar no topo; se continuar, chame quem desenvolve.',
   facts: [['Erro', error || 'sem resposta']],
   actions: [],
 });
@@ -73,8 +81,11 @@ const ciLabel = (ci) =>
 
 function runLabel(run) {
   if (run.status !== 'completed') return run.status === 'waiting' ? 'esperando sua autorização' : 'em andamento';
+  if (run.rejected) return 'você não autorizou';
   return { success: 'concluída', failure: 'falhou', cancelled: 'cancelada', skipped: 'pulada' }[run.conclusion] ?? run.conclusion;
 }
+
+const runFailed = (run) => run?.status === 'completed' && run.conclusion === 'failure' && !run.rejected;
 
 const CONTAINER_TEXT = {
   running: 'rodando',
@@ -111,7 +122,7 @@ export function deriveDelivery(snapshot, now = Date.now()) {
       state = 'aguardando';
     } else if (run.status !== 'completed') {
       state = deployJobRunning(run) ? 'publicando' : 'main';
-    } else if (run.conclusion === 'failure') {
+    } else if (runFailed(run)) {
       state = 'falhou';
     } else {
       state = 'atrasada';
@@ -196,9 +207,8 @@ function gitCard(snapshot, delivery) {
     prs: prs.map((pr) => ({
       ...pr,
       ciLabel: ciLabel(pr.ci),
-      action: isMergeReady(pr)
-        ? { name: 'pr.merge', label: 'Aceitar', params: { number: pr.number }, confirm: 'merge' }
-        : null,
+      behind: pr.mergeState === 'BEHIND',
+      action: prAction(pr),
     })),
     actions: [],
   };
@@ -276,7 +286,7 @@ function pipelineCard(snapshot) {
     );
   } else if (active) {
     [state, level, title] = ['rodando', 'run', deployJobRunning(active) ? `Publicando ${short(active.sha)}` : `Testando ${short(active.sha)}`];
-  } else if (last?.conclusion === 'failure') {
+  } else if (runFailed(last)) {
     [state, level, title] = ['falhou', 'bad', `A última passagem falhou (${short(last.sha)})`];
   }
   return {
@@ -287,6 +297,99 @@ function pipelineCard(snapshot) {
     facts: [],
     runs: runs.slice(0, 4).map((r) => ({ ...r, short: short(r.sha), label: runLabel(r) })),
     actions,
+  };
+}
+
+/** Desenho da esteira (deploy-vps.yml): colunas na ordem das dependências entre jobs. */
+export const FLOW_LAYOUT = [
+  [{ job: 'resolve-sha', label: 'Preparar', desc: 'Confere a versão e se há mudanças no banco de dados.' }],
+  [
+    { job: 'ci / build-and-unit', label: 'Testes automáticos', desc: 'Verifica se nada quebrou.' },
+    { job: 'docker-build-sha', label: 'Montar a versão', desc: 'Empacota o sistema para o servidor.' },
+  ],
+  [{ job: 'deploy-prd', label: 'Publicar no site', desc: 'Espera sua autorização, faz backup e instala.' }],
+];
+
+const JOB_TEXT = {
+  done: 'concluído',
+  running: 'em andamento',
+  waiting: 'esperando sua autorização',
+  failed: 'falhou',
+  rejected: 'você não autorizou',
+  cancelled: 'cancelado',
+  skipped: 'não executado',
+  todo: 'na fila',
+};
+const JOB_LEVEL = { done: 'ok', running: 'run', waiting: 'warn', failed: 'bad' };
+
+function jobStatus(job, spec, run) {
+  if (!job) {
+    if (run.status === 'waiting' && spec.job === 'deploy-prd') return 'waiting';
+    return run.status === 'completed' ? 'skipped' : 'todo';
+  }
+  if (job.status === 'waiting') return 'waiting';
+  if (job.status === 'in_progress') return 'running';
+  if (job.status !== 'completed') return 'todo';
+  if (job.conclusion === 'success') return 'done';
+  if (job.conclusion === 'skipped') return 'skipped';
+  if (job.conclusion === 'cancelled') return 'cancelled';
+  if (run.rejected && spec.job === 'deploy-prd') return 'rejected';
+  return 'failed';
+}
+
+export function duration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+
+function flowJob(job, spec, run, now) {
+  const status = jobStatus(job, spec, run);
+  const started = job?.startedAt ? Date.parse(job.startedAt) : null;
+  const ended = job?.completedAt ? Date.parse(job.completedAt) : status === 'running' ? now : null;
+  const steps = job?.steps ?? [];
+  return {
+    label: spec.label,
+    desc: spec.desc,
+    status,
+    level: JOB_LEVEL[status] ?? 'off',
+    statusText: JOB_TEXT[status],
+    time: started && ended ? duration(ended - started) : '',
+    progress: status === 'running' && steps.length ? { done: steps.filter((s) => s.status === 'completed').length, total: steps.length } : null,
+    url: job?.url ?? run.url,
+  };
+}
+
+/** Run em foco (o ativo ou o mais recente) desenhado como no GitHub Actions. */
+export function flowView(runs, now = Date.now(), subjects = new Map()) {
+  const run = runs.find((r) => r.status !== 'completed') ?? runs[0];
+  if (!run) return null;
+  const jobs = run.jobs ?? [];
+  const used = new Set();
+  const columns = FLOW_LAYOUT.map((column) =>
+    column.map((spec) => {
+      const job = jobs.find((j) => j.name === spec.job);
+      if (job) used.add(job);
+      return flowJob(job, spec, run, now);
+    }),
+  );
+  for (const job of jobs.filter((j) => !used.has(j))) {
+    columns[1].push(flowJob(job, { job: job.name, label: job.name, desc: '' }, run, now));
+  }
+  const started = Date.parse(run.createdAt);
+  const ended = run.status === 'completed' && run.updatedAt ? Date.parse(run.updatedAt) : now;
+  return {
+    live: run.status !== 'completed',
+    sha: short(run.sha),
+    // displayTitle do GitHub vem truncado; o assunto do commit local vem inteiro.
+    title: subjects.get(run.sha) ?? run.title,
+    url: run.url,
+    label: runLabel(run),
+    level: run.status === 'waiting' ? 'warn' : run.status !== 'completed' ? 'run' : runFailed(run) ? 'bad' : run.conclusion === 'success' ? 'ok' : 'off',
+    trigger: run.event === 'workflow_dispatch' ? 'iniciada pelo painel' : 'automática, depois de aceitar um PR',
+    startedAt: run.createdAt,
+    total: duration(ended - started),
+    columns,
   };
 }
 
@@ -341,6 +444,37 @@ function prdCard(snapshot, delivery, now) {
 function hoursAgo(seconds) {
   const h = seconds / 3600;
   return h < 1 ? `há ${Math.max(1, Math.round(seconds / 60))} min` : `há ${h.toFixed(1).replace('.', ',')} h`;
+}
+
+function prAdvice(pr) {
+  if (needsUpdate(pr)) {
+    return {
+      level: 'warn',
+      text: `O PR #${pr.number} precisa ser atualizado antes de ser aceito`,
+      help: 'Ele foi feito sobre uma versão oficial antiga. Atualizar traz as últimas mudanças para dentro dele e os testes rodam de novo (1 a 3 minutos). Depois aparece o botão para aceitar.',
+      next: {
+        name: 'pr.update',
+        label: `Atualizar o PR #${pr.number}`,
+        params: { number: pr.number },
+        confirm: 'simple',
+        primary: true,
+        explain: 'Não muda nada para os clientes.',
+      },
+    };
+  }
+  return {
+    level: 'warn',
+    text: `O PR #${pr.number} passou nos testes e pode ser aceito`,
+    help: 'Aceitar junta a mudança à versão oficial. Isso ainda não publica nada: depois a esteira testa de novo e pede sua autorização.',
+    next: {
+      name: 'pr.merge',
+      label: `Aceitar o PR #${pr.number}`,
+      params: { number: pr.number },
+      confirm: 'merge',
+      primary: true,
+      explain: 'Antes de confirmar, você vê as mudanças. Nada vai ao ar ainda.',
+    },
+  };
 }
 
 function decide(delivery, cards) {
@@ -412,22 +546,12 @@ function decide(delivery, cards) {
       break;
     case 'pr': {
       const pr = d.branchPr;
-      if (isMergeReady(pr)) {
-        say(
-          'ok',
-          `O PR #${pr.number} passou nos testes e pode ser aceito`,
-          'Aceitar junta a mudança à versão oficial. Isso ainda não publica nada: depois a esteira testa de novo e pede sua autorização.',
-        );
-        next ??= {
-          name: 'pr.merge',
-          label: `Aceitar o PR #${pr.number}`,
-          params: { number: pr.number },
-          confirm: 'merge',
-          primary: true,
-          explain: 'Antes de confirmar, você vê as mudanças. Nada vai ao ar ainda.',
-        };
+      if (isMergeReady(pr) || needsUpdate(pr)) {
+        const advice = prAdvice(pr);
+        say(advice.level, advice.text, advice.help);
+        next ??= advice.next;
       } else if (pr.ci === 'pending') {
-        say('ok', `Os testes do PR #${pr.number} estão rodando`, 'Aguarde alguns minutos. O botão para aceitar aparece quando os testes passarem.');
+        say('run', `Os testes do PR #${pr.number} estão rodando`, 'Leva de 1 a 3 minutos. O painel atualiza sozinho e mostra o botão para aceitar quando os testes passarem.');
       } else {
         say(
           'ok',
@@ -438,10 +562,18 @@ function decide(delivery, cards) {
       break;
     }
     case 'desconhecido':
-      say('off', 'Não consegui ler o estado do código ou do site', 'Clique em Atualizar. Se continuar, verifique a internet e se o GitHub está conectado neste PC.');
+      say('off', 'Não consegui ler o estado do código ou do site', 'Clique em Recarregar no topo. Se continuar, verifique a internet e se o GitHub está conectado neste PC.');
       break;
     default:
       break;
+  }
+
+  // PR pronto que não é o deste PC (ex.: só documentação): também é a vez do usuário.
+  const otherPr = (cards.git.prs ?? []).find((p) => p.action && p.number !== d.branchPr?.number);
+  if (!next && otherPr && (d.state === 'em_dia' || d.state === 'local')) {
+    const advice = prAdvice(otherPr);
+    say(advice.level, advice.text, advice.help);
+    next = advice.next;
   }
 
   if (cards.dev.state === 'parado') {
@@ -487,8 +619,12 @@ export function deriveState(snapshot, now = Date.now()) {
   const recentMain = snapshot.git?.ok ? snapshot.git.data.recentMain : [];
   return {
     at: snapshot.at,
+    moving: Boolean(snapshot.moving),
     verdict,
     next,
+    flow: snapshot.github?.ok
+      ? flowView(snapshot.github.data.runs, now, new Map(recentMain.map((c) => [c.sha, c.subject])))
+      : null,
     delivery: {
       state: delivery.state,
       mainSha: delivery.mainSha,
