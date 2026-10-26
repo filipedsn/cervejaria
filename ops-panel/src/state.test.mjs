@@ -221,6 +221,14 @@ test('prd com infraestrutura: blocos visuais e contêiner com problema no títul
   assert.equal(card.infra.containers.length, 2);
 });
 
+test('prd: só as 3 últimas publicações, da mais recente para a mais antiga', () => {
+  const nowS = NOW / 1000;
+  const deploys = [1, 2, 3, 4, 5].map((n) => ({ at: `2026-10-26T1${n}:00:00Z`, sha: String(n).repeat(40), result: 'ok' }));
+  const vps = { configured: true, ok: true, data: { now: nowS, disk_pct: 10, api: { status: 'running', health: 'healthy' }, db: { status: 'running', health: 'healthy' }, backup: { mtime: nowS - 3600 }, deploys } };
+  const s = deriveState(snap({ prd: { vps } }), NOW);
+  assert.deepEqual(s.cards.prd.deploys.map((d) => d.short), ['5555555', '4444444', '3333333']);
+});
+
 test('toda situação traz explicação e cada cartão tem subtítulo', () => {
   const cases = [
     snap(),

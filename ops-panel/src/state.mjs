@@ -605,7 +605,7 @@ function prdCard(snapshot, delivery, now) {
     facts,
     tiles,
     infra,
-    deploys: (vps?.deploys ?? []).slice(-5).reverse().map((dep) => ({ ...dep, version: ver(dep.sha), short: short(dep.sha) })),
+    deploys: (vps?.deploys ?? []).slice(-3).reverse().map((dep) => ({ ...dep, version: ver(dep.sha), short: short(dep.sha) })),
     actions: [{ name: 'deploy.dispatch', label: 'Voltar para uma versão anterior…', confirm: 'rollback' }],
     url: p.url,
     now,
