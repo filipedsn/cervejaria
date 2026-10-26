@@ -20,7 +20,7 @@ const SIMPLE_CONFIRM = {
   },
   'dev.sync': {
     title: 'Trazer a versão oficial para o ambiente de testes?',
-    body: 'O ambiente de testes deste PC recebe a versão oficial mais recente: o código é atualizado, as mudanças no banco de testes são aplicadas e ele reinicia (1 a 3 minutos). O site dos clientes não é afetado.',
+    body: 'A pasta do projeto volta para a versão oficial mais recente (main), as mudanças no banco de testes são aplicadas e o ambiente de testes reinicia (1 a 3 minutos). O site dos clientes não é afetado.',
   },
   'pr.update': {
     title: 'Atualizar o PR?',
@@ -110,6 +110,8 @@ function prList(prs) {
         ${pr.isDraft ? '<span class="chip">rascunho</span>' : ''}
         ${pr.behind ? '<span class="chip" data-level="warn" title="Feito sobre uma versão oficial antiga">desatualizado</span>' : ''}
         ${pr.mergeable === 'CONFLICTING' ? '<span class="chip" data-ci="failure">com conflito</span>' : ''}
+        ${pr.inDev ? '<span class="chip" data-level="ok" title="É o que roda agora em http://localhost:5202">no ambiente de testes</span>' : ''}
+        ${control(pr.testAction)}
         ${control(pr.action)}
       </li>`,
     )
@@ -553,6 +555,63 @@ async function handle(action, button) {
       $('modal-confirm').disabled = !ok;
     });
     input.focus();
+    return;
+  }
+
+  if (action.confirm === 'match-prd') {
+    openModal(
+      `Igualar o ambiente de testes ao site (${action.version})?`,
+      `<p class="lead">O ambiente de testes deste PC passa a rodar exatamente a versão que está no site agora.</p>
+       <div class="picks">
+         <label class="pick"><input type="radio" name="match-db" value="code" checked /> <span><strong>Só a versão</strong>: mantém os dados de teste e aplica as mudanças de banco dessa versão.</span></label>
+         <label class="pick"><input type="radio" name="match-db" value="db" /> <span><strong>Versão e banco do site</strong>: o banco de testes é substituído por uma cópia, feita agora, do banco do site.</span></label>
+       </div>
+       <div id="match-db-extra" hidden>
+         <p class="note warn">A cópia tem dados reais de clientes; e-mail e notificações ficam desligados nela. O banco de testes atual é guardado antes.</p>
+         <label class="typed">Para copiar o banco, digite <strong>${COPY_WORD}</strong> <input id="match-word" autocomplete="off" spellcheck="false" /></label>
+       </div>
+       <p class="note">A pasta do projeto passa para essa versão e o ambiente de testes fica fora do ar de 1 a 3 minutos. Só funciona sem alterações não salvas na pasta. O site dos clientes não muda.</p>`,
+      'Igualar ao site',
+      () => runAction(action, { withDb: false }),
+    );
+    const extra = $('match-db-extra');
+    const input = $('match-word');
+    const update = () => {
+      const withDb = document.querySelector('input[name="match-db"]:checked')?.value === 'db';
+      extra.hidden = !withDb;
+      const ok = !withDb || input.value.trim().toUpperCase() === COPY_WORD;
+      onConfirm = ok ? () => runAction(action, withDb ? { withDb: true, confirm: COPY_WORD } : { withDb: false }) : null;
+      $('modal-confirm').disabled = !ok;
+    };
+    $('modal-body').onchange = update;
+    input.addEventListener('input', update);
+    return;
+  }
+
+  if (action.confirm === 'test-pr') {
+    const n = action.params.number;
+    openModal(`Testar o PR #${n} no ambiente de testes?`, '<p class="hint">Carregando o pedido de mudança…</p>', 'Testar', null);
+    try {
+      const pr = await api(`/api/preview/pr/${n}`);
+      const db = pr.migrations.length
+        ? `<h3>Mudanças no banco de testes (${pr.migrations.length})</h3>${list(pr.migrations, (m) => `<code>${esc(m)}</code>`)}
+           <p class="note warn">Elas são aplicadas no banco de testes. Se o PR não for aceito, use "Igualar ao site" com a cópia do banco para voltar.</p>`
+        : '<p class="note ok">Sem mudanças no banco de dados.</p>';
+      setModalBody(
+        `<p class="lead"><a href="${esc(pr.url)}" target="_blank" rel="noopener">#${pr.number} ${esc(plain(pr.title))}</a></p>
+         <h3>Mudanças incluídas</h3>${commitList(pr.commits)}
+         ${db}
+         <h3>O que acontece ao confirmar</h3>
+         <ol class="plain">
+           <li>A pasta do projeto passa exatamente para esta mudança e o ambiente de testes reinicia (1 a 3 minutos fora do ar).</li>
+           <li>Você confere em <strong>http://localhost:5202</strong>.</li>
+           <li>Se estiver tudo certo, aceite o PR. <strong>Testar não aceita o PR nem muda nada para os clientes.</strong></li>
+         </ol>`,
+        () => runAction(action),
+      );
+    } catch (error) {
+      setModalBody(`<p class="error">${esc(error.message)}</p>`, null);
+    }
     return;
   }
 

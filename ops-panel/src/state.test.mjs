@@ -284,7 +284,7 @@ test('sem número de versão, cai no código técnico', () => {
   assert.equal(s.delivery.mainVersion, 'aaaaaaa');
 });
 
-test('dev atrás do site: compara, lista o que falta e oferece trazer a oficial', () => {
+test('dev atrás do site: compara, lista o que falta e oferece igualar ao site', () => {
   const compare = { prdOnly: [{ sha: MAIN, subject: 'feat: x' }], devOnly: [] };
   const s = deriveState(withVersions(snap({ dev: { releaseSha: OLD } }), compare), NOW);
   const dev = s.cards.dev;
@@ -293,18 +293,89 @@ test('dev atrás do site: compara, lista o que falta e oferece trazer a oficial'
   assert.equal(facts['Versão'], 'V854 (bbbbbbb)');
   assert.equal(facts['Comparado ao site'], '1 versão atrás do site');
   assert.equal(dev.compare.prdOnly[0].version, 'V855');
-  assert.equal(dev.canSync, true);
-  assert.equal(dev.actions[0].name, 'dev.sync');
+  assert.equal(dev.actions[0].name, 'dev.matchPrd');
+  assert.equal(dev.actions[0].confirm, 'match-prd');
   assert.match(dev.actions[0].label, /V855/);
-  assert.match(s.next.label, /Trazer a versão oficial/);
+  assert.ok(!dev.actions.some((a) => a.name === 'dev.sync'), 'site já na oficial: um botão basta');
+  assert.match(s.next.label, /Igualar ao site/);
 });
 
-test('trazer a oficial só com o PC na main e sem alterações versionadas', () => {
-  const sync = (git) => deriveState(withVersions(snap({ git, dev: { releaseSha: OLD } })), NOW).cards.dev;
-  assert.equal(sync({ trackedDirty: 2, dirtyCount: 2 }).canSync, false);
-  assert.equal(sync({ branch: 'feat/x' }).canSync, false);
-  assert.equal(sync({ dirtyCount: 3 }).canSync, true, 'arquivos novos não versionados não bloqueiam');
-  assert.ok(!sync({ branch: 'feat/x' }).actions.some((a) => a.name === 'dev.sync'));
+test('oficial mais nova que o site: oferece igualar ao site e trazer a oficial', () => {
+  const s = deriveState(withVersions(snap({ dev: { releaseSha: OLD }, prd: { releaseSha: OLD } })), NOW);
+  assert.deepEqual(s.cards.dev.actions.slice(0, 1).map((a) => a.name), ['dev.sync']);
+  const onMain = deriveState(withVersions(snap({ prd: { releaseSha: OLD } })), NOW).cards.dev;
+  assert.equal(onMain.actions[0].name, 'dev.matchPrd');
+  assert.match(onMain.actions[0].label, /V854/);
+  assert.ok(!onMain.actions.some((a) => a.name === 'dev.sync'));
+});
+
+test('trocar a versão do DEV troca a pasta do projeto: só sem alterações não salvas', () => {
+  const dev = (git) => deriveState(withVersions(snap({ git, dev: { releaseSha: OLD } })), NOW).cards.dev;
+  const branch = dev({ branch: 'feat/x' });
+  assert.equal(branch.canMatchPrd, true, 'branch limpa pode trocar');
+  assert.equal(Object.fromEntries(branch.facts)['Código em teste'], 'pasta de trabalho feat/x');
+  assert.equal(dev({ dirtyCount: 3 }).canMatchPrd, true, 'arquivos novos não versionados não bloqueiam');
+  const dirty = dev({ branch: 'feat/x', trackedDirty: 2, dirtyCount: 2 });
+  assert.equal(dirty.canMatchPrd, false);
+  assert.ok(!dirty.actions.some((a) => a.name === 'dev.matchPrd' || a.name === 'dev.sync'));
+  assert.match(Object.fromEntries(dirty.facts)['Igualar ao site'], /salve \(commit\)/);
+  const s = deriveState(withVersions(snap({ git: { branch: 'feat/x', ahead: 1 }, dev: { releaseSha: OLD } })), NOW);
+  assert.match(s.next.label, /pasta de trabalho feat\/x.*normal/);
+});
+
+test('PR em teste no DEV: pasta fixada no PR, cartão mostra o PR e o topo explica como voltar', () => {
+  const head = 'c'.repeat(40);
+  const code = { sha: head, kind: 'pr', pr: 141, at: '2026-10-26T17:00:00Z' };
+  const git = { branch: 'HEAD', headSha: head, ahead: 1 };
+  const s = deriveState(snap({ git, dev: { releaseSha: head, code } }), NOW);
+  assert.equal(s.cards.dev.title, 'Ligado · PR #141');
+  assert.equal(Object.fromEntries(s.cards.dev.facts)['Código em teste'], 'PR #141, ainda não aceito');
+  assert.equal(s.cards.dev.actions[0].name, 'dev.matchPrd');
+  assert.match(s.next.label, /PR #141.*Igualar ao site/);
+  assert.match(Object.fromEntries(s.cards.git.facts)['Pasta de trabalho (branch)'], /^versão fixa cccc/);
+  assert.notEqual(s.cards.git.state, 'sem_pr', 'pasta fixada não é trabalho sem PR');
+  const stale = deriveState(snap({ dev: { releaseSha: MAIN, code } }), NOW).cards.dev;
+  assert.equal(stale.testingPr, null, 'marcador de outra versão é ignorado');
+});
+
+test('pasta fixada na versão de um PR aberto acha o PR pela versão', () => {
+  const head = 'c'.repeat(40);
+  const open = pr({ number: 141, branch: 'feat/y', headSha: head, touchesApp: true });
+  const s = deriveState(snap({ git: { branch: 'HEAD', headSha: head, ahead: 1 }, prs: [open], dev: { releaseSha: head } }), NOW);
+  assert.equal(s.delivery.state, 'pr');
+  assert.equal(s.next.name, 'pr.merge', 'já está no ambiente de testes: a próxima é aceitar');
+});
+
+test('PR pronto que mexe no sistema: testar no DEV antes de aceitar', () => {
+  const head = 'c'.repeat(40);
+  const ready = pr({ number: 141, headSha: head, touchesApp: true });
+  const s = deriveState(snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [ready] }), NOW);
+  assert.equal(s.next.name, 'dev.testPr');
+  assert.equal(s.next.confirm, 'test-pr');
+  assert.deepEqual(s.next.params, { number: 141 });
+  const row = s.cards.git.prs[0];
+  assert.equal(row.testAction.name, 'dev.testPr');
+  assert.equal(row.action.name, 'pr.merge', 'Aceitar continua disponível para quem não quer testar');
+
+  const code = { sha: head, kind: 'pr', pr: 141 };
+  const tested = deriveState(snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [ready], dev: { releaseSha: head, code } }), NOW);
+  assert.equal(tested.next.name, 'pr.merge');
+  assert.match(tested.verdict.text, /está no ambiente de testes/);
+  assert.equal(tested.cards.git.prs[0].inDev, true);
+  assert.equal(tested.cards.git.prs[0].testAction, null);
+
+  const dirty = deriveState(snap({ git: { branch: 'feat/x', ahead: 1, trackedDirty: 1, dirtyCount: 1 }, prs: [ready] }), NOW);
+  assert.equal(dirty.next.name, 'pr.merge', 'com alterações não salvas a pasta não pode trocar de versão');
+  assert.equal(dirty.cards.git.prs[0].testAction, null);
+});
+
+test('PR que não mexe no sistema (painel, docs) vai direto para Aceitar', () => {
+  const docs = pr({ number: 142, headSha: 'c'.repeat(40), touchesApp: false });
+  const s = deriveState(snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [docs] }), NOW);
+  assert.equal(s.next.name, 'pr.merge');
+  assert.equal(s.cards.git.prs[0].testAction, null);
+  const pending = pr({ headSha: 'c'.repeat(40), touchesApp: true, ci: 'pending' });
+  assert.equal(deriveState(snap({ prs: [pending] }), NOW).cards.git.prs[0].testAction, null, 'só PR com testes verdes');
 });
 
 test('compareWithSite: igual, atrás, à frente e versão de trabalho', () => {

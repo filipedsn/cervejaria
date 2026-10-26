@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -7,6 +7,7 @@ import { test } from 'node:test';
 const logFile = join(mkdtempSync(join(tmpdir(), 'ops-panel-')), 'audit.log');
 process.env.OPS_PANEL_AUDIT_LOG = logFile;
 const { ACTIONS, ActionError, executeAction, powershellCommand, readAudit } = await import('./actions.mjs');
+const { readDevCode } = await import('./collectors/dev.mjs');
 
 test('PowerShell: UTF-8 antes do script, aspas escapadas e código de saída propagado', () => {
   const args = powershellCommand("C:\\pasta d'água\\x.ps1", ['a b']);
@@ -18,9 +19,29 @@ test('PowerShell: UTF-8 antes do script, aspas escapadas e código de saída pro
   assert.ok(command.includes('exit 1'));
 });
 
+test('PowerShell: nomes de parâmetro sem aspas, valores sempre entre aspas', () => {
+  const command = powershellCommand('C:\\x.ps1', ['-Sha', 'abc', '-Kind', 'pr', '-Pr', '7', '-SkipMigrate', '-x; rm'])[4];
+  assert.ok(command.includes("& 'C:\\x.ps1' -Sha 'abc' -Kind 'pr' -Pr '7' -SkipMigrate '-x; rm';"));
+});
+
+test('marcador do código do DEV: só aceita versão e motivo válidos', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ops-dev-code-'));
+  const file = join(dir, 'dev-code.json');
+  const sha = 'c'.repeat(40);
+  writeFileSync(file, `\uFEFF${JSON.stringify({ sha, kind: 'pr', pr: 141, at: '2026-10-26T17:00:00Z' })}`);
+  assert.deepEqual(readDevCode(file), { sha, kind: 'pr', pr: 141, at: '2026-10-26T17:00:00Z' });
+  writeFileSync(file, JSON.stringify({ sha, kind: 'prd', pr: null }));
+  assert.equal(readDevCode(file).pr, null);
+  for (const bad of [{ sha: 'abc', kind: 'pr' }, { sha, kind: 'shell' }]) {
+    writeFileSync(file, JSON.stringify(bad));
+    assert.equal(readDevCode(file), null);
+  }
+  assert.equal(readDevCode(join(dir, 'nao-existe.json')), null);
+});
+
 test('lista fechada de ações', () => {
   assert.deepEqual(Object.keys(ACTIONS).sort(), [
-    'backup.delete', 'backup.download', 'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.copyPrd', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'pr.merge', 'pr.update',
+    'backup.delete', 'backup.download', 'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.copyPrd', 'dev.matchPrd', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'dev.testPr', 'pr.merge', 'pr.update',
   ]);
 });
 
@@ -34,6 +55,8 @@ test('parâmetros inválidos são recusados antes de qualquer comando', async ()
   await assert.rejects(executeAction('deploy.approve', { runId: -1 }), /runId inválido/);
   await assert.rejects(executeAction('dev.copyPrd', {}), /digite COPIAR/);
   await assert.rejects(executeAction('dev.copyPrd', { confirm: 'copiar' }), /digite COPIAR/);
+  await assert.rejects(executeAction('dev.matchPrd', { withDb: true }), /digite COPIAR/);
+  await assert.rejects(executeAction('dev.testPr', { number: '1; whoami' }), /PR inválido/);
   for (const name of ['../etc/passwd', 'backup-prod-1.dump; rm -rf /', 'backup prod.dump', '.dump', 'backup-prod-1.dump.sha256', '']) {
     await assert.rejects(executeAction('backup.download', { name }), /Nome de backup inválido/);
     await assert.rejects(executeAction('backup.delete', { name, confirm: name }), /Nome de backup inválido/);
