@@ -193,6 +193,46 @@ function containerCard(c) {
   </li>`;
 }
 
+const BACKUP_KIND_LEVEL = { daily: 'ok', deploy: 'run', other: '' };
+
+function backupButton(action, label, className = '', blocked = '') {
+  if (blocked) return `<button type="button" class="${className}" disabled title="${esc(blocked)}">${esc(label)}</button>`;
+  const id = `a${++seq}`;
+  registry.set(id, action);
+  return `<button type="button" class="${className}" data-action="${id}">${esc(label)}</button>`;
+}
+
+function backupRow(b, manage) {
+  const actions = manage
+    ? `<td><span class="bk-actions">${backupButton({ name: 'backup.download', confirm: 'backup-download', backup: b }, 'Baixar', '', b.canDownload ? '' : 'nome fora do padrão')}${backupButton({ name: 'backup.delete', confirm: 'backup-delete', backup: b }, 'Apagar', 'danger', b.canDelete ? '' : b.deleteBlock)}</span></td>`
+    : '';
+  return `<tr${b.newest ? ' data-newest' : ''}>
+    <td><code>${esc(b.name)}</code>${b.newest ? ' <span class="chip" data-level="ok">mais recente</span>' : ''}</td>
+    <td>${esc(when(b.at))}</td>
+    <td><span class="chip" data-level="${esc(BACKUP_KIND_LEVEL[b.kind] ?? '')}">${esc(b.kindText)}</span></td>
+    <td class="num">${esc(b.sizeText)}</td>
+    <td>${b.checked ? `<span class="chip" data-level="ok" title="sha256 ${esc(b.sha256)}">íntegro</span>` : '<span class="chip" data-level="warn" title="Sem o arquivo .sha256: o backup pode estar incompleto">sem conferência</span>'}</td>
+    ${actions}
+  </tr>`;
+}
+
+const backupRows = (backups) =>
+  backups.items.length
+    ? backups.items.map((b) => backupRow(b, backups.manage)).join('')
+    : `<tr><td colspan="${backups.manage ? 6 : 5}" class="empty">Nenhum backup na pasta do servidor.</td></tr>`;
+
+function backupsBlock(backups) {
+  if (!backups) return '';
+  return `<div class="infra-backups">
+    <h3>Backups do banco <small data-infra="backups-summary">${esc(backups.summary)}</small></h3>
+    <p class="hint">Pasta de backups do Postgres no servidor. São feitos todo dia e antes de cada publicação; o servidor apaga sozinho os mais antigos e manda uma cópia para o OneDrive.${backups.manage ? '' : ' Para baixar ou apagar por aqui, quem desenvolve precisa configurar a chave de backups neste PC.'}</p>
+    <div class="bk-wrap"><table class="bk">
+      <thead><tr><th>Arquivo</th><th>Feito em</th><th>Tipo</th><th class="num">Tamanho</th><th>Conferência</th>${backups.manage ? '<th></th>' : ''}</tr></thead>
+      <tbody data-infra="backups">${backupRows(backups)}</tbody>
+    </table></div>
+  </div>`;
+}
+
 function infraBlock(card, below = '') {
   if (!card.infra) return below;
   const tiles = card.tiles
@@ -213,6 +253,7 @@ function infraBlock(card, below = '') {
       <h3>Contêineres <small data-infra="summary">${esc(infra.summary)}</small></h3>
       <ul class="ctrs" data-infra="containers">${infra.containers.map(containerCard).join('')}</ul>
     </div>
+    ${backupsBlock(infra.backups)}
   </div>`;
 }
 
@@ -227,6 +268,10 @@ function patchInfra(infra) {
     summary: esc(infra.summary),
     containers: infra.containers.map(containerCard).join(''),
   };
+  if (infra.backups) {
+    parts['backups-summary'] = esc(infra.backups.summary);
+    parts.backups = backupRows(infra.backups);
+  }
   for (const [key, html] of Object.entries(parts)) {
     const el = box.querySelector(`[data-infra="${key}"]`);
     if (el && el.innerHTML !== html) el.innerHTML = html;
@@ -504,6 +549,47 @@ async function handle(action, button) {
     input.addEventListener('input', () => {
       const ok = input.value.trim().toUpperCase() === COPY_WORD;
       onConfirm = ok ? () => runAction(action, { confirm: COPY_WORD }) : null;
+      $('modal-confirm').disabled = !ok;
+    });
+    input.focus();
+    return;
+  }
+
+  if (action.confirm === 'backup-download') {
+    const b = action.backup;
+    openModal(
+      'Baixar o backup para este PC?',
+      `<p class="lead"><code>${esc(b.name)}</code> · ${esc(b.sizeText)} · ${esc(when(b.at))} · ${esc(b.kindText)}</p>
+       <ol class="plain">
+         <li>O arquivo vem do servidor e é gravado na pasta <strong>Downloads</strong> deste PC.</li>
+         <li>${b.checked ? 'Antes de liberar o arquivo, o painel confere se ele chegou idêntico ao do servidor (sha256).' : 'Esse backup não tem o arquivo de conferência no servidor: ele pode estar incompleto.'}</li>
+         <li>Nada muda no servidor nem no site dos clientes.</li>
+       </ol>
+       <p class="note warn">O backup tem dados reais de clientes. Guarde com cuidado, não compartilhe e apague quando não precisar mais.</p>`,
+      'Baixar',
+      () => runAction(action, { name: b.name }),
+    );
+    return;
+  }
+
+  if (action.confirm === 'backup-delete') {
+    const b = action.backup;
+    openModal(
+      'Apagar este backup do servidor?',
+      `<p class="lead warn-text"><code>${esc(b.name)}</code> · ${esc(b.sizeText)} · ${esc(when(b.at))} · ${esc(b.kindText)}</p>
+       <ol class="plain">
+         <li>O arquivo é apagado da pasta de backups do servidor. <strong>Não dá para desfazer.</strong></li>
+         <li>A cópia externa no OneDrive não é apagada.</li>
+         <li>O servidor recusa apagar o backup mais recente, ficar com menos de 3 ou apagar durante uma publicação.</li>
+       </ol>
+       <label class="typed">Para confirmar, digite o nome do arquivo <input id="backup-word" autocomplete="off" spellcheck="false" /></label>`,
+      'Apagar o backup',
+      null,
+    );
+    const input = $('backup-word');
+    input.addEventListener('input', () => {
+      const ok = input.value.trim() === b.name;
+      onConfirm = ok ? () => runAction(action, { name: b.name, confirm: b.name }) : null;
       $('modal-confirm').disabled = !ok;
     });
     input.focus();

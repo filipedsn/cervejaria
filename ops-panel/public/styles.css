@@ -698,6 +698,77 @@ dd {
   background: var(--c);
 }
 
+.infra-backups {
+  grid-column: 1 / -1;
+}
+
+.infra-backups .hint {
+  margin: 2px 0 8px;
+}
+
+.bk-wrap {
+  overflow-x: auto;
+}
+
+.bk {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.bk th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.bk td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #eef1f3;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.bk td.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.bk th.num {
+  text-align: right;
+}
+
+.bk code {
+  font-size: 0.78rem;
+}
+
+.bk-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.bk-actions button {
+  padding: 3px 10px;
+  font-size: 0.8rem;
+}
+
+.bk-actions button.danger {
+  color: var(--bad);
+}
+
+.bk-actions button:disabled {
+  cursor: not-allowed;
+}
+
+.bk tr[data-newest] td:first-child code {
+  font-weight: 600;
+}
+
 /* ---------- esteira por dentro (jobs do GitHub Actions) ---------- */
 
 .flow {

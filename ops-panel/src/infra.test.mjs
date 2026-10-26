@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatBytes, historySample, infraView, parseBytes, parsePair, pushSample, upFor } from './infra.mjs';
+import { backupsView, formatBytes, historySample, infraView, parseBytes, parsePair, pushSample, upFor } from './infra.mjs';
 
 const NOW_S = Date.parse('2026-10-26T19:10:00Z') / 1000;
 const GIB = 1024 ** 3;
@@ -87,4 +87,43 @@ test('histórico: uma leitura por minuto, só a última hora', () => {
   h = pushSample(h, historySample(at(NOW_S)));
   assert.deepEqual(h.map((s) => s.t), [NOW_S - 120, NOW_S]);
   assert.deepEqual(infraView(report(), h).gauges[0].series, [1, 1]);
+});
+
+const SHA_A = 'a'.repeat(64);
+const DEPLOY_SHA = '8e5f57291bb99a3c9d39bce92912e8a973f1394b';
+const backupReport = (backups) => ({
+  backups,
+  deploys: [{ at: '2026-10-26T19:32:15+00:00', sha: DEPLOY_SHA, result: 'ok' }],
+});
+const daily = { name: 'backup-prod-20261025-220001.dump', mtime: Date.parse('2026-10-26T01:00:03Z') / 1000, size: 9_618_718, sha256: SHA_A };
+const beforeDeploy = { name: 'backup-prod-20261026-163146.dump', mtime: Date.parse('2026-10-26T19:31:47Z') / 1000, size: 9_618_718, sha256: SHA_A };
+const manual = { name: 'backup-prod-20261026-135305.dump', mtime: Date.parse('2026-10-26T16:53:06Z') / 1000, size: 9_618_718, sha256: null };
+
+test('backups: mais recente primeiro, tipo, conferência e travas de apagar', () => {
+  const v = backupsView(backupReport([daily, manual, beforeDeploy]), { version: (sha) => (sha === DEPLOY_SHA ? 'V860' : sha), manage: true });
+  assert.deepEqual(v.items.map((b) => b.name), [beforeDeploy.name, manual.name, daily.name]);
+  assert.deepEqual(v.items.map((b) => b.kindText), ['antes de publicar V860', 'avulso', 'diário automático']);
+  assert.deepEqual(v.items.map((b) => b.checked), [true, false, true]);
+  assert.equal(v.items[0].sizeText, '9,2 MB');
+  assert.deepEqual([v.items[0].newest, v.items[0].canDelete, v.items[0].deleteBlock], [true, false, 'o mais recente não pode ser apagado']);
+  assert.deepEqual([v.items[1].canDelete, v.items[1].deleteBlock], [false, 'mínimo de 3 no servidor']);
+  assert.ok(v.items.every((b) => b.canDownload));
+  assert.equal(v.summary, '3 arquivos, 27,5 MB · 1 sem conferência');
+});
+
+test('backups: com mais de 3 dá para apagar os antigos; sem a chave no PC é só a lista', () => {
+  const older = { ...daily, name: 'backup-prod-20261024-220001.dump', mtime: daily.mtime - 86400 };
+  const list = [daily, manual, beforeDeploy, older];
+  const v = backupsView(backupReport(list), { manage: true });
+  assert.deepEqual(v.items.map((b) => b.canDelete), [false, true, true, true]);
+  const readOnly = backupsView(backupReport(list));
+  assert.equal(readOnly.manage, false);
+  assert.ok(readOnly.items.every((b) => !b.canDelete && !b.canDownload));
+  const odd = backupsView(backupReport([{ ...manual, name: 'backup prod.dump' }, ...list]), { manage: true });
+  assert.deepEqual([odd.items.find((b) => b.name === 'backup prod.dump').canDownload, odd.items.find((b) => b.name === 'backup prod.dump').deleteBlock], [false, 'nome fora do padrão']);
+});
+
+test('backups: relatório antigo (sem a lista) não mostra a seção', () => {
+  assert.equal(backupsView({ deploys: [] }), null);
+  assert.equal(infraView(report()).backups, null);
 });

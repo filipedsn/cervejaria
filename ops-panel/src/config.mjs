@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +31,9 @@ export const config = {
   devContainers: ['cervejaria-db-dev', 'elasticsearch'],
   // Alias do ~/.ssh/config com a chave só leitura do painel (ops-report.sh). Vazio = só dados públicos.
   vpsSshHost: env('OPS_VPS_SSH_HOST', ''),
+  // Alias da chave restrita a baixar/apagar backups (backup-files.sh). Vazio = só a lista.
+  backupSshHost: env('OPS_BACKUP_SSH_HOST', ''),
+  backupDownloadDir: env('OPS_BACKUP_DOWNLOAD_DIR', join(homedir(), 'Downloads')),
   auditLog: env('OPS_PANEL_AUDIT_LOG', join(ROOT, 'deploy', 'logs', 'ops-panel.log')),
   runtimeDir: join(ROOT, 'deploy', 'runtime'),
 };

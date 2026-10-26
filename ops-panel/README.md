@@ -58,6 +58,13 @@ Para ver container, banco, disco, backup e histórico de deploy:
 2. No PC, crie um host no `~/.ssh/config` que use essa chave pela Tailscale e informe o nome em
    `OPS_VPS_SSH_HOST` no `ops-panel/.env`.
 
+Com o relatório, o cartão lista os backups do banco guardados no servidor. Para baixar (para a pasta
+Downloads, com o sha256 conferido) ou apagar por aqui, instale `deploy/tap-quiver/backup-files.sh` em
+`/usr/local/sbin/quiver-tap-backup-files`, cadastre outra chave exclusiva com
+`restrict,from="100.64.0.0/10",command="/usr/local/sbin/quiver-tap-backup-files"` e informe o host em
+`OPS_BACKUP_SSH_HOST`. O servidor recusa apagar o backup mais recente, ficar com menos de 3 ou apagar
+durante uma publicação.
+
 ## Configuração
 
 `ops-panel/.env` (copiado de `.env.example` no primeiro `ops:start`):
@@ -67,6 +74,8 @@ Para ver container, banco, disco, backup e histórico de deploy:
 | `OPS_PANEL_PORT` | `3099` | porta do painel; não há fallback para outra porta |
 | `GITHUB_REPO` | `filipedsn/cervejaria` | repositório consultado pelo `gh` |
 | `OPS_VPS_SSH_HOST` | vazio | host SSH da chave só leitura; vazio = só dados públicos |
+| `OPS_BACKUP_SSH_HOST` | vazio | host SSH da chave de baixar/apagar backups; vazio = só a lista |
+| `OPS_BACKUP_DOWNLOAD_DIR` | `~/Downloads` | onde os backups baixados são gravados |
 | `OPS_PANEL_AUDIT_LOG` | `deploy/logs/ops-panel.log` | registro das ações |
 
 ## Desenvolvimento

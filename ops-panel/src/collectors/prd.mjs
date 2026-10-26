@@ -72,5 +72,6 @@ export async function collectPrd({ force = false, vpsMaxAgeMs = 60_000 } = {}) {
     startedAt,
     vps: vps ? { configured: true, ...vps } : { configured: false },
     vpsHistory: history,
+    backupFiles: Boolean(config.backupSshHost),
   };
 }
