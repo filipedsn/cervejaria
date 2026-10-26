@@ -98,8 +98,12 @@ Add-FreshnessResult 'DS-07' 'metrics-hostmetricsreceiver.otel-infra*' 5
 
 # DS-08 segregacao
 $devStreams = Invoke-ReadOnly -Api es -Path '/_data_stream/*otel-dev*'
-$devCount = if ($devStreams -and -not $devStreams.error) { Get-Count $devStreams.data_streams } else { 0 }
-Add-Result 'DS-08' 'Nenhum data stream DEV no cluster PRD' $(if ($devCount -eq 0) { 'PASS' } else { 'FAIL' }) "$devCount data stream(s) *otel-dev*"
+if (-not $devStreams -or $devStreams.error) {
+  Add-Result 'DS-08' 'Nenhum data stream DEV no cluster PRD' 'INCONCLUSIVO' 'sem resposta do Elasticsearch'
+} else {
+  $devCount = Get-Count $devStreams.data_streams
+  Add-Result 'DS-08' 'Nenhum data stream DEV no cluster PRD' $(if ($devCount -eq 0) { 'PASS' } else { 'FAIL' }) "$devCount data stream(s) *otel-dev*"
+}
 
 # ILM-01
 $prdStreams = Invoke-ReadOnly -Api es -Path '/_data_stream/*otel-prd*,*otel-infra*'
@@ -215,3 +219,4 @@ $payload = [ordered]@{ generatedAt = (Get-Date).ToString('o'); target = 'prd'; r
 [IO.File]::WriteAllText($outFile, ($payload | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 $results | Format-Table -AutoSize -Wrap
 Write-Host "JSON completo: $outFile"
+
