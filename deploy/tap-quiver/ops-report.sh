@@ -6,7 +6,8 @@
 #
 # Ignora o comando pedido pelo cliente e só imprime um JSON com o estado do VPS.
 # Não altera nada e não imprime segredos: do .env.staging lê apenas RELEASE_SHA,
-# do backup-postgres.env apenas BACKUP_DIR e PREFIX.
+# do backup-postgres.env apenas BACKUP_DIR e PREFIX; dos contêineres, só estado,
+# imagem e consumo (nunca variáveis de ambiente).
 set -uo pipefail
 
 APP_DIR="${APP_DIR:-/opt/quiver-tap}"
@@ -39,6 +40,43 @@ IFS='|' read -r api_status api_health api_started api_restarts <<<"$(container "
 IFS='|' read -r db_status db_health _ _ <<<"$(container "$DB_CONTAINER")"
 
 disk_pct="$(df --output=pcent / 2>/dev/null | tail -n1 | tr -dc '0-9')"
+read -r disk_total disk_used _ <<<"$(df -B1 --output=size,used,avail / 2>/dev/null | tail -n1)"
+mem_kb() { sed -n "s/^$1: *\([0-9]*\) kB$/\1/p" /proc/meminfo; }
+mem_total_kb="$(mem_kb MemTotal)"
+mem_avail_kb="$(mem_kb MemAvailable)"
+read -r load1 load5 load15 _ </proc/loadavg
+uptime_s="$(cut -d. -f1 /proc/uptime)"
+cpus="$(nproc 2>/dev/null)"
+decimal() { if [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi; }
+kb_bytes() { if [[ "$1" =~ ^[0-9]+$ ]]; then printf '%s' "$(($1 * 1024))"; else printf 'null'; fi; }
+
+# CPU do servidor = fração não ociosa de /proc/stat durante o `docker stats` (~2 s).
+cpu_sample() { awk '/^cpu /{ total = 0; for (i = 2; i <= NF; i++) total += $i; print total, $5 + $6 }' /proc/stat; }
+read -r cpu_t1 cpu_i1 <<<"$(cpu_sample)"
+declare -A stats=()
+while IFS='|' read -r name cpu mem net block pids; do
+  [[ -n "$name" ]] && stats["$name"]="$cpu|$mem|$net|$block|$pids"
+done < <(timeout 10 docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.NetIO}}|{{.BlockIO}}|{{.PIDs}}' 2>/dev/null)
+read -r cpu_t2 cpu_i2 <<<"$(cpu_sample)"
+cpu_pct="null"
+if (( cpu_t2 > cpu_t1 )); then
+  cpu_pct="$(( (100 * ((cpu_t2 - cpu_t1) - (cpu_i2 - cpu_i1)) + (cpu_t2 - cpu_t1) / 2) / (cpu_t2 - cpu_t1) ))"
+fi
+
+containers=""
+ids="$(docker ps -aq 2>/dev/null)"
+if [[ -n "$ids" ]]; then
+  # shellcheck disable=SC2086 # um id por palavra
+  while IFS='|' read -r name image project status health started restarts exit_code; do
+    name="${name#/}"
+    [[ -n "$name" ]] || continue
+    IFS='|' read -r s_cpu s_mem s_net s_block s_pids <<<"${stats[$name]:-||||}"
+    containers+="${containers:+,}{\"name\":$(str "$name"),\"image\":$(str "$image"),\"project\":$(opt_str "$project")"
+    containers+=",\"status\":$(opt_str "$status"),\"health\":$(opt_str "$health"),\"started\":$(opt_str "$started")"
+    containers+=",\"restarts\":$(num "$restarts"),\"exit_code\":$(num "$exit_code")"
+    containers+=",\"cpu\":$(opt_str "$s_cpu"),\"mem\":$(opt_str "$s_mem"),\"net\":$(opt_str "$s_net"),\"block\":$(opt_str "$s_block"),\"pids\":$(num "$s_pids")}"
+  done < <(docker inspect --format '{{.Name}}|{{.Config.Image}}|{{index .Config.Labels "com.docker.compose.project"}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.State.StartedAt}}|{{.RestartCount}}|{{.State.ExitCode}}' $ids 2>/dev/null)
+fi
 
 backup_dir="$(env_value "$BACKUP_ENV" BACKUP_DIR)"
 prefix="$(env_value "$BACKUP_ENV" PREFIX)"
@@ -67,6 +105,10 @@ printf '"api":{"status":%s,"health":%s,"started":%s,"restarts":%s},' \
   "$(opt_str "$api_status")" "$(opt_str "$api_health")" "$(opt_str "$api_started")" "$(num "$api_restarts")"
 printf '"db":{"status":%s,"health":%s},' "$(opt_str "$db_status")" "$(opt_str "$db_health")"
 printf '"disk_pct":%s,' "$(num "$disk_pct")"
+printf '"host":{"cpus":%s,"cpu_pct":%s,"load":[%s,%s,%s],"mem_total":%s,"mem_avail":%s,"disk_total":%s,"disk_used":%s,"uptime_s":%s},' \
+  "$(num "$cpus")" "$(num "$cpu_pct")" "$(decimal "$load1")" "$(decimal "$load5")" "$(decimal "$load15")" \
+  "$(kb_bytes "$mem_total_kb")" "$(kb_bytes "$mem_avail_kb")" "$(num "$disk_total")" "$(num "$disk_used")" "$(num "$uptime_s")"
+printf '"containers":[%s],' "$containers"
 if [[ -n "$backup_name" ]]; then
   printf '"backup":{"name":%s,"mtime":%s,"size":%s},' "$(str "$backup_name")" "$(num "$backup_mtime")" "$(num "$backup_size")"
 else

@@ -10,6 +10,8 @@
  * Os textos são para quem não é da área: nada de jargão sem explicação.
  */
 
+import { infraView } from './infra.mjs';
+
 export const STEPS = [
   {
     id: 'local',
@@ -460,10 +462,15 @@ function prdCard(snapshot, delivery, now) {
   if (!snapshot.prd?.ok) return unavailable('Site dos clientes', snapshot.prd?.error);
   const p = snapshot.prd.data;
   const vps = p.vps?.configured && p.vps.ok ? p.vps.data : null;
+  const infra = vps ? infraView(vps, p.vpsHistory ?? [], now) : null;
   const issues = [];
   if (vps) {
-    if (vps.api?.health && vps.api.health !== 'healthy') issues.push(`sistema ${CONTAINER_TEXT[vps.api.health] ?? vps.api.health}`);
-    if (vps.db?.status && vps.db.status !== 'running') issues.push('banco de dados parado');
+    if (infra?.containers.length) {
+      issues.push(...infra.issues);
+    } else {
+      if (vps.api?.health && vps.api.health !== 'healthy') issues.push(`sistema ${CONTAINER_TEXT[vps.api.health] ?? vps.api.health}`);
+      if (vps.db?.status && vps.db.status !== 'running') issues.push('banco de dados parado');
+    }
     if (vps.disk_pct >= DISK_WARN_PCT) issues.push(`disco ${vps.disk_pct}% cheio`);
     if (vps.backup?.mtime && (vps.now - vps.backup.mtime) / 3600 > BACKUP_MAX_AGE_H) issues.push('backup atrasado');
   }
@@ -476,18 +483,44 @@ function prdCard(snapshot, delivery, now) {
   else if (issues.length) [state, level, title] = ['degradado', 'warn', `Atenção: ${issues.join(', ')}`];
 
   const behind = delivery.mainSha && p.releaseSha && p.releaseSha !== delivery.mainSha;
-  const facts = [
-    ['Versão no ar', p.releaseSha ? `${verFull(p.releaseSha)}${behind ? `, há uma mais nova (${ver(delivery.mainSha)})` : ', a mais recente'}` : '—'],
-    ['Tempo de resposta', p.healthOk ? `${p.latencyMs} ms` : 'sem resposta'],
-  ];
-  if (vps) {
+  const backupLate = vps?.backup?.mtime && (vps.now - vps.backup.mtime) / 3600 > BACKUP_MAX_AGE_H;
+  const tiles = infra
+    ? [
+        {
+          label: 'Versão no ar',
+          value: ver(p.releaseSha),
+          note: behind ? `há uma mais nova: ${ver(delivery.mainSha)}` : 'a mais recente',
+          level: behind ? 'warn' : 'ok',
+        },
+        {
+          label: 'Resposta do site',
+          value: p.healthOk ? `${p.latencyMs} ms` : 'sem resposta',
+          note: p.healthOk ? 'agora' : 'o site não respondeu',
+          level: p.healthOk ? (p.latencyMs >= 2000 ? 'warn' : 'ok') : 'bad',
+        },
+        {
+          label: 'Último backup',
+          value: vps.backup?.mtime ? hoursAgo(vps.now - vps.backup.mtime) : '—',
+          note: backupLate ? 'atrasado' : 'feito todo dia',
+          level: !vps.backup?.mtime || backupLate ? 'warn' : 'ok',
+        },
+        { label: 'Servidor ligado há', value: infra.uptime, note: 'sem reiniciar', level: 'ok' },
+      ]
+    : null;
+  const facts = infra
+    ? []
+    : [
+        ['Versão no ar', p.releaseSha ? `${verFull(p.releaseSha)}${behind ? `, há uma mais nova (${ver(delivery.mainSha)})` : ', a mais recente'}` : '—'],
+        ['Tempo de resposta', p.healthOk ? `${p.latencyMs} ms` : 'sem resposta'],
+      ];
+  if (vps && !infra) {
     facts.push(
       ['Sistema no servidor', containerText(vps.api?.status, vps.api?.health)],
       ['Banco de dados', containerText(vps.db?.status, vps.db?.health)],
       ['Disco usado', `${vps.disk_pct}%`],
       ['Último backup', vps.backup?.mtime ? hoursAgo(vps.now - vps.backup.mtime) : '—'],
     );
-  } else {
+  } else if (!vps) {
     facts.push(['Detalhes do servidor', p.vps?.configured ? `sem leitura (${p.vps.error})` : 'indisponíveis (leitura do servidor não configurada)']);
   }
 
@@ -497,6 +530,8 @@ function prdCard(snapshot, delivery, now) {
     title,
     subtitle: 'O site que os clientes usam (tap.quivercloud.com.br), no servidor da Hostinger.',
     facts,
+    tiles,
+    infra,
     deploys: (vps?.deploys ?? []).slice(-5).reverse().map((dep) => ({ ...dep, version: ver(dep.sha), short: short(dep.sha) })),
     actions: [{ name: 'deploy.dispatch', label: 'Voltar para uma versão anterior…', confirm: 'rollback' }],
     url: p.url,

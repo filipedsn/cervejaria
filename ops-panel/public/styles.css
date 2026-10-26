@@ -455,6 +455,244 @@ dd {
 .chip[data-level="warn"] { background: #f6ecd9; color: var(--warn); }
 .chip[data-level="bad"] { background: #f6e1de; color: var(--bad); }
 
+/* ---------- infraestrutura do servidor (cartão Site dos clientes) ---------- */
+
+.area.wide,
+.areas:has(#card-prd.wide) #card-pipeline {
+  grid-column: 1 / -1;
+}
+
+.infra {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 28px;
+  margin-top: 4px;
+}
+
+.infra h3 {
+  margin-top: 18px;
+}
+
+.infra h3 small {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tiles li {
+  --b: var(--off);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  border-left: 3px solid var(--b);
+  border-radius: 4px;
+  background: #f5f7f8;
+}
+
+.tiles li[data-level="ok"] { --b: var(--ok); }
+.tiles li[data-level="warn"] { --b: var(--warn); }
+.tiles li[data-level="bad"] { --b: var(--bad); }
+
+.tiles span,
+.tiles small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.tiles strong {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.spec {
+  margin: 2px 0 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.gauges {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gauge {
+  --g: var(--off);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  text-align: center;
+}
+
+.gauge[data-level="ok"] { --g: var(--ok); }
+.gauge[data-level="warn"] { --g: var(--warn); }
+.gauge[data-level="bad"] { --g: var(--bad); }
+
+.ring {
+  position: relative;
+  width: 76px;
+  height: 76px;
+}
+
+.ring svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ring circle {
+  fill: none;
+  stroke-width: 7;
+}
+
+.ring .track { stroke: #e6ebee; }
+
+.ring .fill {
+  stroke: var(--g);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.6s ease;
+}
+
+.ring span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge figcaption {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.gauge figcaption span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.spark {
+  width: 100%;
+  height: 30px;
+}
+
+.spark polygon { fill: color-mix(in srgb, var(--g) 14%, transparent); }
+
+.spark polyline {
+  fill: none;
+  stroke: var(--g);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark-empty {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.ctrs {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ctr {
+  --c: var(--off);
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--c);
+  border-radius: 4px;
+}
+
+.ctr[data-level="ok"] { --c: var(--ok); }
+.ctr[data-level="run"] { --c: var(--run); }
+.ctr[data-level="warn"] { --c: var(--warn); }
+.ctr[data-level="bad"] { --c: var(--bad); }
+
+.ctr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.ctr-head .chip {
+  margin-left: auto;
+}
+
+.ctr-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.ctr[data-level="ok"] .ctr-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 20%, transparent);
+}
+
+.ctr-role,
+.ctr-foot {
+  margin: 1px 0 0 17px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.ctr-role code {
+  font-size: 0.72rem;
+}
+
+.meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 6px 0 2px 17px;
+}
+
+.meter {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.meter > span:first-child {
+  color: var(--muted);
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #e6ebee;
+  overflow: hidden;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--c);
+}
+
 /* ---------- esteira por dentro (jobs do GitHub Actions) ---------- */
 
 .flow {
@@ -1024,6 +1262,11 @@ dialog.guide {
 
   .areas {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .infra {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
 
   .line {

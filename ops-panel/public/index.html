@@ -139,7 +139,7 @@
             <dt>Esteira</dt>
             <dd>A linha automática que testa, monta e publica. Sempre pede sua autorização antes de publicar.</dd>
             <dt>Site dos clientes</dt>
-            <dd>O sistema que os clientes usam, no servidor da Hostinger: se está no ar, qual versão, backup e disco.</dd>
+            <dd>O sistema que os clientes usam, no servidor da Hostinger: se está no ar, qual versão, backup, o uso de CPU, memória e disco do servidor (com o gráfico da última hora) e a saúde de cada contêiner.</dd>
           </dl>
 
           <h3>Palavras que aparecem</h3>
@@ -160,6 +160,8 @@
             <dd>Verificações que rodam sozinhas a cada mudança. "Testes ok" significa que nada conhecido quebrou.</dd>
             <dt>Publicar (deploy)</dt>
             <dd>Colocar uma versão no ar para os clientes.</dd>
+            <dt>Contêiner (Docker)</dt>
+            <dd>Cada peça do site roda isolada numa "caixa" no servidor: o sistema (API), o banco de dados, o Elasticsearch e o Kibana (logs) e o coletor que leva os logs até eles. Verde é saudável; se o sistema ou o banco ficar vermelho, o site é afetado.</dd>
             <dt>Produção (PRD)</dt>
             <dd>O site que os clientes usam. Ambiente de testes (DEV) é a cópia neste PC.</dd>
             <dt>Voltar versão (rollback)</dt>

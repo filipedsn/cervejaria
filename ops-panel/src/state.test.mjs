@@ -169,6 +169,27 @@ test('prd atenção via VPS: backup velho e disco cheio', () => {
   assert.match(s.cards.prd.title, /disco 91%/);
   assert.match(s.cards.prd.title, /backup atrasado/);
   assert.match(s.cards.prd.title, /banco de dados parado/);
+  assert.equal(s.cards.prd.infra, null, 'relatório antigo: sem medidores, continua em texto');
+  assert.ok(s.cards.prd.facts.some(([k]) => k === 'Banco de dados'));
+});
+
+test('prd com infraestrutura: blocos visuais e contêiner com problema no título', () => {
+  const nowS = NOW / 1000;
+  const containers = [
+    { name: 'cervejaria-api', status: 'running', health: 'healthy', started: '2026-10-26T17:00:00Z', cpu: '0.4%', mem: '100MiB / 15GiB', net: '0B / 0B' },
+    { name: 'cervejaria-db', status: 'running', health: 'unhealthy', started: '2026-10-24T17:00:00Z', cpu: '0%', mem: '70MiB / 15GiB', net: '1MB / 2MB' },
+  ];
+  const host = { cpus: 4, cpu_pct: 3, load: [0.1, 0.1, 0.1], mem_total: 16e9, mem_avail: 12e9, disk_total: 200e9, disk_used: 20e9, uptime_s: 90_000 };
+  const vps = { configured: true, ok: true, data: { now: nowS, disk_pct: 10, host, containers, api: { status: 'running', health: 'healthy' }, db: { status: 'running', health: 'unhealthy' }, backup: { mtime: nowS - 3600 }, deploys: [] } };
+  const s = deriveState(snap({ prd: { vps, vpsHistory: [{ t: nowS - 60, cpu: 2, mem: 24 }, { t: nowS, cpu: 3, mem: 25 }] } }), NOW);
+  const card = s.cards.prd;
+  assert.equal(card.level, 'warn');
+  assert.equal(card.title, 'Atenção: Banco de dados com problema');
+  assert.deepEqual(card.facts, []);
+  assert.deepEqual(card.tiles.map((t) => t.label), ['Versão no ar', 'Resposta do site', 'Último backup', 'Servidor ligado há']);
+  assert.equal(card.tiles[3].value, '25 h');
+  assert.deepEqual(card.infra.gauges[0].series, [2, 3]);
+  assert.equal(card.infra.containers.length, 2);
 });
 
 test('toda situação traz explicação e cada cartão tem subtítulo', () => {
