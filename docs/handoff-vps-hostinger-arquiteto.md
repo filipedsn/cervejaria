@@ -1,6 +1,6 @@
 # Handoff arquiteto / IA — Quiver Tap no VPS Hostinger
 
-**Data:** 2026-10-24 (cutover + hardening + CI/CD + segregação Dev/PRD + checklist canônico)  
+**Data:** 2026-10-24 (cutover + hardening + CI/CD + segregação Dev/PRD + checklist canônico) · atualizado 2026-10-26 (esteira ativa, painel Ops, pasta única)  
 **Repo:** `filipedsn/cervejaria` (**público**) · clone típico `C:\Users\Papai\Documents\Desenvolvimento\Cervejaria`  
 **Escopo:** operação PRD no VPS Hostinger + Cloudflare + CI/CD + mapa Dev/PRD + postura de segurança  
 **Estado:** **PRD** só no VPS (`https://tap.quivercloud.com.br`) · **DEV** só no PC · clusters Elastic **separados** · CI Actions + branch protection em `main` · PC **não** serve clientes
@@ -19,8 +19,10 @@
 | Restore drill (ensaiar restore) | **Feito** (2026-10-26, TAP-129) | `pg_dump -Fc` de PRD restaurado em banco separado (`cervejaria_dev` no PC): 54 tabelas, 68.367 linhas, `prisma migrate deploy` ok, `/api/ready` 200. Ainda não ensaiado: restaurar o arquivo do OneDrive em si (mesmo formato) |
 | CI remoto `build-and-unit` + protection em `main` | **Feito** | Repo público; PR obrigatório |
 | `npm run ci` local | **Complementar** | Continua útil (atestado / suite Windows); **não** substitui o check Actions no merge |
-| CD no VPS com aprovação humana | **Implementado — ativação pendente** | Esteira "Deploy PRD (VPS)" (TAP-126, §7.1); falta policy `tag:ci` + OAuth Tailscale |
-| `releaseSha` / rollback imagem n-1 | **Pendente** | |
+| CD no VPS com aprovação humana | **Feito** (ativa desde 2026-10-26) | Esteira "Deploy PRD (VPS)" (TAP-126, §7.1): push na `main` → CI → build → aprovação humana (painel Ops ou GitHub) → deploy via Tailscale → smoke. V864–V868 publicadas assim em 2026-10-26 |
+| `releaseSha` no container + smoke | **Feito** | `/api/health` devolve o `releaseSha`; o smoke da esteira e o painel Ops conferem o SHA publicado |
+| Rollback intencional para versão anterior | **Implementado — ensaio pendente** | Esteira por SHA da `main` (`workflow_dispatch` / painel Ops); rollback automático se o deploy falhar já existe. Falta ensaiar um rollback intencional |
+| Trabalho de agentes só na pasta canônica | **Regra** (2026-10-26, TAP-136) | Tudo na pasta `Cervejaria`; **proibido** criar worktree, clone ou cópia do repo em outra pasta. O DEV roda dessa pasta |
 | OTEL → ES PRD no VPS | **Feito** | Collector `deploy/tap-quiver/docker-compose.observability.yml` → `*.otel-prd`; cluster PRD ≠ DEV |
 | Equalizar API DEV em Docker | **Pendente** | Hoje API DEV = Node nativo |
 
@@ -307,7 +309,7 @@ DKIM cinza (`hostingermail-*._domainkey`) é **só e-mail** (envio/autenticidade
 
 | Lacuna | Evidência |
 |---|---|
-| CD no VPS aguardando ativação | Esteira com aprovação implementada (§7.1); falta policy `tag:ci` + OAuth Tailscale |
+| Rollback intencional não ensaiado | Esteira por SHA existe (§7.1); rollback automático em falha de deploy existe |
 | Sem push para registry | build no runner (`push: false`); tag `quiver-tap-api:<SHA>` |
 | Restore drill | dumps locais + OneDrive **OK**; restore de `pg_dump` de PRD ensaiado em 2026-10-26 (TAP-129) |
 | OTEL no VPS | ligado: EDOT na API + collector PRD → `*.otel-prd` |
@@ -445,7 +447,7 @@ push na main (ou "Run workflow" manual)
 | Relatório só leitura | `deploy/tap-quiver/ops-report.sh` → `/usr/local/sbin/quiver-tap-ops-report` | forced command de uma chave SSH própria do painel (`OPS_VPS_SSH_HOST`); imprime JSON (container, banco, disco, último backup, histórico de deploy) e não altera nada. Opcional: sem ele o cartão PRD usa só os endpoints públicos |
 | Cópia do banco PRD→DEV (TAP-129) | `deploy/tap-quiver/prd-dump.sh` → `/usr/local/sbin/quiver-tap-prd-dump`; no PC `scripts/dev/copy-prd-to-dev.ps1` (botão "Copiar o banco do site", confirmação digitando COPIAR) | forced command de **outra** chave SSH dedicada (`restrict`, `from=` Tailscale, alias `quiver-vps-dump`): escreve só um `pg_dump -Fc` no stdout, sem arquivo no VPS, segurando o lock do deploy. O PC guarda backup do DEV, recria `cervejaria_dev`, restaura, apaga push subscriptions e desliga o SMTP (remove `passEnc`, `appUrl` → localhost), roda migrations e religa o DEV; o arquivo de PRD é apagado no fim. Revogar = remover a linha `quiver-tap-prd-dump` do `authorized_keys` |
 | Backups do banco no painel (TAP-134) | lista: `ops-report.sh` (campo `backups`, com o sha256 de cada dump); baixar/apagar: `deploy/tap-quiver/backup-files.sh` → `/usr/local/sbin/quiver-tap-backup-files`; no PC `ops-panel/src/backups.mjs` (`OPS_BACKUP_SSH_HOST`) | forced command de uma terceira chave SSH dedicada (`restrict`, `from=` Tailscale, alias `quiver-vps-backups`): só `get <nome>` (arquivo no stdout; o PC grava em Downloads só depois de conferir o sha256) e `delete <nome>` para nomes `PREFIX-*.dump/.sql` de `BACKUP_DIR`. Apagar segura o lock do deploy, recusa o mais recente e mantém no mínimo 3; não toca a cópia off-site. Confirmação no painel digitando o nome do arquivo. Revogar = remover a linha `quiver-tap-backup-files` do `authorized_keys` |
-| Versão do DEV pelo painel (TAP-136) | `scripts/dev/switch-dev-code.ps1` (chamado pelo painel e por `sync-dev-main.ps1`) | só no PC; não toca VPS nem a esteira. O DEV continua rodando da pasta canônica do projeto (nenhuma outra pasta é criada); o script troca a versão dessa pasta, que precisa estar sem alterações versionadas: "Testar o PR" (head de PR com `build-and-unit` verde, antes de aceitar, em `detached HEAD`), "Igualar ao site" (`releaseSha` público de PRD, que precisa estar na `main`; banco do site opcional via `copy-prd-to-dev.ps1`) e "Trazer a versão oficial" (volta para a `main` com `origin/main`). `deploy/runtime/dev-code.json` diz qual versão está no DEV e por quê |
+| Versão do DEV pelo painel (TAP-136) | `scripts/dev/switch-dev-code.ps1` (chamado pelo painel e por `sync-dev-main.ps1`) | só no PC; não toca VPS nem a esteira. O DEV continua rodando da pasta canônica do projeto (nenhuma outra pasta é criada); o script troca a versão dessa pasta, que precisa estar sem alterações versionadas: "Testar o PR" (head de PR com `build-and-unit` verde, antes de aceitar, em `detached HEAD`), "Igualar ao site" (`releaseSha` público de PRD, que precisa estar na `main`; banco do site opcional via `copy-prd-to-dev.ps1`) e "Trazer a versão oficial" (volta para a `main` com `origin/main`; só aparece quando a `main` difere do site, senão "Igualar ao site" faz o mesmo). `deploy/runtime/dev-code.json` diz qual versão está no DEV e por quê. No trilho do painel, a etapa "Ambiente de testes" fica entre "Em revisão (PR)" e "Testes e montagem" para PRs que mexem em `backend/` ou `frontend/`; código fora da `main` aparece como `V<base>+<n>` |
 
 **`deploy-prd.sh` (ordem):** lock (`flock`) → SHA ∈ `main` (e, no modo `head-only`, = HEAD da main) → **guard de migrations** desde o `RELEASE_SHA` atual (destrutiva sem `allow-destructive` ou migration alterada = recusa, código 6, nada muda) → **backup Postgres** (`backup-postgres.sh`, mesmo do cron, inclui off-site) → imagem atual vira `quiver-tap-api:rollback` → `git checkout` em `/opt/cervejaria-git` + `rsync --delete` para `/opt/quiver-tap` **preservando** `.env.staging`, `.env.observability`, `backup-postgres.*` e `backups/` → `RELEASE_SHA` → `docker compose build api` (tag `:<sha>`) → **se houver migrations:** build do `migrator` → **ensaio** (restaura o backup recém-feito num Postgres descartável em `127.0.0.1:55432` e roda `prisma migrate deploy` nele) → `prisma migrate deploy` em PRD → `up -d --no-build --force-recreate api` → espera `/api/ready` + `releaseSha`. **Falha depois do sync = rollback automático** do código/imagem; o schema não é revertido (§7.1.G). Mantém as 5 últimas imagens `:<sha>` de api e migrator.
 
@@ -665,9 +667,9 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 ### 11.0 Ainda abertas (checklist curto — preferir esta lista)
 
 1. [x] **Restore drill** do Postgres (2026-10-26, TAP-129: `pg_dump` de PRD → `cervejaria_dev`; falta só ensaiar o arquivo do OneDrive)  
-2. [ ] **CD no VPS** — esteira implementada (TAP-126); falta policy/OAuth Tailscale + 1º deploy aprovado (§7.1)  
-3. [ ] **`releaseSha`** no container + rollback imagem n-1 ensaiado  
-4. [ ] Smoke automático no promote  
+2. [x] **CD no VPS** — esteira ativa desde 2026-10-26 (TAP-126, §7.1); publicações aprovadas pelo painel Ops  
+3. [x] **`releaseSha`** no container (`/api/health`) · [ ] **ensaiar rollback intencional** para uma versão anterior  
+4. [x] Smoke automático no promote (`/api/health` com `releaseSha` = SHA publicado)  
 5. [x] OTEL → ES **PRD** (collector + EDOT na API) 
 6. [ ] Equalizar **API DEV** em Docker  
 
@@ -682,11 +684,11 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 5. [x] SSH só Tailscale + rotação de segredos  
 6. [x] Cloudflared desinstalado no PC  
 7. [x] Chaves SSH humanas + agente documentadas + backup cifrado no OneDrive  
-8. [x] Workflows CI + esteira "Deploy PRD (VPS)" com aprovação, backup, rollback automático e smoke (TAP-126, §7.1); ativação Tailscale pendente  
+8. [x] Workflows CI + esteira "Deploy PRD (VPS)" com aprovação, backup, rollback automático e smoke (TAP-126, §7.1); ativa desde 2026-10-26  
 9. [x] Repo **público**; branch protection em `main` (PR obrigatório + check `build-and-unit`; sem push direto)  
 10. [x] Backups Postgres agendados no VPS (01:00 BRT, 30 dumps)  
 11. [x] Backup **off-site** OneDrive `…/Backup banco/PRD` via rclone (`OFFSITE_ENABLED=1`, comprovado 2026-10-24)  
-12. [ ] `releaseSha` no container (hoje pode ser `unknown`)  
+12. [x] `releaseSha` no container (`/api/health`; conferido pelo smoke e pelo painel Ops)  
 13. [x] Tarefa `QuiverTap-ProdBackup` no PC excluída  
 14. [x] OTEL → ES **PRD** no VPS (cluster PRD ≠ cluster DEV local) 
 15. [x] ES healthcheck alinhado à senha rotacionada → container **healthy**  
@@ -709,4 +711,4 @@ Workflows: `.github/workflows/ci.yml`, `.github/workflows/deploy-vps.yml`.
 
 ## 12. Mensagem executiva (1 parágrafo)
 
-O Quiver Tap **saiu do notebook**: **PRD** só no **VPS** (Cloudflare → nginx → Docker); **DEV** só no **PC**; Elastic **separado** (cluster local ≠ cluster VPS). Backup Postgres **local + off-site OneDrive já configurados e comprovados**; restore ensaiado em 2026-10-26 (TAP-129, PRD→`cervejaria_dev`), faltando só repetir com o arquivo do OneDrive. CI: Actions `build-and-unit` **obriga** merge em `main`; `npm run ci` local é **complementar** (não rivais). Cutover OK com PC desligado. Codex: checklist canônico no topo · Dev/PRD §0.1 · CD §7.1. Outras lacunas: ativar o Tailscale da esteira de deploy (§7.1); ensaiar rollback; API DEV em Docker. Doc **interno** — não republicar paths/credenciais.
+O Quiver Tap **saiu do notebook**: **PRD** só no **VPS** (Cloudflare → nginx → Docker); **DEV** só no **PC**; Elastic **separado** (cluster local ≠ cluster VPS). Backup Postgres **local + off-site OneDrive já configurados e comprovados**; restore ensaiado em 2026-10-26 (TAP-129, PRD→`cervejaria_dev`), faltando só repetir com o arquivo do OneDrive. CI: Actions `build-and-unit` **obriga** merge em `main`; `npm run ci` local é **complementar** (não rivais). Cutover OK com PC desligado. Codex: checklist canônico no topo · Dev/PRD §0.1 · CD §7.1. Publicação: esteira com aprovação humana ativa desde 2026-10-26 (§7.1), operada pelo painel Ops. Outras lacunas: ensaiar rollback intencional; restaurar o arquivo do OneDrive; API DEV em Docker. Doc **interno** — não republicar paths/credenciais.

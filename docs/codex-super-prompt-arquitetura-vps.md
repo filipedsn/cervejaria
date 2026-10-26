@@ -19,7 +19,7 @@ git fetch origin main
 git switch -c <prefixo>/descricao-curta origin/main
 ```
 
-3. Working tree sujo / outra feature: NÃO misture. Prefira worktree isolado.
+3. **Pasta única:** trabalhe sempre na pasta canônica do projeto (`C:\Users\Papai\Documents\Desenvolvimento\Cervejaria`). **Proibido** criar worktree, clone ou cópia do repo em outra pasta (decisão do usuário, 2026-10-26, TAP-136). Working tree sujo / outra feature: NÃO misture — faça commit do trabalho na branch dele (ou pergunte ao usuário) antes de trocar de branch. O DEV roda desta pasta: trocar de branch muda o código que o DEV executa.
 4. Leia nesta ordem (fonte da verdade). Se a cópia local divergir do GitHub, prevalece `origin/main`:
 
    1. **Este arquivo** (`docs/codex-super-prompt-arquitetura-vps.md`)  
@@ -60,15 +60,17 @@ Regras absolutas:
 - Repo **público** + GitHub Actions job **`build-and-unit`** + branch protection em `main`  
 - Backup Postgres no VPS: dumps locais (cron 01:00 BRT, 30) **E** cópia off-site OneDrive via rclone (`OFFSITE_ENABLED=1`, comprovado)  
 - Segregação Dev/PRD documentada no handoff  
+- Esteira "Deploy PRD (VPS)" **ativa** desde 2026-10-26 (TAP-126): push na `main` → CI → build → aprovação humana → deploy via Tailscale → smoke público com `releaseSha`  
+- Painel Ops (`ops-panel/`, `http://127.0.0.1:3099`, TAP-127+): o usuário aceita PRs, autoriza publicações e troca a versão do DEV por ele (handoff §7.1)  
 
 ### 1.3 O que AINDA é pendência real (só execute se a missão pedir explicitamente)
 
 Conforme handoff §11.0:
 1. ~~Restore drill do Postgres~~ feito em 2026-10-26 (TAP-129); falta só repetir com o arquivo do OneDrive  
-2. Ativar a esteira de deploy PRD (policy `tag:ci` + OAuth Tailscale) — §7.1 (esteira já implementada, TAP-126)  
-3. `releaseSha` no container + rollback imagem n-1  
-4. Smoke automático no promote  
-5. OTEL → ES PRD (opcional)  
+2. ~~Ativar a esteira de deploy PRD~~ ativa desde 2026-10-26 (TAP-126, §7.1)  
+3. ~~`releaseSha` no container~~ feito; falta **ensaiar um rollback intencional** para uma versão anterior  
+4. ~~Smoke automático no promote~~ feito (smoke público da esteira)  
+5. ~~OTEL → ES PRD~~ feito (collector + EDOT na API)  
 6. Equalizar API DEV em Docker  
 
 **NÃO é pendência:** “configurar backup OneDrive do banco”. Já está feito.
@@ -84,7 +86,7 @@ Textos que digam “GitHub Actions está desligado” ou “TAP-116 = decisão v
 
 ### 1.5 Deploy de produção pública
 
-- Path oficial: **VPS Docker** (hoje manual via SSH Tailscale; CD futuro no handoff §7.1).  
+- Path oficial: **esteira "Deploy PRD (VPS)"** com aprovação humana no environment `production` (pelo painel Ops ou pelo GitHub), handoff §7.1. Deploy manual via SSH Tailscale só como contingência, com autorização explícita.  
 - `.\deploy.cmd` / `scripts/prod/deploy.ps1` = **LEGADO Windows**. Não publica mais `tap.quivercloud.com.br`. Manter no repo; relabelar; não apagar sem missão explícita.
 
 ---
@@ -116,7 +118,7 @@ Produção não foi alterada.
 5. **Merge:** squash-merge só se **você** criou a PR, `build-and-unit` verde, e (docs-only **ou** OK humano explícito para runtime). Se a PR ficou para outro agente: **não mergeie**.
 6. **`docs/observability/**`**: não reescrever TAP-96 em massa. Só corrija frases vigentes que mandem PC/tunnel como prod do Tap ou “Actions desligado” como regra atual.
 7. **Plane:** WI só com autorização / indicação; não criar épico sozinho; não bloquear missão no Plane.
-8. **Secrets Tailscale / aprovar deploy PRD / restore drill / Docker API DEV / OTEL PRD**: só se a missão do usuário pedir. Senão, anote em próximos passos.
+8. **Secrets Tailscale / aprovar deploy PRD / ensaio de rollback / restore do arquivo OneDrive / Docker API DEV**: só se a missão do usuário pedir. Senão, anote em próximos passos.
 9. Dúvida clone vs GitHub → **`origin/main` + handoff + este arquivo**.
 10. Não reabrir 22 / 3001 / 5432 / 9200 / 5601 na internet.  
 11. Não commitar `.env`, chaves, senhas, tokens, `rclone.conf`.  
@@ -226,7 +228,7 @@ Docs-only + PR sua + CI verde → squash ok. Senão → regras §2.5.
 - ...
 
 ## Próximos passos (handoff §11.0)
-- restore drill / CD Tailscale / releaseSha / OTEL PRD / API DEV Docker
+- ensaio de rollback / restore do arquivo OneDrive / API DEV Docker
 
 ## O que NÃO fiz
 - ...
@@ -237,6 +239,7 @@ Docs-only + PR sua + CI verde → squash ok. Senão → regras §2.5.
 ## 6. Proibições (missão falha se violar)
 
 - Deploy VPS (aprovar o environment `production` ou SSH manual) sem autorização  
+- Criar worktree, clone ou cópia do repo fora da pasta canônica `Cervejaria`  
 - Secrets no GitHub sem pedido  
 - Reabrir firewall / recriar tunnel do `tap`  
 - Cruzar Elastic/DB DEV↔PRD (única exceção, decidida pelo usuário no TAP-129: cópia PRD→DEV pelo botão "Copiar o banco do site" do painel Ops; ver handoff, linha Postgres e § Painel Ops)  
@@ -253,4 +256,4 @@ Docs-only + PR sua + CI verde → squash ok. Senão → regras §2.5.
 
 ## 7. Prompt mental (uma linha)
 
-> PRD só VPS; DEV só PC; Actions obriga merge; deploy.cmd é legado; tapdev/tunnel não são prod; off-site backup já existe; leio este arquivo + handoff; push sempre; se gh der 403 entrego compare e paro; produção intocada sem autorização.
+> PRD só VPS; DEV só PC; só a pasta Cervejaria, sem worktree; Actions obriga merge; publicação pela esteira com aprovação humana; deploy.cmd é legado; tapdev/tunnel não são prod; off-site backup já existe; leio este arquivo + handoff; push sempre; se gh der 403 entrego compare e paro; produção intocada sem autorização.
