@@ -55,6 +55,7 @@ jobs:
             package-lock.json
             backend/package-lock.json
             frontend/package-lock.json
+            ops-panel/package-lock.json
 
       - name: Install root
         run: npm ci
@@ -99,3 +100,8 @@ jobs:
 
       - name: Frontend build
         run: npm run build:deploy --prefix frontend
+
+      - name: Ops panel unit tests
+        run: |
+          npm ci --prefix ops-panel
+          npm run test:unit --prefix ops-panel

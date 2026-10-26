@@ -47,14 +47,6 @@ if (Test-Path $recoveryFile) {
   }
 }
 
-$opsPidFile = Join-Path $paths.RuntimeDir 'ops-panel.pid'
-if (Test-Path $opsPidFile) {
-  $processId = Get-Content $opsPidFile
-  $alive = Test-ProcessAlive -ProcessId ([int]$processId)
-  Write-Host "Ops panel (:3099): $(if ($alive) { 'OK' } else { 'FORA' }) (PID $processId)" -ForegroundColor $(if ($alive) { 'Green' } else { 'Red' })
-  Write-Host "  http://127.0.0.1:3099" -ForegroundColor Gray
-}
-
 $frontendOk = Test-FrontendHealthy -FrontendUrl $paths.FrontendUrl
 $frontendLabel = if ($paths.ServeFrontendFromApi) { 'Frontend estatico (via API)' } else { 'Frontend Vite' }
 Write-Host "$frontendLabel ($($paths.FrontendUrl)): $(if ($frontendOk) { 'OK' } else { 'FORA' })" -ForegroundColor $(if ($frontendOk) { 'Green' } else { 'Red' })

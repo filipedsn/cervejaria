@@ -1,131 +1,77 @@
-# Quiver Tap Ops Panel
+# Quiver Tap Ops
 
-Painel local de CI/CD e operacoes. Roda **separado** da aplicacao prod (`:3001`).
-
-## URL
-
-http://127.0.0.1:3099 (somente localhost)
-
-## Setup
+Painel local, numa tela só, para saber em que pé está a entrega e agir sem abrir GitHub, terminal ou VPS.
+Roda no PC em `http://127.0.0.1:3099` e só atende o navegador desta máquina.
 
 ```powershell
-copy ops-panel\.env.example ops-panel\.env
-npm run ops:start
-npm run ops:open
+npm run ops:open      # sobe o painel se estiver parado e abre o navegador
+npm run ops:status    # rodando, parado, painel antigo na porta ou porta ocupada
+npm run ops:stop
+npm run ops:restart
 ```
 
-## URL e confiabilidade
+Requisitos: Node, `git` e o `gh` logado (`gh auth status`) com acesso ao repositório.
 
-**Porta fixa:** `3099` (configuravel em `ops-panel/.env` como `OPS_PANEL_PORT`).  
-**Nao existe fallback automatico para outra porta** — se algo antigo estiver preso na 3099, o start falha com instrucoes claras em vez de subir em silencio em outro lugar.
+## O que a tela mostra
 
-### Comandos (use estes, nao adivinhe a URL)
+1. **Veredito**: uma frase com o estado mais grave e, ao lado, a próxima ação recomendada.
+2. **Trilho da entrega**: Local, Pull request, main (CI + build), Aprovação, Produção. A estação acesa é onde a entrega está.
+3. **Quatro cartões**:
+   - **Git**: branch, à frente/atrás da main, PRs abertos com o CI de cada um.
+   - **DEV**: API `:3002`, web `:5202`, containers do Postgres e Elasticsearch, versão em execução.
+   - **Esteira**: últimos runs do Deploy PRD (VPS) e o deploy que aguarda aprovação.
+   - **Produção**: health e versão públicos; com o relatório do VPS, também container, banco, disco, último backup e histórico de deploy.
+4. **Ações feitas pelo painel**: registro em `deploy/logs/ops-panel.log` (JSONL).
 
-| Comando | O que faz |
-|---|---|
-| `npm run ops:status` | **Fonte da verdade** — URL, PID, rodando/parado/legado |
-| `npm run ops:start` | Sobe na porta configurada |
-| `npm run ops:stop` | Para o painel |
-| `npm run ops:restart` | Para e sobe de novo |
-| `npm run ops:open` | Abre no navegador **somente** se a versao atual estiver no ar |
+O estado vem de `src/state.mjs`, uma função pura testada em `src/state.test.mjs` (`npm run ops:test`).
 
-O servidor grava `deploy/runtime/ops-panel.meta.json` com porta, PID e horario de inicio.  
-A propria UI mostra `Online · PID …` no topo quando voce esta na instancia certa.
+## Ações
 
-Se `ops:status` mostrar **LEGADO**, encerre o PID indicado (PowerShell como Administrador) e rode `ops:start` de novo.
+Lista fechada em `src/actions.mjs`; o servidor revalida os parâmetros e executa uma ação por vez.
 
-Abra sempre a URL que `ops:status` imprimir — hoje e `http://127.0.0.1:3099`.
+| Ação | Confirmação | O que roda |
+|---|---|---|
+| Ligar / Desligar / Reiniciar DEV | desligar e reiniciar pedem confirmação | `scripts/dev/supervisor.ps1`, `scripts/dev/stop-dev.ps1` |
+| Mergear PR | modal com commits e migrations | `gh pr merge --squash`, só com `build-and-unit` verde, mergeável e fora de rascunho |
+| Aprovar / Rejeitar deploy | modal com o que muda em produção | `pending_deployments` do run que aguarda o environment `production` |
+| Publicar / rollback | escolhe um commit da main e vê o que entra ou sai | `gh workflow run deploy-vps.yml` (com `sha` quando não é o HEAD); o run para aguardando aprovação |
 
-## Segurança de ações
+O painel não faz deploy sozinho: todo caminho até produção passa pela esteira e por uma aprovação humana.
+Migration destrutiva continua bloqueada pela esteira (`allow_destructive` só pelo GitHub).
 
-Acoes destrutivas ainda pedem confirmacao digitada (`DEPLOY`, `ROLLBACK`, `SYNC-DEV`).
-Uma pagina em outra origem nao consegue disparar essas acoes (checagem de Origin).
+## Segurança
 
-`OPS_PANEL_TOKEN` so e necessario se o painel for acessado de fora do localhost.
+- Escuta só em `127.0.0.1`; recusa Host e Origin que não sejam desta porta.
+- POST exige o header `x-ops-panel: 1`, que uma página de outra origem não consegue enviar sem preflight CORS.
+- Usa as credenciais do `gh` já logado no PC; o painel não guarda token.
 
-## Qualidade do deploy (CI local)
+## Relatório do VPS (opcional)
 
-O gate de release exige `deploy/.local-ci-attestation.json` gerado por `npm run ci` para
-o SHA de `HEAD`. `GITHUB_TOKEN` continua opcional: so enriquece metadados de PR no painel
-(O check remoto build-and-unit é obrigatório para merge em main; o atestado local é complementar para tooling legado.)
+Sem configuração, o cartão Produção usa só `https://tap.quivercloud.com.br/api/health` e `/api/ready`.
+Para ver container, banco, disco, backup e histórico de deploy:
 
-## Console de release
+1. No VPS (com autorização), instale `deploy/tap-quiver/ops-report.sh` em `/usr/local/sbin/quiver-tap-ops-report`
+   e cadastre uma chave exclusiva do painel em `authorized_keys` com
+   `restrict,command="/usr/local/sbin/quiver-tap-ops-report"`. A chave não abre shell e o script não altera nada.
+2. No PC, crie um host no `~/.ssh/config` que use essa chave pela Tailscale e informe o nome em
+   `OPS_VPS_SSH_HOST` no `ops-panel/.env`.
 
-O repositório é público e main exige PR e check remoto build-and-unit verde. Este console e scripts/prod/release-gate.ps1 pertencem ao fluxo Windows legado: o atestado npm run ci protege esse caminho, mas não substitui o check remoto nem publica o site público no VPS.
+## Configuração
 
-`GET /api/release` mostra:
+`ops-panel/.env` (copiado de `.env.example` no primeiro `ops:start`):
 
-- o commit publicado (`gitSha` de `deploy/prod-artifacts/manifest.json`) e a data;
-- o commit local (`HEAD`), a branch e se ha arquivo nao commitado;
-- os commits pendentes entre o publicado e o `HEAD`, com o PR de origem e marca de
-  `agente` quando vieram de uma branch `fix/auto-N`;
-- os checks obrigatorios do CI para o `HEAD`;
-- as migrations que entram no deploy;
-- a release anterior disponivel para rollback.
-
-O deploy e **recusado** (HTTP 409) quando:
-
-| Impedimento | Motivo |
-|---|---|
-| `head-fora-do-main` | o commit local nao esta em `origin/main` — falta merge do PR |
-| `working-tree-suja` | ha arquivo nao commitado (o painel lista os caminhos) |
-| `ci-local-ausente` | sem `deploy/.local-ci-attestation.json` — rode `npm run ci` |
-| `ci-local-desatualizado` / `ci-local-falhou` | atestado de outro SHA ou sem sucesso |
-| `migrations-sem-confirmacao` | ha migration nova e falta o aceite explicito na tela |
-| `git-indisponivel` | nao da para ler o repositorio (unico impedimento sem override) |
-
-A prova de qualidade e o atestado gerado por `npm run ci` para o SHA de `HEAD`.
-
-O override existe para hotfix, exige motivo, e o motivo vai para `deploy/logs/ops-panel.log`
-junto com todos os impedimentos ignorados.
-
-A regra do gate e uma funcao pura testada em `src/release.test.mjs`:
-
-```powershell
-npm run ops:test
-```
-
-### Roteiro no painel
-
-O console de release mostra um **roteiro numerado** (passos 1–4):
-
-1. **Verificar release** no painel — sincroniza `main` com `origin/main` automaticamente (checkout + pull) quando a working tree esta limpa
-2. Working tree — lista arquivos sujos e o que fazer
-3. CI / gate — atestado de `npm run ci`
-4. Campo **DEPLOY** — habilita o botao **Liberar deploy** (sem `prompt()` do navegador)
-
-Apos o deploy, o **Passo 5 (smoke)** roda sozinho: `/api/ready`, frontend, manifest e amostra de logo.
-
-No terminal, antes de abrir o painel:
-
-```powershell
-npm run prod:ready
-```
-
-## Rollback
-
-`scripts/prod/rollback.ps1` devolve os artefatos da release anterior, preservada em
-`deploy/prod-artifacts.previous` a cada `prod:deploy`. O `node_modules` vai junto, entao
-voltar nao exige `npm ci` — leva segundos.
-
-O rollback e reversivel: a release que sai do ar toma o lugar da anterior, entao rodar
-duas vezes devolve o estado inicial.
-
-**O banco nao volta.** Migration aplicada continua aplicada; para isso, restaure o dump
-de `deploy/backups`.
+| Variável | Padrão | Uso |
+|---|---|---|
+| `OPS_PANEL_PORT` | `3099` | porta do painel; não há fallback para outra porta |
+| `GITHUB_REPO` | `filipedsn/cervejaria` | repositório consultado pelo `gh` |
+| `OPS_VPS_SSH_HOST` | vazio | host SSH da chave só leitura; vazio = só dados públicos |
+| `OPS_PANEL_AUDIT_LOG` | `deploy/logs/ops-panel.log` | registro das ações |
 
 ## Desenvolvimento
 
 ```powershell
 cd ops-panel
-npm run dev
+npm run dev                                      # node --watch
+npm run test:unit
+$env:OPS_PANEL_PORT='3096'; node src/server.mjs  # segunda instância sem tocar na 3099
 ```
-
-Para testar numa porta alternativa sem interferir na instancia real:
-
-```powershell
-$env:OPS_PANEL_PORT='3096'; node src/server.mjs
-```
-
-O painel nao sobrescreve `deploy/runtime/ops-panel.pid` quando o pid registrado
-pertence a outro processo vivo.

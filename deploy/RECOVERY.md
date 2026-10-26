@@ -1,8 +1,9 @@
 # Recuperacao manual apos migration de producao
 
 `deploy/runtime/deploy-recovery.json` existe somente quando um deploy falhou depois
-de iniciar uma migration. Enquanto ele existir, `deploy.pause` mantem o watchdog
-bloqueado e o Ops Panel recusa novo deploy e restart comum da API.
+de iniciar uma migration pelo deploy Windows legado. Enquanto ele existir,
+`deploy.pause` mantem o watchdog bloqueado. Producao publica roda no VPS; la a
+recuperacao segue `docs/handoff-vps-hostinger-arquiteto.md` §7.1.G.
 
 Comece sempre por:
 

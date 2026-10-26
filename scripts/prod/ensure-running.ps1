@@ -61,7 +61,6 @@ if (-not $frontendOk -and -not $paths.ServeFrontendFromApi) {
 }
 
 # Auxiliares nao devem impedir recuperacao da API e do tunel.
-& (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\start-ops-panel.ps1" -Quiet
 if (-not $alertPollerOk) {
   & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\start-alert-poller.ps1" -Quiet
   $alertPollerOk = Test-AlertPollerHealthy -HealthUrl $paths.AlertPollerHealthUrl

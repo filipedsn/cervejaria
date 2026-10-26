@@ -1,4 +1,4 @@
-# Status do ops-panel — fonte unica da verdade (porta, PID, versao).
+# Status do ops-panel (porta, PID, versao).
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
@@ -7,11 +7,8 @@ $ErrorActionPreference = 'Stop'
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
-$envFile = Join-Path $paths.ProjectRoot 'ops-panel\.env'
-$metaFile = Join-Path $paths.RuntimeDir 'ops-panel.meta.json'
-$port = Get-OpsPanelConfiguredPort -EnvFile $envFile
-
-$status = Get-OpsPanelLiveStatus -Port $port -MetaFile $metaFile
+$port = Get-OpsPanelConfiguredPort -EnvFile (Join-Path $paths.ProjectRoot 'ops-panel\.env')
+$status = Get-OpsPanelLiveStatus -Port $port
 Write-OpsPanelStatusReport -Status $status
 
 if ($status.state -eq 'current') { exit 0 }
