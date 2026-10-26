@@ -18,6 +18,10 @@ const SIMPLE_CONFIRM = {
     title: 'Reiniciar o ambiente de testes?',
     body: 'O ambiente de testes deste PC será desligado e ligado de novo (cerca de 30 segundos). O site dos clientes não é afetado.',
   },
+  'pr.update': {
+    title: 'Atualizar o PR?',
+    body: 'O PR recebe as últimas mudanças da versão oficial e os testes automáticos rodam de novo (1 a 3 minutos). Quando passarem, aparece o botão para aceitar. Nada muda para os clientes.',
+  },
   'deploy.reject': {
     title: 'Não publicar agora?',
     body: 'A nova versão não será publicada. O site dos clientes continua exatamente como está. Se mudar de ideia, o painel mostra o botão "Publicar a versão mais recente".',
@@ -76,6 +80,7 @@ function prList(prs) {
         <a href="${esc(pr.url)}" target="_blank" rel="noopener" title="Abrir no GitHub">#${pr.number} ${esc(plain(pr.title))}</a>
         <span class="chip" data-ci="${esc(pr.ci)}">${esc(pr.ciLabel)}</span>
         ${pr.isDraft ? '<span class="chip">rascunho</span>' : ''}
+        ${pr.behind ? '<span class="chip" data-level="warn" title="Feito sobre uma versão oficial antiga">desatualizado</span>' : ''}
         ${pr.mergeable === 'CONFLICTING' ? '<span class="chip" data-ci="failure">com conflito</span>' : ''}
         ${control(pr.action)}
       </li>`,
@@ -89,7 +94,7 @@ function runList(runs) {
     .map(
       (r) => `<li>
         <a href="${esc(r.url)}" target="_blank" rel="noopener" title="Abrir no GitHub"><code>${esc(r.short)}</code> ${esc(plain(r.title))}</a>
-        <span class="chip" data-run="${esc(r.conclusion ?? r.status)}">${esc(r.label)}</span>
+        <span class="chip" data-run="${esc(r.rejected ? 'rejected' : (r.conclusion ?? r.status))}">${esc(r.label)}</span>
       </li>`,
     )
     .join('')}</ul>`;
@@ -107,10 +112,46 @@ function deployList(card) {
   return `${rows}<p class="links"><a href="${esc(card.url)}" target="_blank" rel="noopener">Abrir o site dos clientes</a></p>`;
 }
 
+const FLOW_ICON = { done: '✓', waiting: '!', failed: '✕', rejected: '–', cancelled: '–', skipped: '–' };
+
+function jobBox(job) {
+  const pct = job.progress ? Math.round((100 * job.progress.done) / job.progress.total) : 0;
+  return `<a class="job" data-status="${esc(job.status)}" data-level="${esc(job.level)}" href="${esc(job.url)}" target="_blank" rel="noopener" title="Abrir esta etapa no GitHub">
+    <span class="job-icon" aria-hidden="true">${FLOW_ICON[job.status] ?? ''}</span>
+    <span class="job-body">
+      <strong>${esc(job.label)}</strong>
+      ${job.desc ? `<span class="job-desc">${esc(job.desc)}</span>` : ''}
+      <span class="job-status">${esc(job.statusText)}${job.time ? ` · ${esc(job.time)}` : ''}</span>
+      ${job.progress ? `<span class="job-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></span>` : ''}
+    </span>
+  </a>`;
+}
+
+function renderFlow(flow) {
+  $('flow').hidden = !flow;
+  if (!flow) return;
+  const took = flow.total ? ` · ${flow.live ? 'rodando há' : 'levou'} ${esc(flow.total)}` : '';  $('h-flow').textContent = flow.live ? 'Esteira por dentro (agora)' : 'Esteira por dentro (última passagem)';
+  $('flow-meta').innerHTML = `<span class="chip" data-level="${esc(flow.level)}">${esc(flow.label)}</span>
+    versão <code>${esc(flow.sha)}</code> · ${esc(plain(flow.title))} · ${esc(flow.trigger)} · ${esc(when(flow.startedAt))}${took}`;
+  $('flow-link').href = flow.url;
+  $('flow-graph').innerHTML = flow.columns
+    .map((column) => `<div class="flow-col${column.length > 1 ? ' group' : ''}">${column.map(jobBox).join('')}</div>`)
+    .join('<span class="flow-pipe" aria-hidden="true"></span>');
+}
+
 function render(data) {
+  const previous = state;
   state = data;
   registry.clear();
-  $('updated').textContent = `atualizado às ${time(data.at)}`;
+  $('updated').textContent = `${data.moving ? 'ao vivo · ' : ''}atualizado às ${time(data.at)}`;
+  $('live').dataset.mode = data.moving ? 'fast' : 'idle';
+  document.title = data.verdict.level === 'warn' || data.verdict.level === 'bad' ? '(!) Quiver Tap Ops' : 'Quiver Tap Ops';
+  if (previous && previous.verdict.text !== data.verdict.text) {
+    const box = $('verdict');
+    box.classList.remove('changed');
+    void box.offsetWidth;
+    box.classList.add('changed');
+  }
 
   $('verdict').dataset.level = data.verdict.level;
   $('verdict-text').textContent = data.verdict.text;
@@ -132,6 +173,7 @@ function render(data) {
     )
     .join('');
   $('line-hint').textContent = data.delivery.activeHint ?? '';
+  renderFlow(data.flow);
 
   area('git', 'Código', data.cards.git, prList(data.cards.git.prs));
   area('dev', 'Ambiente de testes', data.cards.dev);
@@ -156,6 +198,7 @@ async function refresh(force = false) {
     render(await api(`/api/state${force ? '?force=1' : ''}`));
   } catch (error) {
     $('updated').textContent = `sem resposta do painel: ${error.message}`;
+    $('live').dataset.mode = 'off';
   } finally {
     loading = false;
     $('refresh').disabled = false;
@@ -356,7 +399,17 @@ document.addEventListener('click', (event) => {
   if (button) handle(registry.get(button.dataset.action), button);
 });
 $('refresh').addEventListener('click', () => refresh(true));
-setInterval(() => {
-  if (!document.hidden && !modal.open) refresh(false);
-}, 15_000);
-refresh(false);
+
+// Atualização sozinha: rápida enquanto algo anda (testes, esteira), lenta quando está parado.
+let timer = null;
+function schedule() {
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    if (!document.hidden && !modal.open) await refresh(false);
+    schedule();
+  }, state?.moving ? 5_000 : 15_000);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refresh(false);
+});
+refresh(false).then(schedule);

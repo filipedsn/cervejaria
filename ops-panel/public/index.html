@@ -10,9 +10,11 @@
     <header class="top">
       <h1>Quiver Tap <span>Ops</span></h1>
       <div class="top-meta">
-        <span id="updated" aria-live="polite">carregando…</span>
+        <span id="live" class="live" data-mode="off" title="O painel se atualiza sozinho">
+          <span class="live-dot" aria-hidden="true"></span><span id="updated" aria-live="polite">carregando…</span>
+        </span>
         <button type="button" id="help" class="ghost">Como funciona?</button>
-        <button type="button" id="refresh" class="ghost">Atualizar</button>
+        <button type="button" id="refresh" class="ghost" title="Buscar tudo de novo agora">Recarregar</button>
       </div>
     </header>
 
@@ -35,6 +37,17 @@
         <h2 id="h-line" class="section-title">Caminho de uma mudança até os clientes</h2>
         <ol id="line" class="line"></ol>
         <p id="line-hint" class="line-hint"></p>
+      </section>
+
+      <section id="flow" class="flow" aria-labelledby="h-flow" hidden>
+        <div class="flow-head">
+          <div>
+            <h2 id="h-flow" class="section-title">Esteira por dentro</h2>
+            <p id="flow-meta" class="flow-meta"></p>
+          </div>
+          <a id="flow-link" href="#" target="_blank" rel="noopener">Ver no GitHub</a>
+        </div>
+        <div id="flow-graph" class="flow-graph"></div>
       </section>
 
       <div class="areas">
@@ -69,6 +82,10 @@
           <p class="lead">
             Toda mudança no Quiver Tap faz o mesmo caminho até os clientes. Este painel mostra em que ponto ela está e
             qual botão apertar. <strong>Nada chega aos clientes sem a sua autorização.</strong>
+          </p>
+          <p>
+            O painel se atualiza sozinho: a cada 5 segundos enquanto algo está andando (bolinha azul piscando no topo) e
+            a cada 15 segundos quando está tudo parado. Não precisa clicar em <em>Recarregar</em>.
           </p>
 
           <h3>O caminho de uma mudança</h3>
@@ -127,6 +144,10 @@
             <dd>Um pedido para juntar uma mudança à versão oficial. Vem com testes automáticos.</dd>
             <dt>Aceitar (merge)</dt>
             <dd>Juntar o PR à versão oficial. Ainda não publica nada.</dd>
+            <dt>Atualizar o PR</dt>
+            <dd>Quando o PR foi feito sobre uma versão oficial antiga, ele precisa trazer as últimas mudanças antes de ser aceito. Os testes rodam de novo e depois aparece o botão Aceitar.</dd>
+            <dt>Esteira por dentro</dt>
+            <dd>O desenho abaixo do caminho: as etapas da esteira (preparar, testes, montagem, publicação), com tempo e situação de cada uma.</dd>
             <dt>Versão oficial (main)</dt>
             <dd>O código aprovado, de onde saem as publicações.</dd>
             <dt>Testes automáticos (CI)</dt>

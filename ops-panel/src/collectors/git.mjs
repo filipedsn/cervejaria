@@ -4,8 +4,8 @@ import { firstLine, run } from '../exec.mjs';
 const git = (...args) => run('git', args, { cwd: ROOT, timeoutMs: 10_000 });
 let lastFetchAt = 0;
 
-export async function collectGit({ force = false } = {}) {
-  if (force || Date.now() - lastFetchAt > 60_000) {
+export async function collectGit({ force = false, maxAgeMs = 30_000 } = {}) {
+  if (force || Date.now() - lastFetchAt > maxAgeMs) {
     const fetched = await run('git', ['fetch', '--quiet', 'origin', 'main'], { cwd: ROOT, timeoutMs: 20_000 });
     if (fetched.code === 0) lastFetchAt = Date.now();
   }

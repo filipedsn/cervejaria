@@ -428,6 +428,248 @@ dd {
 .chip[data-run="in_progress"],
 .chip[data-run="queued"] { background: #e0ebf3; color: var(--run); }
 .chip[data-run="waiting"] { background: #f6ecd9; color: var(--warn); }
+.chip[data-level="ok"] { background: #e3efe1; color: var(--ok); }
+.chip[data-level="run"] { background: #e0ebf3; color: var(--run); }
+.chip[data-level="warn"] { background: #f6ecd9; color: var(--warn); }
+.chip[data-level="bad"] { background: #f6e1de; color: var(--bad); }
+
+/* ---------- esteira por dentro (jobs do GitHub Actions) ---------- */
+
+.flow {
+  margin: 0 0 28px;
+  padding: 18px 22px 22px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.flow-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.flow-head .section-title {
+  margin-bottom: 4px;
+}
+
+.flow-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.flow-meta .chip {
+  margin-right: 4px;
+}
+
+.flow-head > a {
+  flex-shrink: 0;
+  font-size: 0.875rem;
+}
+
+.flow-graph {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  padding: 4px 2px;
+}
+
+.flow-col {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 210px;
+}
+
+.flow-col.group {
+  padding: 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.flow-pipe {
+  position: relative;
+  flex: 0 0 36px;
+  height: 2px;
+  background: var(--rule);
+}
+
+.flow-pipe::before,
+.flow-pipe::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--rule);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.flow-pipe::before { left: -4px; }
+.flow-pipe::after { right: -4px; }
+
+.job {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--level, var(--off));
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.job:hover {
+  border-color: var(--muted);
+  border-left-color: var(--level, var(--off));
+}
+
+.job[data-level="ok"] { --level: var(--ok); }
+.job[data-level="run"] { --level: var(--run); }
+.job[data-level="warn"] { --level: var(--warn); }
+.job[data-level="bad"] { --level: var(--bad); }
+
+.job-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border: 2px solid var(--level, var(--off));
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.job[data-status="done"] .job-icon,
+.job[data-status="failed"] .job-icon,
+.job[data-status="waiting"] .job-icon {
+  background: var(--level);
+}
+
+.job[data-status="rejected"] .job-icon,
+.job[data-status="cancelled"] .job-icon,
+.job[data-status="skipped"] .job-icon {
+  color: var(--off);
+}
+
+.job[data-status="running"] .job-icon {
+  border-color: var(--run) var(--run) var(--run) transparent;
+  animation: spin 1s linear infinite;
+}
+
+.job[data-status="todo"] .job-icon {
+  border-style: dashed;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.job-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.job-body strong {
+  font-size: 0.95rem;
+}
+
+.job-desc {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.job-status {
+  margin-top: 4px;
+  color: var(--level, var(--muted));
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.job[data-level="off"] .job-status {
+  color: var(--muted);
+}
+
+.job-bar {
+  display: block;
+  height: 5px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.job-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--run);
+  transition: width 0.6s ease;
+}
+
+/* ---------- ao vivo ---------- */
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.live[data-mode="fast"] .live-dot {
+  background: var(--run);
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+.live[data-mode="off"] .live-dot {
+  background: var(--bad);
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.verdict.changed {
+  animation: changed 1.6s ease-out;
+}
+
+@keyframes changed {
+  from {
+    box-shadow: 0 0 0 6px rgb(47 102 144 / 0.35);
+  }
+  to {
+    box-shadow: 0 0 0 0 rgb(47 102 144 / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job[data-status="running"] .job-icon,
+  .live[data-mode="fast"] .live-dot,
+  .verdict.changed {
+    animation: none;
+  }
+}
 
 .actions {
   display: flex;
@@ -670,6 +912,36 @@ dialog.guide {
   #updated {
     display: none;
   }
+
+  .flow-head {
+    flex-direction: column;
+  }
+
+  .flow-graph {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .flow-col {
+    min-width: 0;
+  }
+
+  .flow-pipe {
+    flex: 0 0 24px;
+    width: 2px;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  .flow-pipe::before,
+  .flow-pipe::after {
+    top: auto;
+    left: -3px;
+    right: auto;
+  }
+
+  .flow-pipe::before { top: -4px; }
+  .flow-pipe::after { bottom: -4px; }
 
   .verdict {
     flex-direction: column;
