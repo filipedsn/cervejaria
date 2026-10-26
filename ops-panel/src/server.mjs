@@ -44,8 +44,10 @@ app.get('/api/health', async () => ({ ok: true, app: 'quiver-tap-ops', version: 
 
 app.get('/api/state', async (request) => {
   const snapshot = await collectSnapshot({ force: request.query.force === '1' });
-  return { ...deriveState(snapshot), audit: readAudit(), repo: config.repo, ui: uiBuild() };
+  return { ...deriveState(snapshot), audit: readAudit(request.query.auditPage), repo: config.repo, ui: uiBuild() };
 });
+
+app.get('/api/audit', async (request) => readAudit(request.query.page));
 
 app.get('/api/preview/deploy', async (request, reply) => {
   const to = String(request.query.to ?? '');

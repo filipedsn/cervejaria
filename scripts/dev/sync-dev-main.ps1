@@ -1,4 +1,4 @@
-# Traz a versao oficial (origin/main) para o ambiente de testes (DEV):
+﻿# Traz a versao oficial (origin/main) para o ambiente de testes (DEV):
 # fast-forward da main local, dependencias quando o lockfile muda, migrations
 # no banco DEV (cervejaria_dev :5434, via run-with-env) e reinicio do DEV.
 # So roda com o PC na main e sem alteracoes em arquivos versionados; arquivos
@@ -25,8 +25,8 @@ function Invoke-Git {
 }
 
 $branch = ([string](Invoke-Git rev-parse --abbrev-ref HEAD)).Trim()
-if ($branch -ne 'main') { Fail "O PC esta na pasta de trabalho '$branch', nao na main; quem desenvolve precisa voltar para a main." }
-if (Invoke-Git status --porcelain --untracked-files=no) { Fail 'Ha alteracoes nao salvas em arquivos do projeto neste PC; quem desenvolve precisa resolver antes.' }
+if ($branch -ne 'main') { Fail "O PC está na pasta de trabalho '$branch', não na main; quem desenvolve precisa voltar para a main." }
+if (Invoke-Git status --porcelain --untracked-files=no) { Fail 'Há alterações não salvas em arquivos do projeto neste PC; quem desenvolve precisa resolver antes.' }
 
 $before = ([string](Invoke-Git rev-parse HEAD)).Trim()
 Invoke-Git fetch --quiet origin main | Out-Null
@@ -35,7 +35,7 @@ $after = ([string](Invoke-Git rev-parse HEAD)).Trim()
 Write-DevLog -Paths $paths -Message "sync-dev-main: $before -> $after"
 
 & (Join-Path $PSScriptRoot 'stop-dev.ps1') | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail 'Nao foi possivel desligar o ambiente de testes.' }
+if ($LASTEXITCODE -ne 0) { Fail 'Não foi possível desligar o ambiente de testes.' }
 
 $changed = @()
 if ($before -ne $after) { $changed = @(Invoke-Git diff --name-only $before $after) }
@@ -45,7 +45,7 @@ foreach ($dir in @('backend', 'frontend')) {
     Push-Location $dirPath
     try {
       & $paths.NpmCmd ci --no-audit --no-fund *> (Join-Path $paths.LogDir "sync-dev-npm-$dir.log")
-      if ($LASTEXITCODE -ne 0) { Fail "Falha ao instalar as dependencias de $dir (veja deploy/logs/sync-dev-npm-$dir.log)." }
+      if ($LASTEXITCODE -ne 0) { Fail "Falha ao instalar as dependências de $dir (veja deploy/logs/sync-dev-npm-$dir.log)." }
     } finally {
       Pop-Location
     }
@@ -62,11 +62,11 @@ try {
 }
 if ($migrateCode -ne 0) {
   $tail = (Get-Content -LiteralPath $migrateLog -Tail 3 -ErrorAction SilentlyContinue) -join ' '
-  Fail "Falha ao aplicar as mudancas no banco de testes: $tail"
+  Fail "Falha ao aplicar as mudanças no banco de testes: $tail"
 }
 
 & (Join-Path $PSScriptRoot 'supervisor.ps1') | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail 'O codigo foi atualizado, mas o ambiente de testes nao ligou; use Ligar no painel.' }
+if ($LASTEXITCODE -ne 0) { Fail 'O código foi atualizado, mas o ambiente de testes não ligou; use Ligar no painel.' }
 
 Write-Output "DEV_SYNCED=$after"
 exit 0

@@ -10,17 +10,35 @@ const SHA_RE = /^[0-9a-f]{40}$/;
 
 export class ActionError extends Error {}
 
+const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+
+/**
+ * -Command em vez de -File: fixa UTF-8 antes do script, senão as mensagens do próprio
+ * PowerShell 5.1 saem no código de página do console (cp850) e os acentos quebram.
+ */
+export function powershellCommand(path, args = []) {
+  const call = [path, ...args].map(psQuote).join(' ');
+  return [
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+    `[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); try { & ${call}; exit $LASTEXITCODE } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,
+  ];
+}
+
 function powershellFile(script, args = [], timeoutMs = 90_000) {
-  return run(
-    'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(ROOT, 'scripts', 'dev', script), ...args],
-    { cwd: ROOT, timeoutMs },
-  );
+  const path = join(ROOT, 'scripts', 'dev', script);
+  if (!existsSync(path)) {
+    return Promise.resolve({
+      code: 1,
+      stdout: '',
+      stderr: 'A cópia do código deste PC ainda não tem esse recurso. Quem desenvolve precisa atualizá-la (git pull na main).',
+    });
+  }
+  return run('powershell.exe', powershellCommand(path, args), { cwd: ROOT, timeoutMs });
 }
 
 async function must(promise, what) {
   const result = await promise;
-  if (result.code !== 0) throw new ActionError(`${what}: ${firstLine(result.stderr) || firstLine(result.stdout) || `código ${result.code}`}`);
+  if (result.code !== 0) throw new ActionError(firstLine(result.stderr) || firstLine(result.stdout) || `${what} terminou com erro (código ${result.code}).`);
   return result;
 }
 
@@ -125,21 +143,29 @@ export function audit(entry) {
   appendFileSync(config.auditLog, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, 'utf8');
 }
 
-export function readAudit(limit = 15) {
-  if (!existsSync(config.auditLog)) return [];
-  const lines = readFileSync(config.auditLog, 'utf8').trim().split(/\r?\n/).slice(-limit * 4);
-  return lines
-    .map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    })
-    .filter((e) => e && e.action)
-    .slice(-limit)
-    .reverse()
+export const AUDIT_PAGE_SIZE = 10;
+
+/** Página `page` (1 = mais recentes) do histórico; página fora do intervalo cai na mais próxima. */
+export function readAudit(page = 1, size = AUDIT_PAGE_SIZE) {
+  const entries = existsSync(config.auditLog)
+    ? readFileSync(config.auditLog, 'utf8')
+        .split(/\r?\n/)
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .filter((e) => e && e.action)
+        .reverse()
+    : [];
+  const pages = Math.max(1, Math.ceil(entries.length / size));
+  const current = Math.min(Math.max(1, Math.trunc(Number(page)) || 1), pages);
+  const items = entries
+    .slice((current - 1) * size, current * size)
     .map((e) => ({ ...e, label: ACTIONS[e.action]?.label ?? e.action }));
+  return { items, page: current, pages, total: entries.length };
 }
 
 let busy = null;

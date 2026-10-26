@@ -733,18 +733,45 @@ dd {
 }
 
 .log li {
-  padding: 4px 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+  padding: 6px 0;
   border-bottom: 1px solid var(--rule);
 }
 
 .log time {
-  display: inline-block;
-  width: 72px;
+  white-space: nowrap;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.log li span {
+  overflow-wrap: anywhere;
 }
 
 .log li[data-ok="false"] span {
   color: var(--bad);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pager[hidden] {
+  display: none;
+}
+
+.pager button:disabled {
+  cursor: default;
 }
 
 /* ---------- modal e aviso ---------- */
