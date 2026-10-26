@@ -9,7 +9,7 @@ description: Orienta deploy e publicação do Quiver Tap. Use para produção, C
 
 - **PRD público:** VPS Hostinger, aplicação em Docker atrás do proxy Cloudflare e nginx.
 - **DEV:** PC Windows, API Node local em `:3002`, Vite em `:5202`, Postgres e Elasticsearch locais.
-- **Publicação de PRD:** esteira "Deploy PRD (VPS)" (`.github/workflows/deploy-vps.yml`): push na `main` roda CI + build e para no environment `production` até o humano aprovar; o deploy no VPS faz backup, sync, build, smoke e rollback automático. Enquanto a ativação Tailscale da esteira estiver pendente, o deploy é manual via SSH/Tailscale. Detalhes em [§7.1 do handoff](../../../docs/handoff-vps-hostinger-arquiteto.md).
+- **Publicação de PRD:** esteira "Deploy PRD (VPS)" (`.github/workflows/deploy-vps.yml`): push na `main` roda CI + build e para no environment `production` até o humano aprovar; o deploy no VPS faz backup, sync, build, smoke e rollback automático. A esteira está ativa desde 2026-10-26 e o usuário aprova pelo painel Ops; deploy manual via SSH/Tailscale só como contingência. Detalhes em [§7.1 do handoff](../../../docs/handoff-vps-hostinger-arquiteto.md).
 - **`deploy.cmd` e `scripts/prod/deploy.ps1`:** fluxo Windows legado. Não publica mais `tap.quivercloud.com.br`; mantenha os arquivos, mas não os use como publisher da produção pública.
 
 Leia [CONTRIBUTING.md](../../../CONTRIBUTING.md) e o checklist canônico do [handoff interno](../../../docs/handoff-vps-hostinger-arquiteto.md) antes de qualquer publicação. Não copie para PRs ou resumos os detalhes restritos do handoff; apenas linke o documento.

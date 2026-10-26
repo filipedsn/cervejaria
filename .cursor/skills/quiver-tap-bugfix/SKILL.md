@@ -148,8 +148,9 @@ npm run dev:stop
 ```
 
 Para cenários que exigem dados, `npm run qa:test` monta o cenário completo — mas exige
-Postgres e API no ar, então não serve para verificação automática em worktree isolado.
-Prefira teste unitário puro sobre a função de `lib/`.
+Postgres e API no ar, então não serve para verificação automática sem o DEV ligado.
+Prefira teste unitário puro sobre a função de `lib/`. Trabalhe sempre na pasta canônica
+`Cervejaria`: não crie worktree, clone ou cópia do repo em outra pasta.
 
 ## Fronteiras que você não atravessa
 

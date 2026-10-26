@@ -9,7 +9,8 @@
 Se houver conflito entre docs antigos (skills, README, TAP-116) e o super prompt / handoff na `main`, **prevalecem o super prompt e o handoff**.
 
 Resumo operacional que nenhum agente pode “esquecer”:
-- **PRD** = só VPS (`https://tap.quivercloud.com.br`); **DEV** = só PC (localhost).  
+- **PRD** = só VPS (`https://tap.quivercloud.com.br`); **DEV** = só PC (localhost). 
+- **Pasta única:** trabalhar sempre na pasta canônica `Cervejaria`; nunca criar worktree, clone ou cópia do repo em outra pasta (TAP-136).  
 - Elastic DEV ≠ Elastic PRD (clusters físicos diferentes).  
 - CI: Actions `build-and-unit` **obriga** merge; `npm run ci` é complementar.  
 - `deploy.cmd` no PC = **legado**; não publica o Tap público.  
