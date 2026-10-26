@@ -65,7 +65,7 @@ Regras absolutas:
 
 Conforme handoff §11.0:
 1. Restore drill do Postgres  
-2. CD no VPS (secrets Tailscale + `deploy=true`) — runbook §7.1  
+2. Ativar a esteira de deploy PRD (policy `tag:ci` + OAuth Tailscale) — §7.1 (esteira já implementada, TAP-126)  
 3. `releaseSha` no container + rollback imagem n-1  
 4. Smoke automático no promote  
 5. OTEL → ES PRD (opcional)  
@@ -116,7 +116,7 @@ Produção não foi alterada.
 5. **Merge:** squash-merge só se **você** criou a PR, `build-and-unit` verde, e (docs-only **ou** OK humano explícito para runtime). Se a PR ficou para outro agente: **não mergeie**.
 6. **`docs/observability/**`**: não reescrever TAP-96 em massa. Só corrija frases vigentes que mandem PC/tunnel como prod do Tap ou “Actions desligado” como regra atual.
 7. **Plane:** WI só com autorização / indicação; não criar épico sozinho; não bloquear missão no Plane.
-8. **Secrets Tailscale / `deploy=true` / restore drill / Docker API DEV / OTEL PRD**: só se a missão do usuário pedir. Senão, anote em próximos passos.
+8. **Secrets Tailscale / aprovar deploy PRD / restore drill / Docker API DEV / OTEL PRD**: só se a missão do usuário pedir. Senão, anote em próximos passos.
 9. Dúvida clone vs GitHub → **`origin/main` + handoff + este arquivo**.
 10. Não reabrir 22 / 3001 / 5432 / 9200 / 5601 na internet.  
 11. Não commitar `.env`, chaves, senhas, tokens, `rclone.conf`.  
@@ -236,7 +236,7 @@ Docs-only + PR sua + CI verde → squash ok. Senão → regras §2.5.
 
 ## 6. Proibições (missão falha se violar)
 
-- Deploy VPS / `deploy=true` sem autorização  
+- Deploy VPS (aprovar o environment `production` ou SSH manual) sem autorização  
 - Secrets no GitHub sem pedido  
 - Reabrir firewall / recriar tunnel do `tap`  
 - Cruzar Elastic/DB DEV↔PRD  
