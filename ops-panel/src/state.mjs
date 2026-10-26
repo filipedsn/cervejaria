@@ -88,8 +88,15 @@ const unavailable = (title, error) => ({
   actions: [],
 });
 
-function deployJobRunning(run) {
-  return (run?.jobs ?? []).some((j) => j.name === 'deploy-prd' && j.status === 'in_progress');
+/**
+ * Publicação autorizada e em curso: o job deploy-prd já saiu da espera (na fila, rodando
+ * ou recém-concluído) e os jobs de teste e montagem terminaram.
+ */
+function deployJobStarted(run) {
+  const jobs = run?.jobs ?? [];
+  const deploy = jobs.find((j) => j.name === 'deploy-prd');
+  if (!deploy || deploy.status === 'waiting') return false;
+  return deploy.status === 'in_progress' || jobs.every((j) => j === deploy || j.status === 'completed');
 }
 
 const ciLabel = (ci) =>
@@ -137,7 +144,7 @@ export function deriveDelivery(snapshot, now = Date.now()) {
     } else if (run.status === 'waiting') {
       state = 'aguardando';
     } else if (run.status !== 'completed') {
-      state = deployJobRunning(run) ? 'publicando' : 'main';
+      state = deployJobStarted(run) ? 'publicando' : 'main';
     } else if (runFailed(run)) {
       state = 'falhou';
     } else {
@@ -178,8 +185,21 @@ export function deriveDelivery(snapshot, now = Date.now()) {
     pr: branchPr ? `PR #${branchPr.number}, ${ciLabel(branchPr.ci)}` : prs.length ? `${prs.length} PR(s) aberto(s)` : 'nenhum PR',
     main: mainSha ? `versão ${ver(mainSha)}` : '—',
     aguardando:
-      state === 'aguardando' ? 'esperando você' : state === 'atrasada' ? 'não publicada' : run ? runLabel(run) : '—',
-    prd: prdSha ? `versão ${ver(prdSha)}${prdSha === mainSha ? ', a mais recente' : ''}` : 'sem resposta',
+      state === 'aguardando'
+        ? 'esperando você'
+        : state === 'atrasada'
+          ? 'não publicada'
+          : state === 'publicando'
+            ? 'autorizada'
+            : run
+              ? runLabel(run)
+              : '—',
+    prd:
+      state === 'publicando'
+        ? `publicando ${ver(mainSha)}`
+        : prdSha
+          ? `versão ${ver(prdSha)}${prdSha === mainSha ? ', a mais recente' : ''}`
+          : 'sem resposta',
   };
 
   const steps = STEPS.map((step, i) => {
@@ -349,7 +369,7 @@ function pipelineCard(snapshot) {
       { name: 'deploy.reject', label: 'Não publicar agora', params: { runId: waiting.id }, confirm: 'simple' },
     );
   } else if (active) {
-    [state, level, title] = ['rodando', 'run', deployJobRunning(active) ? `Publicando ${ver(active.sha)}` : `Testando ${ver(active.sha)}`];
+    [state, level, title] = ['rodando', 'run', deployJobStarted(active) ? `Publicando ${ver(active.sha)}` : `Testando ${ver(active.sha)}`];
   } else if (runFailed(last)) {
     [state, level, title] = ['falhou', 'bad', `A última passagem falhou (${ver(last.sha)})`];
   }
