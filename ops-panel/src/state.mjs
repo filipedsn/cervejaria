@@ -21,7 +21,12 @@ export const STEPS = [
   {
     id: 'pr',
     label: 'Em revisão (PR)',
-    hint: 'A mudança foi enviada ao GitHub como um pedido de mudança (PR) e os testes automáticos conferem se nada quebrou. Com os testes ok, você aceita a mudança.',
+    hint: 'A mudança foi enviada ao GitHub como um pedido de mudança (PR) e os testes automáticos conferem se nada quebrou. Se a mudança não mexe no sistema (só o painel ou documentos), com os testes ok você já pode aceitar.',
+  },
+  {
+    id: 'dev',
+    label: 'Ambiente de testes',
+    hint: 'Os testes automáticos passaram. Confira a mudança no ambiente de testes deste PC (http://localhost:5202) antes de aceitar: o botão Testar coloca o PR lá. O site dos clientes não muda.',
   },
   {
     id: 'main',
@@ -140,6 +145,7 @@ export function deriveDelivery(snapshot, now = Date.now()) {
   const prdSha = prd?.releaseSha ?? null;
   const runs = gh?.runs ?? [];
   const prs = gh?.prs ?? [];
+  const devSha = snapshot.dev?.ok ? snapshot.dev.data.releaseSha : null;
   // Pasta fixada numa versão (Testar o PR): o PR é o que tem essa versão como a mais recente.
   const branchPr =
     git && git.branch !== 'main'
@@ -167,7 +173,7 @@ export function deriveDelivery(snapshot, now = Date.now()) {
   } else if (branchPr && branchPr.ci === 'failure') {
     state = 'falhou';
   } else if (branchPr) {
-    state = 'pr';
+    state = isMergeReady(branchPr) && branchPr.touchesApp !== false ? 'teste' : 'pr';
   } else if (git.branch !== 'main' || git.dirtyCount > 0 || git.ahead > 0) {
     state = 'local';
   } else {
@@ -178,6 +184,7 @@ export function deriveDelivery(snapshot, now = Date.now()) {
   const activeId = {
     local: 'local',
     pr: 'pr',
+    teste: 'dev',
     main: 'main',
     aguardando: 'aguardando',
     atrasada: 'aguardando',
@@ -199,6 +206,16 @@ export function deriveDelivery(snapshot, now = Date.now()) {
             : `pasta ${git.branch}`
       : '—',
     pr: branchPr ? `PR #${branchPr.number}, ${ciLabel(branchPr.ci)}` : prs.length ? `${prs.length} PR(s) aberto(s)` : 'nenhum PR',
+    dev:
+      state === 'teste'
+        ? devSha === branchPr.headSha
+          ? `PR #${branchPr.number} em teste`
+          : 'falta testar'
+        : state === 'pr' && branchPr?.touchesApp === false && isMergeReady(branchPr)
+          ? 'não precisa: não mexe no sistema'
+          : devSha
+            ? `versão ${ver(devSha)}`
+            : '—',
     main: mainSha ? `versão ${ver(mainSha)}` : '—',
     aguardando:
       state === 'aguardando'
@@ -724,7 +741,8 @@ function decide(delivery, cards) {
         explain: 'A esteira testa de novo e, no fim, pede sua autorização.',
       };
       break;
-    case 'pr': {
+    case 'pr':
+    case 'teste': {
       const pr = d.branchPr;
       if (isMergeReady(pr) || needsUpdate(pr)) {
         const advice = prAdvice(pr, cards.dev.sha, cards.dev.canSwitch);

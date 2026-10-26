@@ -221,7 +221,7 @@ button.ghost {
 
 .line {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   margin: 0;
   padding: 0;
   list-style: none;

@@ -62,8 +62,9 @@ test('git: branch com commits e sem PR', () => {
 
 test('pr: CI verde e mergeável sugere Mergear', () => {
   const s = deriveState(snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [pr()] }), NOW);
-  assert.equal(s.delivery.state, 'pr');
-  assert.equal(stepStatus(s).pr, 'active');
+  assert.equal(s.delivery.state, 'teste');
+  assert.equal(stepStatus(s).pr, 'done');
+  assert.equal(stepStatus(s).dev, 'active', 'testes ok: a vez é do ambiente de testes');
   assert.equal(s.next.name, 'pr.merge');
   assert.deepEqual(s.next.params, { number: 7 });
   assert.equal(s.cards.git.prs[0].action.name, 'pr.merge');
@@ -130,7 +131,7 @@ test('publicando: logo depois de autorizar (deploy-prd na fila) a barra não vol
     const runs = [run({ status: 'in_progress', conclusion: null, jobs: jobs(deploy) })];
     const s = deriveState(snap({ runs, prd: { releaseSha: OLD } }), NOW);
     assert.equal(s.delivery.state, 'publicando', deploy.status);
-    assert.deepEqual(stepStatus(s), { local: 'done', pr: 'done', main: 'done', aguardando: 'done', prd: 'active' });
+    assert.deepEqual(stepStatus(s), { local: 'done', pr: 'done', dev: 'done', main: 'done', aguardando: 'done', prd: 'active' });
     const detail = Object.fromEntries(s.delivery.steps.map((step) => [step.id, step.detail]));
     assert.equal(detail.aguardando, 'autorizada');
     assert.match(detail.prd, /^publicando /);
@@ -354,7 +355,8 @@ test('pasta fixada na versão de um PR aberto acha o PR pela versão', () => {
   const head = 'c'.repeat(40);
   const open = pr({ number: 141, branch: 'feat/y', headSha: head, touchesApp: true });
   const s = deriveState(snap({ git: { branch: 'HEAD', headSha: head, ahead: 1 }, prs: [open], dev: { releaseSha: head } }), NOW);
-  assert.equal(s.delivery.state, 'pr');
+  assert.equal(s.delivery.state, 'teste');
+  assert.equal(s.delivery.steps.find((step) => step.id === 'dev').detail, 'PR #141 em teste');
   assert.equal(s.next.name, 'pr.merge', 'já está no ambiente de testes: a próxima é aceitar');
 });
 
@@ -362,6 +364,8 @@ test('PR pronto que mexe no sistema: testar no DEV antes de aceitar', () => {
   const head = 'c'.repeat(40);
   const ready = pr({ number: 141, headSha: head, touchesApp: true });
   const s = deriveState(snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [ready] }), NOW);
+  assert.equal(stepStatus(s).dev, 'active');
+  assert.equal(s.delivery.steps.find((step) => step.id === 'dev').detail, 'falta testar');
   assert.equal(s.next.name, 'dev.testPr');
   assert.equal(s.next.confirm, 'test-pr');
   assert.deepEqual(s.next.params, { number: 141 });
@@ -384,6 +388,8 @@ test('PR pronto que mexe no sistema: testar no DEV antes de aceitar', () => {
 test('PR que não mexe no sistema (painel, docs) vai direto para Aceitar', () => {
   const docs = pr({ number: 142, headSha: 'c'.repeat(40), touchesApp: false });
   const s = deriveState(snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [docs] }), NOW);
+  assert.equal(s.delivery.state, 'pr', 'pula a etapa Ambiente de testes');
+  assert.equal(s.delivery.steps.find((step) => step.id === 'dev').detail, 'não precisa: não mexe no sistema');
   assert.equal(s.next.name, 'pr.merge');
   assert.equal(s.cards.git.prs[0].testAction, null);
   const pending = pr({ headSha: 'c'.repeat(40), touchesApp: true, ci: 'pending' });
