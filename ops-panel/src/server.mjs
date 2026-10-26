@@ -6,8 +6,9 @@ import Fastify from 'fastify';
 import { ActionError, executeAction, readAudit } from './actions.mjs';
 import { previewRange, versionsFor } from './collectors/git.mjs';
 import { fetchPr } from './collectors/github.mjs';
-import { collectPrd } from './collectors/prd.mjs';
+import { collectPrd, vpsHistory, vpsReport } from './collectors/prd.mjs';
 import { config, PANEL_DIR } from './config.mjs';
+import { infraView } from './infra.mjs';
 import { isAllowedAction, isTrustedLocalOperator } from './local-auth.mjs';
 import { collectSnapshot } from './snapshot.mjs';
 import { deriveState } from './state.mjs';
@@ -48,6 +49,15 @@ app.get('/api/state', async (request) => {
 });
 
 app.get('/api/audit', async (request) => readAudit(request.query.page));
+
+const INFRA_REFRESH_MS = 30_000;
+
+/** Só o servidor e os contêineres, para a tela atualizar essa parte sem recarregar o resto. */
+app.get('/api/infra', async (_request, reply) => {
+  const vps = await vpsReport(INFRA_REFRESH_MS - 2_000);
+  if (!vps?.ok) return reply.code(503).send({ error: vps?.error ?? 'leitura do servidor não configurada' });
+  return { infra: infraView(vps.data, vpsHistory()) };
+});
 
 app.get('/api/preview/deploy', async (request, reply) => {
   const to = String(request.query.to ?? '');

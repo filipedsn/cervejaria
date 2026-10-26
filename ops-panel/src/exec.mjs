@@ -56,10 +56,28 @@ export async function collect(fn) {
 }
 
 const cache = new Map();
-export async function cached(key, ttlMs, fn, force = false) {
+const pending = new Map();
+/**
+ * Quem chega enquanto a mesma leitura está em andamento espera por ela em vez de repetir.
+ * `stale`: com valor vencido, devolve o anterior na hora e atualiza em segundo plano.
+ */
+export async function cached(key, ttlMs, fn, force = false, { stale = false } = {}) {
   const hit = cache.get(key);
   if (!force && hit && Date.now() - hit.at < ttlMs) return hit.value;
-  const value = await fn();
-  cache.set(key, { at: Date.now(), value });
-  return value;
+  if (stale && !force && hit) {
+    if (!pending.has(key)) cached(key, ttlMs, fn, true).catch(() => {});
+    return hit.value;
+  }
+  if (pending.has(key)) return pending.get(key);
+  const promise = (async () => {
+    try {
+      const value = await fn();
+      cache.set(key, { at: Date.now(), value });
+      return value;
+    } finally {
+      pending.delete(key);
+    }
+  })();
+  pending.set(key, promise);
+  return promise;
 }
