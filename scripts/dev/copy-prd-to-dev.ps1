@@ -120,7 +120,8 @@ if ($n.Code -ne 0) { Undo-Restore "Falha ao desligar e-mail e notificações na 
 
 # 6. Migrations do codigo DEV (run-with-env so aceita cervejaria_dev :5434)
 $migrateLog = Join-Path $paths.LogDir 'copy-prd-migrate.log'
-Push-Location $paths.BackendDir
+Copy-DevEnvToCode -Paths $paths
+Push-Location $paths.CodeBackendDir
 try {
   & $paths.NodeExe scripts/run-with-env.mjs development npx prisma migrate deploy *> $migrateLog
   $migrateCode = $LASTEXITCODE

@@ -79,6 +79,11 @@ function prAction(pr) {
   return null;
 }
 
+/** PR pronto que mexe no sistema (API ou telas) e ainda não está no ambiente de testes. Sem a lista de arquivos, assume que mexe. */
+export function prNeedsDevTest(pr, devSha) {
+  return isMergeReady(pr) && pr.touchesApp !== false && Boolean(pr.headSha) && pr.headSha !== devSha;
+}
+
 const unavailable = (title, error) => ({
   state: 'indisponivel',
   level: 'off',
@@ -226,6 +231,7 @@ function gitCard(snapshot, delivery) {
   if (!snapshot.git?.ok) return unavailable('Código', snapshot.git?.error);
   const g = snapshot.git.data;
   const prs = snapshot.github?.ok ? snapshot.github.data.prs : [];
+  const devSha = snapshot.dev?.ok ? snapshot.dev.data.releaseSha : null;
   let state = 'limpo';
   let level = 'ok';
   let title = 'Sem pendências';
@@ -252,6 +258,10 @@ function gitCard(snapshot, delivery) {
       ciLabel: ciLabel(pr.ci),
       behind: pr.mergeState === 'BEHIND',
       action: prAction(pr),
+      inDev: Boolean(devSha && pr.headSha === devSha),
+      testAction: prNeedsDevTest(pr, devSha)
+        ? { name: 'dev.testPr', label: 'Testar', params: { number: pr.number }, confirm: 'test-pr' }
+        : null,
     })),
     actions: [],
   };
@@ -270,8 +280,9 @@ function devCard(snapshot, delivery) {
 
   const vsSite = compareWithSite(d.releaseSha, delivery.prdSha, snapshot.compare);
   const behindMain = Boolean(state === 'ok' && d.releaseSha && delivery.mainSha && d.releaseSha !== delivery.mainSha);
+  const testingPr = d.releaseSha && d.code?.kind === 'pr' && d.code.sha === d.releaseSha ? d.code.pr : null;
   const title = {
-    ok: d.releaseSha ? `Ligado · ${ver(d.releaseSha)}` : 'Ligado',
+    ok: testingPr ? `Ligado · PR #${testingPr}` : d.releaseSha ? `Ligado · ${ver(d.releaseSha)}` : 'Ligado',
     parado: 'Desligado',
     subindo: 'Ligando…',
     degradado: d.dockerOk ? 'Com problema' : 'Docker desligado',
@@ -289,12 +300,12 @@ function devCard(snapshot, delivery) {
   ];
   if (!d.dockerOk) facts.unshift(['Docker', d.dockerError || 'desligado']);
 
-  // Trazer a main só é seguro com o PC na main e sem alterações em arquivos versionados.
+  // A troca de versão acontece na pasta própria do DEV: a pasta de trabalho de quem desenvolve não importa.
   const git = snapshot.git?.ok ? snapshot.git.data : null;
-  const canSync = Boolean(
-    git && git.branch === 'main' && git.trackedDirty === 0 && delivery.mainSha && (git.behind > 0 || d.releaseSha !== delivery.mainSha),
-  );
-  if (git && git.branch !== 'main') facts.push(['Código em teste', `pasta de trabalho ${git.branch}`]);
+  const canMatchPrd = Boolean(delivery.prdSha && d.releaseSha !== delivery.prdSha);
+  const canSync = Boolean(delivery.mainSha && d.releaseSha !== delivery.mainSha);
+  if (testingPr) facts.push(['Código em teste', `PR #${testingPr}, ainda não aceito`]);
+  else if (!d.ownFolder && git && git.branch !== 'main') facts.push(['Código em teste', `pasta de trabalho ${git.branch}`]);
 
   const actions =
     state === 'parado'
@@ -307,8 +318,14 @@ function devCard(snapshot, delivery) {
   if (dbUp && state !== 'degradado') {
     actions.splice(state === 'parado' ? 1 : 0, 0, { name: 'dev.copyPrd', label: 'Copiar o banco do site', confirm: 'copy' });
   }
-  if (canSync && state !== 'degradado') {
-    actions.unshift({ name: 'dev.sync', label: `Trazer a versão oficial (${ver(delivery.mainSha)})`, confirm: 'simple' });
+  if (state !== 'degradado') {
+    // Com o site já na versão oficial, "Igualar ao site" basta (e ainda oferece copiar o banco).
+    if (canSync && delivery.mainSha !== delivery.prdSha) {
+      actions.unshift({ name: 'dev.sync', label: `Trazer a versão oficial (${ver(delivery.mainSha)})`, confirm: 'simple' });
+    }
+    if (canMatchPrd) {
+      actions.unshift({ name: 'dev.matchPrd', label: `Igualar ao site (${ver(delivery.prdSha)})`, confirm: 'match-prd', version: ver(delivery.prdSha) });
+    }
   }
   return {
     state,
@@ -317,7 +334,9 @@ function devCard(snapshot, delivery) {
     subtitle: 'Cópia do sistema que roda neste PC para testar mudanças antes dos clientes. Ligar ou desligar não afeta o site.',
     sha: d.releaseSha,
     behindMain,
+    testingPr,
     canSync,
+    canMatchPrd,
     facts,
     compare: vsSite.lists,
     actions,
@@ -572,7 +591,22 @@ function hoursAgo(seconds) {
   return h < 1 ? `há ${Math.max(1, Math.round(seconds / 60))} min` : `há ${h.toFixed(1).replace('.', ',')} h`;
 }
 
-function prAdvice(pr) {
+function prAdvice(pr, devSha) {
+  if (prNeedsDevTest(pr, devSha)) {
+    return {
+      level: 'warn',
+      text: `O PR #${pr.number} passou nos testes: confira no ambiente de testes antes de aceitar`,
+      help: 'Testar coloca exatamente esta mudança no ambiente de testes deste PC (1 a 3 minutos, com ele fora do ar nesse tempo). O site dos clientes não muda. Se não precisar testar, o botão Aceitar continua no cartão Código.',
+      next: {
+        name: 'dev.testPr',
+        label: `Testar o PR #${pr.number} no ambiente de testes`,
+        params: { number: pr.number },
+        confirm: 'test-pr',
+        primary: true,
+        explain: 'Não muda nada para os clientes nem aceita o PR.',
+      },
+    };
+  }
   if (needsUpdate(pr)) {
     return {
       level: 'warn',
@@ -588,10 +622,13 @@ function prAdvice(pr) {
       },
     };
   }
+  const inDev = Boolean(devSha && pr.headSha === devSha);
   return {
     level: 'warn',
-    text: `O PR #${pr.number} passou nos testes e pode ser aceito`,
-    help: 'Aceitar junta a mudança à versão oficial. Isso ainda não publica nada: depois a esteira testa de novo e pede sua autorização.',
+    text: inDev
+      ? `O PR #${pr.number} está no ambiente de testes; se estiver tudo certo, aceite`
+      : `O PR #${pr.number} passou nos testes e pode ser aceito`,
+    help: `${inDev ? 'Confira em http://localhost:5202. ' : ''}Aceitar junta a mudança à versão oficial. Isso ainda não publica nada: depois a esteira testa de novo e pede sua autorização.`,
     next: {
       name: 'pr.merge',
       label: `Aceitar o PR #${pr.number}`,
@@ -673,7 +710,7 @@ function decide(delivery, cards) {
     case 'pr': {
       const pr = d.branchPr;
       if (isMergeReady(pr) || needsUpdate(pr)) {
-        const advice = prAdvice(pr);
+        const advice = prAdvice(pr, cards.dev.sha);
         say(advice.level, advice.text, advice.help);
         next ??= advice.next;
       } else if (prWarmingUp(pr)) {
@@ -699,7 +736,7 @@ function decide(delivery, cards) {
   // PR pronto que não é o deste PC (ex.: só documentação): também é a vez do usuário.
   const otherPr = (cards.git.prs ?? []).find((p) => p.action && p.number !== d.branchPr?.number);
   if (!next && otherPr && (d.state === 'em_dia' || d.state === 'local')) {
-    const advice = prAdvice(otherPr);
+    const advice = prAdvice(otherPr, cards.dev.sha);
     say(advice.level, advice.text, advice.help);
     next = advice.next;
   }
@@ -709,11 +746,15 @@ function decide(delivery, cards) {
     next ??= { name: 'dev.start', label: 'Ligar ambiente de testes', primary: true, explain: 'Fica pronto em cerca de 30 segundos.' };
   } else if (cards.dev.level === 'bad') {
     say('bad', `Ambiente de testes: ${cards.dev.title.toLowerCase()}`, 'Não afeta os clientes. Tente Reiniciar no cartão Ambiente de testes; se o Docker estiver desligado, abra o Docker Desktop.');
-  } else if (cards.dev.behindMain) {
+  } else if (cards.dev.testingPr) {
     next ??= {
-      label: cards.dev.canSync
-        ? `O ambiente de testes está na ${ver(cards.dev.sha)} e a versão oficial é a ${ver(d.mainSha)}. Para testar com a oficial, use "Trazer a versão oficial" no cartão Ambiente de testes.`
-        : 'O ambiente de testes está com uma versão de trabalho, diferente da oficial. É normal enquanto alguém testa algo.',
+      label: `O ambiente de testes está com o PR #${cards.dev.testingPr}, que ainda não foi aceito. Para voltar ao que está no site, use "Igualar ao site" no cartão Ambiente de testes.`,
+      info: true,
+    };
+  } else if (cards.dev.behindMain) {
+    const button = d.mainSha === d.prdSha ? 'Igualar ao site' : 'Trazer a versão oficial';
+    next ??= {
+      label: `O ambiente de testes está na ${ver(cards.dev.sha)} e a versão oficial é a ${ver(d.mainSha)}. Para testar com a oficial, use "${button}" no cartão Ambiente de testes.`,
       info: true,
     };
   }

@@ -22,9 +22,14 @@ $env:NODE_ENV = 'development'
 
 . (Join-Path $PSScriptRoot '..\prod\_config.ps1')
 Import-BackendEnvFile -BackendDir $paths.BackendDir -Environment development
+Copy-DevEnvToCode -Paths $paths
+# Fotos enviadas no DEV ficam sempre na pasta principal, qualquer que seja a pasta do codigo.
+if ($env:UPLOADS_DIR -and -not [IO.Path]::IsPathRooted($env:UPLOADS_DIR)) {
+  $env:UPLOADS_DIR = Join-Path $paths.BackendDir $env:UPLOADS_DIR
+}
 # Keep service identity and opaque process instance ID for APM metrics; omit host, process, OS, container, and cloud metadata.
 $env:OTEL_NODE_RESOURCE_DETECTORS = 'env,serviceinstance'
-$devRevision = (& git -C $paths.ProjectRoot rev-parse HEAD 2>$null).Trim()
+$devRevision = (& git -C $paths.CodeRoot rev-parse HEAD 2>$null).Trim()
 if ($devRevision -notmatch '^[a-f0-9]{40}$') { throw 'Nao foi possivel identificar a revisao DEV.' }
 $env:RELEASE_SHA = $devRevision
 $env:VITE_RELEASE_SHA = $devRevision
@@ -95,7 +100,7 @@ function Start-DevService {
   return $false
 }
 
-Push-Location $paths.BackendDir
+Push-Location $paths.CodeBackendDir
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = 'SilentlyContinue'
 if (-not (Test-DevPortListening -Port $paths.BackendPort)) {
@@ -112,7 +117,7 @@ Pop-Location
 $env:NODE_OPTIONS = $backendNodeOptions
 $backendOk = Start-DevService `
   -Label 'API dev' `
-  -WorkingDir $paths.BackendDir `
+  -WorkingDir $paths.CodeBackendDir `
   -PidFile $paths.BackendPidFile `
   -Port $paths.BackendPort `
   -StdoutLog $paths.BackendLog `
@@ -123,7 +128,7 @@ $env:NODE_OPTIONS = ''
 
 $frontendOk = Start-DevService `
   -Label 'Frontend dev' `
-  -WorkingDir $paths.FrontendDir `
+  -WorkingDir $paths.CodeFrontendDir `
   -PidFile $paths.FrontendPidFile `
   -Port $paths.FrontendPort `
   -StdoutLog $paths.FrontendLog `

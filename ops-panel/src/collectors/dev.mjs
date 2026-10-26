@@ -27,6 +27,19 @@ function lastPrdCopy() {
   }
 }
 
+const DEV_CODE_KINDS = new Set(['main', 'prd', 'pr']);
+
+/** Gravado por scripts/dev/switch-dev-code.ps1: qual versão foi posta no DEV e por quê. */
+export function readDevCode(file = join(config.runtimeDir, 'dev-code.json')) {
+  try {
+    const data = JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+    if (!/^[0-9a-f]{40}$/.test(data?.sha ?? '') || !DEV_CODE_KINDS.has(data.kind)) return null;
+    return { sha: data.sha, kind: data.kind, pr: Number.isSafeInteger(data.pr) ? data.pr : null, at: data.at ?? null };
+  } catch {
+    return null;
+  }
+}
+
 export async function collectDev() {
   const [docker, ready, health, web] = await Promise.all([
     run('docker', ['ps', '--format', '{{.Names}}|{{.Status}}'], { timeoutMs: 8_000 }),
@@ -60,5 +73,7 @@ export async function collectDev() {
     releaseSha: parseReleaseSha(health.body),
     supervisorAlive: pidFileAlive(join(config.runtimeDir, 'dev-supervisor.pid')),
     prdCopy: lastPrdCopy(),
+    ownFolder: existsSync(join(config.devCodeRoot, 'backend', 'package.json')),
+    code: readDevCode(),
   };
 }

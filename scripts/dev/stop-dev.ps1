@@ -10,8 +10,14 @@ Stop-ManagedPidFile -PidFile $paths.BackendPidFile -ExpectedProcessNames @('node
 Stop-ManagedPidFile -PidFile $paths.FrontendPidFile -ExpectedProcessNames @('node.exe') -CommandLinePatterns @('vite') -Label 'Frontend dev' | Out-Null
 
 # API/Vite iniciados fora dos pid files (terminal, editor) continuam escutando nas portas.
-# So encerra node.exe deste repositorio; sobe pelos pais node do mesmo repo (tsx watch) para nao renascer.
-$root = $paths.ProjectRoot
+# So encerra node.exe deste repositorio (pasta principal ou pasta do DEV); sobe pelos
+# pais node do mesmo repo (tsx watch) para nao renascer.
+$roots = @($paths.ProjectRoot, $paths.DevCodeRoot) | Select-Object -Unique
+function Test-RepoNode($proc) {
+  if (-not $proc) { return $false }
+  foreach ($root in $roots) { if ($proc.CommandLine -like "*$root*") { return $true } }
+  return $false
+}
 $nodes = @{}
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | ForEach-Object { $nodes[[int]$_.ProcessId] = $_ }
 
@@ -19,11 +25,11 @@ foreach ($port in @($paths.BackendPort, $paths.FrontendPort)) {
   $owners = Get-NetTCPConnection -LocalPort $port -State Listen | Select-Object -ExpandProperty OwningProcess -Unique
   foreach ($owner in $owners) {
     $proc = $nodes[[int]$owner]
-    if (-not $proc -or $proc.CommandLine -notlike "*$root*") {
+    if (-not (Test-RepoNode $proc)) {
       Write-Host "Porta ${port}: PID $owner nao e um node deste repositorio; nao encerrado." -ForegroundColor Yellow
       continue
     }
-    while ($nodes[[int]$proc.ParentProcessId] -and $nodes[[int]$proc.ParentProcessId].CommandLine -like "*$root*") {
+    while (Test-RepoNode $nodes[[int]$proc.ParentProcessId]) {
       $proc = $nodes[[int]$proc.ParentProcessId]
     }
     & taskkill.exe /PID $proc.ProcessId /T /F | Out-Null

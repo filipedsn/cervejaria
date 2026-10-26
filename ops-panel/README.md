@@ -34,9 +34,18 @@ Lista fechada em `src/actions.mjs`; o servidor revalida os parâmetros e executa
 | Ação | Confirmação | O que roda |
 |---|---|---|
 | Ligar / Desligar / Reiniciar DEV | desligar e reiniciar pedem confirmação | `scripts/dev/supervisor.ps1`, `scripts/dev/stop-dev.ps1` |
+| Testar PR no DEV | modal com commits e migrations; só PR com `build-and-unit` verde | `scripts/dev/switch-dev-code.ps1 -Kind pr` com o head do PR |
+| Igualar DEV ao site | escolhe só a versão ou versão + banco (digitar COPIAR) | `switch-dev-code.ps1 -Kind prd` com a versão de `/api/health` do site; com banco, `copy-prd-to-dev.ps1` |
+| Trazer a versão oficial | confirmação simples | `scripts/dev/sync-dev-main.ps1` (origin/main via `switch-dev-code.ps1`) |
+| Copiar o banco do site | digitar COPIAR | `scripts/dev/copy-prd-to-dev.ps1` |
 | Mergear PR | modal com commits e migrations | `gh pr merge --squash`, só com `build-and-unit` verde, mergeável e fora de rascunho |
 | Aprovar / Rejeitar deploy | modal com o que muda em produção | `pending_deployments` do run que aguarda o environment `production` |
 | Publicar / rollback | escolhe um commit da main e vê o que entra ou sai | `gh workflow run deploy-vps.yml` (com `sha` quando não é o HEAD); o run para aguardando aprovação |
+
+O DEV roda de uma pasta própria, um `git worktree` em `../<repo>-dev` (ou `TAP_DEV_CODE_ROOT`), criada na primeira troca.
+Assim, trocar de branch na pasta de trabalho não muda o DEV. `.env.development`, uploads, logs e `deploy/runtime` continuam na pasta principal.
+A troca grava `deploy/runtime/dev-code.json` com a versão e o motivo (`main`, `prd` ou `pr`), que o cartão mostra.
+Sem a pasta própria, o DEV roda da pasta principal como antes.
 
 O painel não faz deploy sozinho: todo caminho até produção passa pela esteira e por uma aprovação humana.
 Migration destrutiva continua bloqueada pela esteira (`allow_destructive` só pelo GitHub).
