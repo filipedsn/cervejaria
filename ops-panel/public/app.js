@@ -140,6 +140,81 @@ function deployList(card) {
   return `${rows}<p class="links"><a href="${esc(card.url)}" target="_blank" rel="noopener">Abrir o site dos clientes</a></p>`;
 }
 
+/* ---------- infraestrutura do servidor (cartão Site dos clientes) ---------- */
+
+const pctText = (n) => (n == null ? '—' : `${n < 1 && n > 0 ? n.toLocaleString('pt-BR') : Math.round(n)}%`);
+
+/** Mini-gráfico da última hora; a escala acompanha o pico para variações pequenas aparecerem. */
+function spark(values) {
+  if (values.length < 2) return '<span class="spark-empty">gráfico após alguns minutos</span>';
+  const top = Math.max(5, ...values) * 1.15;
+  const step = 100 / (values.length - 1);
+  const points = values.map((v, i) => `${(i * step).toFixed(1)},${(30 - (v / top) * 28).toFixed(1)}`).join(' ');
+  const title = `Última hora: mínimo ${pctText(Math.min(...values))}, máximo ${pctText(Math.max(...values))}`;
+  return `<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" role="img" aria-label="${esc(title)}"><title>${esc(title)}</title>
+    <polygon points="0,30 ${points} 100,30"/><polyline points="${points}"/></svg>`;
+}
+
+function gauge(g) {
+  const r = 30;
+  const length = 2 * Math.PI * r;
+  const filled = (Math.min(100, Math.max(0, g.pct ?? 0)) / 100) * length;
+  return `<figure class="gauge" data-level="${esc(g.level)}">
+    <div class="ring">
+      <svg viewBox="0 0 72 72" aria-hidden="true">
+        <circle class="track" cx="36" cy="36" r="${r}"/>
+        <circle class="fill" cx="36" cy="36" r="${r}" stroke-dasharray="${filled.toFixed(1)} ${length.toFixed(1)}" transform="rotate(-90 36 36)"/>
+      </svg>
+      <span>${pctText(g.pct)}</span>
+    </div>
+    <figcaption><strong>${esc(g.label)}</strong><span>${esc(g.detail)}</span></figcaption>
+    ${g.id === 'disk' ? '' : spark(g.series)}
+  </figure>`;
+}
+
+const meter = (label, pct, value) =>
+  `<span class="meter"><span>${esc(label)}</span><span class="bar"><i style="width:${Math.min(100, Math.max(pct ? 1.5 : 0, pct ?? 0))}%"></i></span><span>${esc(value)}</span></span>`;
+
+function containerCard(c) {
+  const foot = [
+    c.upText,
+    c.net ? `rede ↓ ${c.net.rx} ↑ ${c.net.tx}` : null,
+    c.restarts ? `reiniciou ${c.restarts}×` : null,
+  ].filter(Boolean);
+  return `<li class="ctr" data-level="${esc(c.level)}" title="${esc(c.image)}">
+    <div class="ctr-head">
+      <span class="dot" aria-hidden="true"></span>
+      <strong>${esc(c.label)}</strong>
+      <span class="chip" data-level="${esc(c.level)}">${esc(c.statusText)}</span>
+    </div>
+    <p class="ctr-role">${esc(c.role)} · <code>${esc(c.name)}</code></p>
+    ${c.memBytes == null ? '' : `<div class="meters">${meter('CPU', c.cpuPct, pctText(c.cpuPct))}${meter('Memória', c.memPct, c.memText)}</div>`}
+    <p class="ctr-foot">${foot.map(esc).join(' · ')}</p>
+  </li>`;
+}
+
+function infraBlock(card) {
+  if (!card.infra) return '';
+  const tiles = card.tiles
+    .map(
+      (t) => `<li data-level="${esc(t.level)}"><span>${esc(t.label)}</span><strong>${esc(t.value)}</strong><small>${esc(t.note)}</small></li>`,
+    )
+    .join('');
+  const { infra } = card;
+  return `<div class="infra">
+    <div class="infra-server">
+      <ul class="tiles">${tiles}</ul>
+      <h3>Servidor na Hostinger</h3>
+      <p class="spec">${esc(infra.spec)}</p>
+      <div class="gauges">${infra.gauges.map(gauge).join('')}</div>
+    </div>
+    <div class="infra-containers">
+      <h3>Contêineres <small>${esc(infra.summary)}</small></h3>
+      <ul class="ctrs">${infra.containers.map(containerCard).join('')}</ul>
+    </div>
+  </div>`;
+}
+
 const FLOW_ICON = { done: '✓', waiting: '!', failed: '✕', rejected: '–', cancelled: '–', skipped: '–' };
 
 function jobBox(job) {
@@ -206,7 +281,8 @@ function render(data) {
   area('git', 'Código', data.cards.git, prList(data.cards.git.prs));
   area('dev', 'Ambiente de testes', data.cards.dev, compareLists(data.cards.dev.compare));
   area('pipeline', 'Esteira', data.cards.pipeline, runList(data.cards.pipeline.runs));
-  area('prd', 'Site dos clientes', data.cards.prd, deployList(data.cards.prd));
+  area('prd', 'Site dos clientes', data.cards.prd, infraBlock(data.cards.prd) + deployList(data.cards.prd));
+  $('card-prd').classList.toggle('wide', Boolean(data.cards.prd.infra));
 
   if (data.audit) renderAudit(data.audit);
 }
