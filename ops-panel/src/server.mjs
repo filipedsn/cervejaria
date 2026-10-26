@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
@@ -26,13 +27,24 @@ app.addHook('onRequest', async (request, reply) => {
   }
 });
 
-await app.register(fastifyStatic, { root: join(PANEL_DIR, 'public') });
+const PUBLIC_DIR = join(PANEL_DIR, 'public');
+await app.register(fastifyStatic, { root: PUBLIC_DIR });
+
+/** Muda quando algum arquivo da tela muda: a aba aberta compara e se recarrega sozinha. */
+function uiBuild() {
+  const hash = createHash('sha1');
+  for (const name of readdirSync(PUBLIC_DIR).sort()) {
+    const info = statSync(join(PUBLIC_DIR, name));
+    hash.update(`${name}:${info.size}:${info.mtimeMs};`);
+  }
+  return hash.digest('hex').slice(0, 12);
+}
 
 app.get('/api/health', async () => ({ ok: true, app: 'quiver-tap-ops', version: 2, pid: process.pid }));
 
 app.get('/api/state', async (request) => {
   const snapshot = await collectSnapshot({ force: request.query.force === '1' });
-  return { ...deriveState(snapshot), audit: readAudit(), repo: config.repo };
+  return { ...deriveState(snapshot), audit: readAudit(), repo: config.repo, ui: uiBuild() };
 });
 
 app.get('/api/preview/deploy', async (request, reply) => {
@@ -68,4 +80,4 @@ app.setErrorHandler((error, _request, reply) => {
 await app.listen({ host: config.host, port: config.port });
 mkdirSync(config.runtimeDir, { recursive: true });
 writeFileSync(join(config.runtimeDir, 'ops-panel.pid'), String(process.pid), 'ascii');
-console.log(`Quiver Tap Ops: http://${config.host}:${config.port}`);
+console.log(`Tap Quiver Ops: http://${config.host}:${config.port}`);
