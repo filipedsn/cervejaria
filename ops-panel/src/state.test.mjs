@@ -284,6 +284,18 @@ test('sem número de versão, cai no código técnico', () => {
   assert.equal(s.delivery.mainVersion, 'aaaaaaa');
 });
 
+test('fora da main: versão base mais as mudanças ainda não aceitas (V855+1)', () => {
+  const branch = 'c'.repeat(40);
+  const compare = { devOnly: [{ sha: branch, subject: 'feat: y' }], prdOnly: [] };
+  const s = deriveState({ ...withVersions(snap({ dev: { releaseSha: branch } }), compare), bases: { [branch]: { base: 855, ahead: 1 } } }, NOW);
+  const dev = s.cards.dev;
+  assert.equal(dev.title, 'Ligado · V855+1');
+  const facts = Object.fromEntries(dev.facts);
+  assert.equal(facts['Versão'], 'V855+1 (ccccccc)');
+  assert.equal(facts['Comparado ao site'], '1 mudança em teste que não está no site');
+  assert.equal(dev.compare.devOnly[0].version, 'V855+1');
+});
+
 test('dev atrás do site: compara, lista o que falta e oferece igualar ao site', () => {
   const compare = { prdOnly: [{ sha: MAIN, subject: 'feat: x' }], devOnly: [] };
   const s = deriveState(withVersions(snap({ dev: { releaseSha: OLD } }), compare), NOW);

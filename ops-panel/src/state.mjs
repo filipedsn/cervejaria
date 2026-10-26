@@ -48,11 +48,16 @@ export const short = (sha) => (sha ? String(sha).slice(0, 7) : '—');
 
 // Números de versão do snapshot atual ({ sha: 855 }); definido no início de deriveState.
 let versionNumbers = {};
+let baseVersions = {};
 const num = (sha) => (sha ? (versionNumbers[sha] ?? null) : null);
-/** "V855"; commit fora da main fica com o hash curto. */
-export const ver = (sha) => (num(sha) ? `V${num(sha)}` : short(sha));
+/** "V855"; fora da main, "V855+2" (a V855 mais 2 mudanças ainda não aceitas); sem informação, o hash curto. */
+export const ver = (sha) => {
+  if (num(sha)) return `V${num(sha)}`;
+  const b = sha ? baseVersions[sha] : null;
+  return b ? `V${b.base}+${b.ahead}` : short(sha);
+};
 /** "V855 (89e7d42)" — o hash entre parênteses aparece pequeno na tela. */
-const verFull = (sha) => (num(sha) ? `V${num(sha)} (${short(sha)})` : short(sha));
+const verFull = (sha) => (ver(sha) !== short(sha) ? `${ver(sha)} (${short(sha)})` : short(sha));
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 const prOpenOk = (pr) =>
@@ -370,7 +375,7 @@ export function compareWithSite(devSha, prdSha, compare) {
     text = diff < 0 ? `${plural(-diff, 'versão', 'versões')} atrás do site` : `${plural(diff, 'versão', 'versões')} à frente do site`;
   } else {
     text = lists.devOnly.length
-      ? `${plural(lists.devOnly.length, 'mudança', 'mudanças')} em teste que não estão no site`
+      ? `${plural(lists.devOnly.length, 'mudança', 'mudanças')} em teste que ${lists.devOnly.length === 1 ? 'não está' : 'não estão'} no site`
       : 'diferente do site';
   }
   return { text, lists: lists.devOnly.length || lists.prdOnly.length ? lists : null };
@@ -794,6 +799,7 @@ function decide(delivery, cards) {
 
 export function deriveState(snapshot, now = Date.now()) {
   versionNumbers = snapshot.versions ?? {};
+  baseVersions = snapshot.bases ?? {};
   const delivery = deriveDelivery(snapshot, now);
   const cards = {
     git: gitCard(snapshot, delivery),

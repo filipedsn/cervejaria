@@ -66,6 +66,25 @@ export async function versionsFor(shas) {
   return out;
 }
 
+/**
+ * { sha: { base: 865, ahead: 1 } } para commits fora da main (PR, pasta de trabalho):
+ * a versão da main de onde saíram e quantas mudanças têm a mais. Commit da main fica de fora.
+ */
+export async function baseVersionsFor(shas) {
+  const unique = [...new Set(shas.filter((s) => SHA_LIKE.test(s ?? '')))];
+  const out = {};
+  for (const sha of unique) {
+    if (versionCache.has(sha) || (await isOnMain(sha))) continue;
+    const base = (await git('merge-base', sha, 'origin/main')).stdout.trim();
+    if (!SHA_LIKE.test(base)) continue;
+    const [count, ahead] = await Promise.all([git('rev-list', '--count', base), git('rev-list', '--count', `${base}..${sha}`)]);
+    const n = Number(count.stdout.trim());
+    const a = Number(ahead.stdout.trim());
+    if (n > 0 && a > 0) out[sha] = { base: n, ahead: a };
+  }
+  return out;
+}
+
 /** Commits que existem em `to` e não em `from` (mais novos primeiro). */
 export async function commitsBetween(from, to, limit = 15) {
   if (!SHA_LIKE.test(from ?? '') || !SHA_LIKE.test(to ?? '') || from === to) return [];
