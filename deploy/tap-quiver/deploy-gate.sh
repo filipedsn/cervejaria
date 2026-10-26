@@ -5,7 +5,7 @@
 #   restrict,command="/usr/local/sbin/quiver-tap-deploy-gate" ssh-ed25519 AAAA... github-actions-cervejaria-deploy
 #
 # A chave não abre shell: só aceita
-#   deploy <sha40> [head-only|allow-older]
+#   deploy <sha40> [head-only|allow-older] [allow-destructive]
 #   status
 # O script de deploy executado é sempre o da origin/main (não o do SHA publicado),
 # para que rollback para commits antigos use a versão atual do procedimento.
@@ -20,14 +20,16 @@ case "$ACTION" in
   deploy)
     SHA="${ARGS[1]:-}"
     MODE="${ARGS[2]:-head-only}"
-    [[ "${#ARGS[@]}" -le 3 ]] || { echo "argumentos demais"; exit 2; }
+    DESTRUCTIVE="${ARGS[3]:-}"
+    [[ "${#ARGS[@]}" -le 4 ]] || { echo "argumentos demais"; exit 2; }
     [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "SHA inválido"; exit 2; }
     [[ "$MODE" == "head-only" || "$MODE" == "allow-older" ]] || { echo "modo inválido"; exit 2; }
+    [[ -z "$DESTRUCTIVE" || "$DESTRUCTIVE" == "allow-destructive" ]] || { echo "flag inválida"; exit 2; }
     git -C "$REPO_DIR" fetch --quiet origin main
     SCRIPT="$(mktemp /tmp/quiver-tap-deploy.XXXXXX)"
     trap 'rm -f "$SCRIPT"' EXIT
     git -C "$REPO_DIR" show origin/main:deploy/tap-quiver/deploy-prd.sh >"$SCRIPT"
-    bash "$SCRIPT" "$SHA" "$MODE"
+    bash "$SCRIPT" "$SHA" "$MODE" ${DESTRUCTIVE:+"$DESTRUCTIVE"}
     ;;
   status)
     curl -fsS http://127.0.0.1:3001/api/health

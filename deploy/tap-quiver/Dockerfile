@@ -18,6 +18,12 @@ RUN npm ci
 COPY backend/ ./
 RUN npx prisma generate && npm run build:deploy
 
+# Prisma CLI + migrations do mesmo SHA, para `prisma migrate` no deploy. Não é a imagem de runtime.
+FROM backend-build AS migrator
+WORKDIR /src/backend
+ENV NODE_ENV=production
+CMD ["npx", "--no-install", "prisma", "migrate", "status"]
+
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
