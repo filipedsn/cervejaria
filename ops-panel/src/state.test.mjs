@@ -159,7 +159,23 @@ test('prd atenção via VPS: backup velho e disco cheio', () => {
   assert.equal(s.cards.prd.level, 'warn');
   assert.match(s.cards.prd.title, /disco 91%/);
   assert.match(s.cards.prd.title, /backup atrasado/);
-  assert.match(s.cards.prd.title, /banco exited/);
+  assert.match(s.cards.prd.title, /banco de dados parado/);
+});
+
+test('toda situação traz explicação e cada cartão tem subtítulo', () => {
+  const cases = [
+    snap(),
+    snap({ git: { branch: 'feat/x', ahead: 1 }, prs: [pr()] }),
+    snap({ runs: [run({ status: 'waiting', conclusion: null })], prd: { releaseSha: OLD } }),
+    snap({ runs: [run({ conclusion: 'failure' })], prd: { releaseSha: OLD } }),
+    snap({ dev: { apiReady: false, webOk: false, supervisorAlive: false } }),
+  ];
+  for (const c of cases) {
+    const s = deriveState(c, NOW);
+    assert.ok(s.verdict.help.length > 20, s.verdict.text);
+    assert.ok(s.delivery.activeHint.length > 0, s.delivery.state);
+    for (const card of Object.values(s.cards)) assert.ok(card.subtitle, card.title);
+  }
 });
 
 test('dev parado sugere ligar', () => {

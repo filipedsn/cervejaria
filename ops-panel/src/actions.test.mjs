@@ -21,7 +21,7 @@ test('ação desconhecida é recusada', async () => {
 test('parâmetros inválidos são recusados antes de qualquer comando', async () => {
   await assert.rejects(executeAction('pr.merge', { number: 'abc' }), /PR inválido/);
   await assert.rejects(executeAction('deploy.approve', { runId: -1 }), /runId inválido/);
-  await assert.rejects(executeAction('deploy.dispatch', { sha: 'main; rm -rf /' }), /SHA inválido/);
+  await assert.rejects(executeAction('deploy.dispatch', { sha: 'main; rm -rf /' }), /Versão inválida/);
 });
 
 test('toda tentativa vai para a auditoria, inclusive falhas', () => {
@@ -30,5 +30,5 @@ test('toda tentativa vai para a auditoria, inclusive falhas', () => {
   assert.ok(lines.every((l) => l.ok === false && l.at && l.action));
   assert.equal(readAudit(2).length, 2);
   assert.equal(readAudit(2)[0].action, 'deploy.dispatch');
-  assert.equal(readAudit(2)[0].label, 'Publicar commit');
+  assert.equal(readAudit(2)[0].label, 'Iniciar a esteira');
 });

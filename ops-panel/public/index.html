@@ -11,21 +11,30 @@
       <h1>Quiver Tap <span>Ops</span></h1>
       <div class="top-meta">
         <span id="updated" aria-live="polite">carregando…</span>
+        <button type="button" id="help" class="ghost">Como funciona?</button>
         <button type="button" id="refresh" class="ghost">Atualizar</button>
       </div>
     </header>
 
     <main>
       <section id="verdict" class="verdict" data-level="off" aria-live="polite">
-        <div>
+        <div class="verdict-main">
+          <p class="kicker">Situação agora</p>
           <p id="verdict-text" class="verdict-text">Lendo o estado dos ambientes…</p>
+          <p id="verdict-help" class="verdict-help"></p>
           <ul id="verdict-extra" class="verdict-extra"></ul>
         </div>
-        <div id="next" class="next"></div>
+        <div id="next-box" class="next" hidden>
+          <p class="kicker">O que fazer</p>
+          <div id="next"></div>
+          <p id="next-explain" class="next-explain"></p>
+        </div>
       </section>
 
-      <section aria-label="Trilho da entrega">
+      <section class="journey" aria-labelledby="h-line">
+        <h2 id="h-line" class="section-title">Caminho de uma mudança até os clientes</h2>
         <ol id="line" class="line"></ol>
+        <p id="line-hint" class="line-hint"></p>
       </section>
 
       <div class="areas">
@@ -36,7 +45,7 @@
       </div>
 
       <section class="log" aria-labelledby="h-log">
-        <h2 id="h-log">Ações feitas pelo painel</h2>
+        <h2 id="h-log">Histórico do que foi feito por este painel</h2>
         <ol id="audit"></ol>
       </section>
     </main>
@@ -49,6 +58,101 @@
         <div class="modal-actions">
           <button type="submit" value="cancel" class="ghost">Cancelar</button>
           <button type="button" id="modal-confirm" class="primary"></button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="guide" class="guide" aria-labelledby="guide-title">
+      <form method="dialog">
+        <h2 id="guide-title">Como funciona a esteira</h2>
+        <div class="guide-body">
+          <p class="lead">
+            Toda mudança no Quiver Tap faz o mesmo caminho até os clientes. Este painel mostra em que ponto ela está e
+            qual botão apertar. <strong>Nada chega aos clientes sem a sua autorização.</strong>
+          </p>
+
+          <h3>O caminho de uma mudança</h3>
+          <ol class="steps">
+            <li>
+              <strong>No computador.</strong> Quem desenvolve altera o código neste PC.
+              <span class="you">Você: nada a fazer.</span>
+            </li>
+            <li>
+              <strong>Em revisão (PR).</strong> A mudança é enviada ao GitHub como um pedido de mudança e os testes
+              automáticos conferem se nada quebrou.
+              <span class="you">Você: quando aparecer "testes ok", clique em <em>Aceitar o PR</em>.</span>
+            </li>
+            <li>
+              <strong>Testes e montagem.</strong> A mudança entra na versão oficial; a esteira testa de novo e monta a nova
+              versão (cerca de 2 minutos).
+              <span class="you">Você: só esperar.</span>
+            </li>
+            <li>
+              <strong>Sua autorização.</strong> A esteira para e espera você.
+              <span class="you">Você: clique em <em>Publicar no site</em>, confira o que muda e confirme. Se não quiser agora,
+              clique em <em>Não publicar agora</em>.</span>
+            </li>
+            <li>
+              <strong>No ar para clientes.</strong> Antes de trocar a versão, a esteira faz backup do banco de dados. Se algo
+              der errado, ela volta sozinha para a versão anterior.
+            </li>
+          </ol>
+
+          <h3>As cores</h3>
+          <ul class="legend">
+            <li><span class="dot" data-level="ok"></span><strong>Verde:</strong> tudo certo.</li>
+            <li><span class="dot" data-level="run"></span><strong>Azul:</strong> trabalhando; aguarde.</li>
+            <li><span class="dot" data-level="warn"></span><strong>Amarelo:</strong> precisa de você.</li>
+            <li><span class="dot" data-level="bad"></span><strong>Vermelho:</strong> problema; não publique e chame quem desenvolve.</li>
+            <li><span class="dot" data-level="off"></span><strong>Cinza:</strong> desligado ou sem informação.</li>
+          </ul>
+
+          <h3>Os quatro cartões</h3>
+          <dl class="glossary">
+            <dt>Código</dt>
+            <dd>O código guardado no GitHub e os pedidos de mudança (PRs) esperando para entrar.</dd>
+            <dt>Ambiente de testes</dt>
+            <dd>Uma cópia do sistema que roda neste PC para testar antes dos clientes. Ligar ou desligar não afeta o site.</dd>
+            <dt>Esteira</dt>
+            <dd>A linha automática que testa, monta e publica. Sempre pede sua autorização antes de publicar.</dd>
+            <dt>Site dos clientes</dt>
+            <dd>O sistema que os clientes usam, no servidor da Hostinger: se está no ar, qual versão, backup e disco.</dd>
+          </dl>
+
+          <h3>Palavras que aparecem</h3>
+          <dl class="glossary">
+            <dt>GitHub</dt>
+            <dd>O site onde o código fica guardado, com o histórico de todas as mudanças.</dd>
+            <dt>PR (pull request)</dt>
+            <dd>Um pedido para juntar uma mudança à versão oficial. Vem com testes automáticos.</dd>
+            <dt>Aceitar (merge)</dt>
+            <dd>Juntar o PR à versão oficial. Ainda não publica nada.</dd>
+            <dt>Versão oficial (main)</dt>
+            <dd>O código aprovado, de onde saem as publicações.</dd>
+            <dt>Testes automáticos (CI)</dt>
+            <dd>Verificações que rodam sozinhas a cada mudança. "Testes ok" significa que nada conhecido quebrou.</dd>
+            <dt>Publicar (deploy)</dt>
+            <dd>Colocar uma versão no ar para os clientes.</dd>
+            <dt>Produção (PRD)</dt>
+            <dd>O site que os clientes usam. Ambiente de testes (DEV) é a cópia neste PC.</dd>
+            <dt>Voltar versão (rollback)</dt>
+            <dd>Publicar de novo uma versão anterior, quando a nova deu problema.</dd>
+            <dt>Mudança no banco de dados (migration)</dt>
+            <dd>Quando a versão nova altera a estrutura dos dados. A esteira ensaia numa cópia antes e faz backup.</dd>
+            <dt>Versão (abc1234)</dt>
+            <dd>Os 7 caracteres identificam cada versão do código, como um número de série.</dd>
+          </dl>
+
+          <h3>Regras de ouro</h3>
+          <ol class="rules">
+            <li>Vermelho no topo: não publique; chame quem desenvolve.</li>
+            <li><em>Não publicar agora</em> é sempre seguro: o site continua como está.</li>
+            <li><em>Voltar para uma versão anterior</em> só se o site ficou com problema logo depois de uma publicação.</li>
+            <li>Se o aviso de publicação mostrar mudanças no banco de dados e você tiver dúvida, pergunte antes de confirmar.</li>
+          </ol>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="primary">Entendi</button>
         </div>
       </form>
     </dialog>

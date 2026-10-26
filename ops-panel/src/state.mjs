@@ -4,16 +4,38 @@
  * Entrega (HEAD da main):
  *   local → pr → main (CI + build) → aguardando (aprovação) → publicando → em_dia
  *   desvios: falhou (CI do PR ou deploy), atrasada (PRD atrás da main sem run ativo).
- * Ambientes: git, dev, pipeline (esteira), prd — cada um com { state, level, title, facts, actions }.
+ * Ambientes: git, dev, pipeline (esteira), prd — cada um com { state, level, title, subtitle, facts, actions }.
  * level: ok | run | warn | bad | off.
+ *
+ * Os textos são para quem não é da área: nada de jargão sem explicação.
  */
 
 export const STEPS = [
-  { id: 'local', label: 'Local' },
-  { id: 'pr', label: 'Pull request' },
-  { id: 'main', label: 'main: CI + build' },
-  { id: 'aguardando', label: 'Aprovação' },
-  { id: 'prd', label: 'Produção' },
+  {
+    id: 'local',
+    label: 'No computador',
+    hint: 'Alguém está mexendo no código neste PC. Nada disso aparece para os clientes ainda.',
+  },
+  {
+    id: 'pr',
+    label: 'Em revisão (PR)',
+    hint: 'A mudança foi enviada ao GitHub como um pedido de mudança (PR) e os testes automáticos conferem se nada quebrou. Com os testes ok, você aceita a mudança.',
+  },
+  {
+    id: 'main',
+    label: 'Testes e montagem',
+    hint: 'A mudança entrou na versão oficial. A esteira testa tudo de novo e monta a nova versão (cerca de 2 minutos).',
+  },
+  {
+    id: 'aguardando',
+    label: 'Sua autorização',
+    hint: 'A esteira parou e espera você autorizar a publicação. Nada chega aos clientes sem esse clique.',
+  },
+  {
+    id: 'prd',
+    label: 'No ar para clientes',
+    hint: 'Os clientes usam esta versão em tap.quivercloud.com.br.',
+  },
 ];
 
 const MAIN_JUST_MERGED_MS = 3 * 60_000;
@@ -36,7 +58,8 @@ export function isMergeReady(pr) {
 const unavailable = (title, error) => ({
   state: 'indisponivel',
   level: 'off',
-  title,
+  title: `${title}: sem informação`,
+  subtitle: 'Não foi possível ler esta parte agora. Clique em Atualizar; se continuar, chame quem desenvolve.',
   facts: [['Erro', error || 'sem resposta']],
   actions: [],
 });
@@ -44,6 +67,26 @@ const unavailable = (title, error) => ({
 function deployJobRunning(run) {
   return (run?.jobs ?? []).some((j) => j.name === 'deploy-prd' && j.status === 'in_progress');
 }
+
+const ciLabel = (ci) =>
+  ({ success: 'testes ok', failure: 'testes falharam', pending: 'testando…', none: 'sem testes' })[ci] ?? ci;
+
+function runLabel(run) {
+  if (run.status !== 'completed') return run.status === 'waiting' ? 'esperando sua autorização' : 'em andamento';
+  return { success: 'concluída', failure: 'falhou', cancelled: 'cancelada', skipped: 'pulada' }[run.conclusion] ?? run.conclusion;
+}
+
+const CONTAINER_TEXT = {
+  running: 'rodando',
+  healthy: 'saudável',
+  unhealthy: 'com problema',
+  starting: 'iniciando',
+  exited: 'parado',
+  restarting: 'reiniciando',
+};
+const containerText = (...values) => values.filter(Boolean).map((v) => CONTAINER_TEXT[v] ?? v).join(', ') || '—';
+
+const DEV_CONTAINER_NAMES = { 'cervejaria-db-dev': 'Banco de dados', elasticsearch: 'Logs (Elasticsearch)' };
 
 export function deriveDelivery(snapshot, now = Date.now()) {
   const git = snapshot.git?.ok ? snapshot.git.data : null;
@@ -98,12 +141,12 @@ export function deriveDelivery(snapshot, now = Date.now()) {
   const activeIndex = activeId ? STEPS.findIndex((s) => s.id === activeId) : STEPS.length;
 
   const detail = {
-    local: git ? `${git.branch}${git.dirtyCount ? `, ${git.dirtyCount} alterações` : ''}` : '—',
-    pr: branchPr ? `#${branchPr.number}, CI ${ciLabel(branchPr.ci)}` : prs.length ? `${prs.length} aberto(s)` : 'nenhum',
-    main: mainSha ? `${short(mainSha)} ${git.mainSubject}` : '—',
+    local: git ? (git.dirtyCount ? `${git.dirtyCount} arquivo(s) alterado(s)` : git.branch === 'main' ? 'nada em andamento' : `pasta ${git.branch}`) : '—',
+    pr: branchPr ? `PR #${branchPr.number}, ${ciLabel(branchPr.ci)}` : prs.length ? `${prs.length} PR(s) aberto(s)` : 'nenhum PR',
+    main: mainSha ? `versão ${short(mainSha)}` : '—',
     aguardando:
-      state === 'aguardando' ? 'aguardando você' : state === 'atrasada' ? 'não publicado' : run ? runLabel(run) : '—',
-    prd: prdSha ? `${short(prdSha)}${prdSha === mainSha ? ' = main' : ''}` : 'sem resposta',
+      state === 'aguardando' ? 'esperando você' : state === 'atrasada' ? 'não publicada' : run ? runLabel(run) : '—',
+    prd: prdSha ? `versão ${short(prdSha)}${prdSha === mainSha ? ', a mais recente' : ''}` : 'sem resposta',
   };
 
   const steps = STEPS.map((step, i) => {
@@ -114,44 +157,47 @@ export function deriveDelivery(snapshot, now = Date.now()) {
     return { ...step, status, detail: detail[step.id] };
   });
 
-  return { state, mainSha, prdSha, run, branchPr, steps };
-}
+  const activeHint =
+    state === 'em_dia'
+      ? 'Tudo publicado: os clientes estão na versão mais recente.'
+      : state === 'desconhecido'
+        ? 'Sem informação suficiente para saber onde a entrega está.'
+        : state === 'atrasada'
+          ? 'Existe uma versão mais nova que não foi publicada (a publicação foi recusada ou cancelada).'
+          : (STEPS.find((s) => s.id === activeId)?.hint ?? '');
 
-const ciLabel = (ci) => ({ success: 'verde', failure: 'vermelho', pending: 'rodando', none: 'sem check' })[ci] ?? ci;
-
-function runLabel(run) {
-  if (run.status !== 'completed') return run.status === 'waiting' ? 'aguardando aprovação' : 'rodando';
-  return { success: 'ok', failure: 'falhou', cancelled: 'cancelado', skipped: 'pulado' }[run.conclusion] ?? run.conclusion;
+  return { state, mainSha, prdSha, run, branchPr, steps, activeHint };
 }
 
 function gitCard(snapshot, delivery) {
-  if (!snapshot.git?.ok) return unavailable('Git', snapshot.git?.error);
+  if (!snapshot.git?.ok) return unavailable('Código', snapshot.git?.error);
   const g = snapshot.git.data;
   const prs = snapshot.github?.ok ? snapshot.github.data.prs : [];
   let state = 'limpo';
   let level = 'ok';
-  let title = 'Limpo';
+  let title = 'Sem pendências';
   if (g.branch === 'main' && g.behind > 0) {
-    [state, level, title] = ['atras', 'warn', `Atrás da origin/main (${g.behind})`];
+    [state, level, title] = ['atras', 'warn', `Este PC está ${g.behind} mudança(s) atrás da versão oficial`];
   } else if (g.dirtyCount > 0) {
-    [state, level, title] = ['alteracoes', 'warn', `${g.dirtyCount} arquivo(s) alterado(s)`];
+    [state, level, title] = ['alteracoes', 'warn', `${g.dirtyCount} arquivo(s) alterado(s) neste PC`];
   } else if (g.branch !== 'main' && g.ahead > 0 && !delivery.branchPr) {
-    [state, level, title] = ['sem_pr', 'warn', 'Branch com commits e sem PR'];
+    [state, level, title] = ['sem_pr', 'warn', 'Mudanças ainda sem pedido de revisão (PR)'];
   }
   return {
     state,
     level,
     title,
+    subtitle: 'Onde o código fica guardado (GitHub) e os pedidos de mudança (PRs) esperando para entrar na versão oficial.',
     facts: [
-      ['Branch', g.branch],
-      ['À frente / atrás da main', `${g.ahead} / ${g.behind}`],
-      ['main', `${short(g.mainSha)} ${g.mainSubject}`],
+      ['Pasta de trabalho (branch)', g.branch],
+      ['Diferença para a oficial', `${g.ahead} à frente, ${g.behind} atrás`],
+      ['Versão oficial (main)', short(g.mainSha)],
     ],
     prs: prs.map((pr) => ({
       ...pr,
       ciLabel: ciLabel(pr.ci),
       action: isMergeReady(pr)
-        ? { name: 'pr.merge', label: 'Mergear', params: { number: pr.number }, confirm: 'merge' }
+        ? { name: 'pr.merge', label: 'Aceitar', params: { number: pr.number }, confirm: 'merge' }
         : null,
     })),
     actions: [],
@@ -159,7 +205,7 @@ function gitCard(snapshot, delivery) {
 }
 
 function devCard(snapshot, delivery) {
-  if (!snapshot.dev?.ok) return unavailable('DEV', snapshot.dev?.error);
+  if (!snapshot.dev?.ok) return unavailable('Ambiente de testes', snapshot.dev?.error);
   const d = snapshot.dev.data;
   const containersOk = d.containers.every((c) => c.ok);
   let state;
@@ -171,21 +217,21 @@ function devCard(snapshot, delivery) {
 
   const behindMain = Boolean(state === 'ok' && d.releaseSha && delivery.mainSha && d.releaseSha !== delivery.mainSha);
   const title = {
-    ok: behindMain ? 'No ar (versão diferente da main)' : 'No ar',
-    parado: 'Parado',
-    subindo: 'Subindo…',
-    degradado: d.dockerOk ? 'Degradado' : 'Docker parado',
+    ok: behindMain ? 'Ligado (versão diferente da oficial)' : 'Ligado',
+    parado: 'Desligado',
+    subindo: 'Ligando…',
+    degradado: d.dockerOk ? 'Com problema' : 'Docker desligado',
   }[state];
   const level = { ok: behindMain ? 'warn' : 'ok', parado: 'off', subindo: 'run', degradado: 'bad' }[state];
 
-  const yes = (ok) => (ok ? 'ok' : 'fora');
+  const yes = (ok) => (ok ? 'funcionando' : 'desligado');
   const facts = [
-    ['API :3002', yes(d.apiReady)],
-    ['Web :5202', yes(d.webOk)],
-    ...d.containers.map((c) => [c.name, c.ok ? 'ok' : c.status ?? 'parado']),
-    ['Versão', d.releaseSha ? `${short(d.releaseSha)}${d.releaseSha === delivery.mainSha ? ' = main' : ''}` : '—'],
+    ['Sistema (API :3002)', yes(d.apiReady)],
+    ['Telas (web :5202)', yes(d.webOk)],
+    ...d.containers.map((c) => [DEV_CONTAINER_NAMES[c.name] ?? c.name, c.ok ? 'funcionando' : 'desligado']),
+    ['Versão', d.releaseSha ? `${short(d.releaseSha)}${d.releaseSha === delivery.mainSha ? ' (a oficial)' : ''}` : '—'],
   ];
-  if (!d.dockerOk) facts.unshift(['Docker', d.dockerError || 'daemon fora']);
+  if (!d.dockerOk) facts.unshift(['Docker', d.dockerError || 'desligado']);
 
   const actions =
     state === 'parado'
@@ -194,7 +240,15 @@ function devCard(snapshot, delivery) {
           { name: 'dev.restart', label: 'Reiniciar', confirm: 'simple' },
           { name: 'dev.stop', label: 'Desligar', confirm: 'simple' },
         ];
-  return { state, level, title, behindMain, facts, actions };
+  return {
+    state,
+    level,
+    title,
+    subtitle: 'Cópia do sistema que roda neste PC para testar mudanças antes dos clientes. Ligar ou desligar não afeta o site.',
+    behindMain,
+    facts,
+    actions,
+  };
 }
 
 function pipelineCard(snapshot) {
@@ -205,23 +259,31 @@ function pipelineCard(snapshot) {
   const last = runs[0];
   let state = 'ociosa';
   let level = 'ok';
-  let title = 'Ociosa';
+  let title = 'Parada, nada pendente';
   const actions = [];
   if (waiting) {
-    [state, level, title] = ['aguardando', 'warn', `Deploy de ${short(waiting.sha)} aguardando você`];
+    [state, level, title] = ['aguardando', 'warn', `Versão ${short(waiting.sha)} esperando sua autorização`];
     actions.push(
-      { name: 'deploy.approve', label: 'Aprovar deploy', params: { runId: waiting.id, sha: waiting.sha }, confirm: 'deploy', primary: true },
-      { name: 'deploy.reject', label: 'Rejeitar', params: { runId: waiting.id }, confirm: 'simple' },
+      {
+        name: 'deploy.approve',
+        label: 'Publicar no site',
+        params: { runId: waiting.id, sha: waiting.sha },
+        confirm: 'deploy',
+        primary: true,
+        explain: 'Antes de confirmar, você vê o que muda para os clientes.',
+      },
+      { name: 'deploy.reject', label: 'Não publicar agora', params: { runId: waiting.id }, confirm: 'simple' },
     );
   } else if (active) {
-    [state, level, title] = ['rodando', 'run', deployJobRunning(active) ? `Publicando ${short(active.sha)}` : `CI + build de ${short(active.sha)}`];
+    [state, level, title] = ['rodando', 'run', deployJobRunning(active) ? `Publicando ${short(active.sha)}` : `Testando ${short(active.sha)}`];
   } else if (last?.conclusion === 'failure') {
-    [state, level, title] = ['falhou', 'bad', `Último run falhou (${short(last.sha)})`];
+    [state, level, title] = ['falhou', 'bad', `A última passagem falhou (${short(last.sha)})`];
   }
   return {
     state,
     level,
     title,
+    subtitle: 'Linha automática que testa, monta e publica cada nova versão oficial. Sempre para e pede sua autorização antes de publicar.',
     facts: [],
     runs: runs.slice(0, 4).map((r) => ({ ...r, short: short(r.sha), label: runLabel(r) })),
     actions,
@@ -229,14 +291,14 @@ function pipelineCard(snapshot) {
 }
 
 function prdCard(snapshot, delivery, now) {
-  if (!snapshot.prd?.ok) return unavailable('Produção', snapshot.prd?.error);
+  if (!snapshot.prd?.ok) return unavailable('Site dos clientes', snapshot.prd?.error);
   const p = snapshot.prd.data;
   const vps = p.vps?.configured && p.vps.ok ? p.vps.data : null;
   const issues = [];
   if (vps) {
-    if (vps.api?.health && vps.api.health !== 'healthy') issues.push(`container ${vps.api.health}`);
-    if (vps.db?.status && vps.db.status !== 'running') issues.push(`banco ${vps.db.status}`);
-    if (vps.disk_pct >= DISK_WARN_PCT) issues.push(`disco ${vps.disk_pct}%`);
+    if (vps.api?.health && vps.api.health !== 'healthy') issues.push(`sistema ${CONTAINER_TEXT[vps.api.health] ?? vps.api.health}`);
+    if (vps.db?.status && vps.db.status !== 'running') issues.push('banco de dados parado');
+    if (vps.disk_pct >= DISK_WARN_PCT) issues.push(`disco ${vps.disk_pct}% cheio`);
     if (vps.backup?.mtime && (vps.now - vps.backup.mtime) / 3600 > BACKUP_MAX_AGE_H) issues.push('backup atrasado');
   }
 
@@ -244,32 +306,33 @@ function prdCard(snapshot, delivery, now) {
   let level = 'ok';
   let title = 'No ar';
   if (!p.healthOk) [state, level, title] = ['fora', 'bad', 'Fora do ar'];
-  else if (!p.readyOk) [state, level, title] = ['degradado', 'bad', `Não está pronto (HTTP ${p.readyStatus})`];
+  else if (!p.readyOk) [state, level, title] = ['degradado', 'bad', `Com problema (o site respondeu erro ${p.readyStatus})`];
   else if (issues.length) [state, level, title] = ['degradado', 'warn', `Atenção: ${issues.join(', ')}`];
 
   const behind = delivery.mainSha && p.releaseSha && p.releaseSha !== delivery.mainSha;
   const facts = [
-    ['Versão', p.releaseSha ? `${short(p.releaseSha)}${behind ? ' (≠ main)' : ' = main'}` : '—'],
-    ['Resposta', p.healthOk ? `${p.latencyMs} ms` : 'sem resposta'],
+    ['Versão no ar', p.releaseSha ? `${short(p.releaseSha)}${behind ? ' (há uma mais nova)' : ' (a mais recente)'}` : '—'],
+    ['Tempo de resposta', p.healthOk ? `${p.latencyMs} ms` : 'sem resposta'],
   ];
   if (vps) {
     facts.push(
-      ['Container API', [vps.api?.status, vps.api?.health].filter(Boolean).join(', ') || '—'],
-      ['Banco', [vps.db?.status, vps.db?.health].filter(Boolean).join(', ') || '—'],
-      ['Disco', `${vps.disk_pct}%`],
+      ['Sistema no servidor', containerText(vps.api?.status, vps.api?.health)],
+      ['Banco de dados', containerText(vps.db?.status, vps.db?.health)],
+      ['Disco usado', `${vps.disk_pct}%`],
       ['Último backup', vps.backup?.mtime ? hoursAgo(vps.now - vps.backup.mtime) : '—'],
     );
   } else {
-    facts.push(['VPS', p.vps?.configured ? `sem leitura (${p.vps.error})` : 'só dados públicos (chave de leitura não configurada)']);
+    facts.push(['Detalhes do servidor', p.vps?.configured ? `sem leitura (${p.vps.error})` : 'indisponíveis (leitura do servidor não configurada)']);
   }
 
   return {
     state,
     level,
     title,
+    subtitle: 'O site que os clientes usam (tap.quivercloud.com.br), no servidor da Hostinger.',
     facts,
     deploys: (vps?.deploys ?? []).slice(-5).reverse(),
-    actions: [{ name: 'deploy.dispatch', label: 'Publicar / rollback…', confirm: 'rollback' }],
+    actions: [{ name: 'deploy.dispatch', label: 'Voltar para uma versão anterior…', confirm: 'rollback' }],
     url: p.url,
     now,
   };
@@ -277,7 +340,7 @@ function prdCard(snapshot, delivery, now) {
 
 function hoursAgo(seconds) {
   const h = seconds / 3600;
-  return h < 1 ? `há ${Math.max(1, Math.round(seconds / 60))} min` : `há ${h.toFixed(1)} h`;
+  return h < 1 ? `há ${Math.max(1, Math.round(seconds / 60))} min` : `há ${h.toFixed(1).replace('.', ',')} h`;
 }
 
 function decide(delivery, cards) {
@@ -286,70 +349,130 @@ function decide(delivery, cards) {
   const prdDown = cards.prd.state === 'fora' || cards.prd.level === 'bad';
   const verdicts = [];
   let next = null;
+  const say = (level, text, help) => verdicts.push({ level, text, help });
 
   if (prdDown) {
-    verdicts.push(['bad', `Produção: ${cards.prd.title.toLowerCase()}`]);
-    next = { label: 'Abrir produção', href: cards.prd.url };
+    say(
+      'bad',
+      cards.prd.state === 'fora' ? 'O site dos clientes está fora do ar' : 'O site dos clientes está com problema',
+      'Abra o site para confirmar. Se continuar assim, chame quem cuida do servidor. Se começou logo depois de uma publicação, dá para voltar para a versão anterior no cartão Site dos clientes.',
+    );
+    next = { label: 'Abrir o site', href: cards.prd.url };
   }
   switch (d.state) {
     case 'falhou': {
       const failedRun = d.branchPr && d.prdSha === d.mainSha ? null : run;
-      verdicts.push(['bad', failedRun ? `Deploy de ${short(d.mainSha)} falhou` : `CI vermelho no PR #${d.branchPr?.number}`]);
-      next ??= { label: failedRun ? 'Abrir o run que falhou' : `Abrir PR #${d.branchPr?.number}`, href: failedRun?.url ?? d.branchPr?.url };
+      if (failedRun) {
+        say(
+          'bad',
+          `A publicação da versão ${short(d.mainSha)} falhou`,
+          'Quando algo dá errado, a esteira volta sozinha para a versão anterior, então os clientes não devem ter sido afetados. Abra o detalhe para ver o erro e chame quem desenvolve.',
+        );
+        next ??= { label: 'Ver o que deu errado', href: failedRun.url };
+      } else {
+        say(
+          'bad',
+          `Os testes automáticos do PR #${d.branchPr?.number} falharam`,
+          'A mudança tem algum erro e não pode ser aceita. Peça para quem fez a mudança corrigir; o painel avisa quando os testes passarem.',
+        );
+        next ??= { label: 'Ver o PR no GitHub', href: d.branchPr?.url };
+      }
       break;
     }
     case 'aguardando':
-      verdicts.push(['warn', `Deploy de ${short(d.mainSha)} aguardando sua aprovação`]);
+      say(
+        'warn',
+        'Uma nova versão está pronta e esperando sua autorização',
+        'Ela já passou nos testes. Clique em Publicar no site para ver o que muda antes de confirmar. Se não quiser publicar agora, use "Não publicar agora" no cartão Esteira.',
+      );
       next ??= cards.pipeline.actions.find((a) => a.name === 'deploy.approve') ?? null;
       break;
     case 'publicando':
-      verdicts.push(['run', `Publicando ${short(d.mainSha)} em produção`]);
-      next ??= run ? { label: 'Acompanhar o run', href: run.url } : null;
+      say('run', 'Publicando a nova versão para os clientes', 'Leva de 1 a 3 minutos. Não precisa fazer nada: o painel atualiza sozinho.');
+      next ??= run ? { label: 'Acompanhar no GitHub', href: run.url } : null;
       break;
     case 'main':
-      verdicts.push(['run', `main ${short(d.mainSha)}: CI e build rodando`]);
-      next ??= run ? { label: 'Acompanhar o run', href: run.url } : null;
+      say('run', 'A esteira está testando a nova versão', 'Leva cerca de 2 minutos. Quando terminar, ela para e pede sua autorização aqui no painel.');
+      next ??= run ? { label: 'Acompanhar no GitHub', href: run.url } : null;
       break;
     case 'atrasada':
-      verdicts.push(['warn', `Produção em ${short(d.prdSha)}, main em ${short(d.mainSha)}: não publicado`]);
+      say(
+        'warn',
+        'Há uma versão mais nova que ainda não foi publicada',
+        `Os clientes estão na versão ${short(d.prdSha)} e a mais nova é ${short(d.mainSha)}. Isso acontece quando uma publicação foi recusada ou cancelada. Para publicar, clique no botão: a esteira testa de novo e pede sua autorização.`,
+      );
       next ??= {
         name: 'deploy.dispatch',
-        label: `Publicar main (${short(d.mainSha)})`,
+        label: 'Publicar a versão mais recente',
         params: { sha: d.mainSha },
         confirm: 'deploy',
         primary: true,
+        explain: 'A esteira testa de novo e, no fim, pede sua autorização.',
       };
       break;
-    case 'pr':
-      verdicts.push(['ok', `PR #${d.branchPr.number}: CI ${ciLabel(d.branchPr.ci)}`]);
-      if (isMergeReady(d.branchPr)) {
-        next ??= { name: 'pr.merge', label: `Mergear PR #${d.branchPr.number}`, params: { number: d.branchPr.number }, confirm: 'merge', primary: true };
+    case 'pr': {
+      const pr = d.branchPr;
+      if (isMergeReady(pr)) {
+        say(
+          'ok',
+          `O PR #${pr.number} passou nos testes e pode ser aceito`,
+          'Aceitar junta a mudança à versão oficial. Isso ainda não publica nada: depois a esteira testa de novo e pede sua autorização.',
+        );
+        next ??= {
+          name: 'pr.merge',
+          label: `Aceitar o PR #${pr.number}`,
+          params: { number: pr.number },
+          confirm: 'merge',
+          primary: true,
+          explain: 'Antes de confirmar, você vê as mudanças. Nada vai ao ar ainda.',
+        };
+      } else if (pr.ci === 'pending') {
+        say('ok', `Os testes do PR #${pr.number} estão rodando`, 'Aguarde alguns minutos. O botão para aceitar aparece quando os testes passarem.');
+      } else {
+        say(
+          'ok',
+          `O PR #${pr.number} ainda não pode ser aceito`,
+          'Ele está como rascunho, tem conflito com a versão oficial ou ainda não tem testes. Quem desenvolve precisa ajustar.',
+        );
       }
       break;
+    }
     case 'desconhecido':
-      verdicts.push(['off', 'Sem dados suficientes de Git ou produção']);
+      say('off', 'Não consegui ler o estado do código ou do site', 'Clique em Atualizar. Se continuar, verifique a internet e se o GitHub está conectado neste PC.');
       break;
     default:
       break;
   }
 
   if (cards.dev.state === 'parado') {
-    verdicts.push(['off', 'DEV parado']);
-    next ??= { name: 'dev.start', label: 'Ligar DEV', primary: true };
+    say('off', 'O ambiente de testes deste PC está desligado', 'Ele só é necessário para testar mudanças antes de publicar. Ligue se for testar algo; o site dos clientes não depende dele.');
+    next ??= { name: 'dev.start', label: 'Ligar ambiente de testes', primary: true, explain: 'Fica pronto em cerca de 30 segundos.' };
   } else if (cards.dev.level === 'bad') {
-    verdicts.push(['bad', `DEV: ${cards.dev.title.toLowerCase()}`]);
+    say('bad', `Ambiente de testes: ${cards.dev.title.toLowerCase()}`, 'Não afeta os clientes. Tente Reiniciar no cartão Ambiente de testes; se o Docker estiver desligado, abra o Docker Desktop.');
   } else if (cards.dev.behindMain) {
-    next ??= { label: 'DEV roda outra versão: publique o DEV com prepare/swap (CONTRIBUTING)', info: true };
+    next ??= {
+      label: 'O ambiente de testes está numa versão diferente da oficial. É normal enquanto alguém testa algo; quem desenvolve atualiza quando precisar.',
+      info: true,
+    };
   }
 
   if (!verdicts.length) {
-    verdicts.push(['ok', d.state === 'local' ? `Tudo em dia; trabalho local em ${d.steps[0].detail}` : 'Tudo em dia: produção = main']);
+    say(
+      'ok',
+      'Tudo certo: os clientes estão na versão mais recente',
+      d.state === 'local'
+        ? `Há trabalho em andamento neste PC (${d.steps[0].detail}). Quando virar um PR, ele aparece aqui.`
+        : 'Nada para fazer agora.',
+    );
   }
 
   const order = ['bad', 'warn', 'run', 'off', 'ok'];
-  const level = order.find((l) => verdicts.some(([v]) => v === l)) ?? 'ok';
-  const text = verdicts.find(([v]) => v === level)[1];
-  return { verdict: { level, text, extra: verdicts.filter(([, t]) => t !== text).map(([, t]) => t) }, next };
+  const level = order.find((l) => verdicts.some((v) => v.level === l)) ?? 'ok';
+  const main = verdicts.find((v) => v.level === level);
+  return {
+    verdict: { level, text: main.text, help: main.help, extra: verdicts.filter((v) => v !== main).map((v) => v.text) },
+    next,
+  };
 }
 
 export function deriveState(snapshot, now = Date.now()) {
@@ -366,7 +489,14 @@ export function deriveState(snapshot, now = Date.now()) {
     at: snapshot.at,
     verdict,
     next,
-    delivery: { state: delivery.state, mainSha: delivery.mainSha, prdSha: delivery.prdSha, steps: delivery.steps, runUrl: delivery.run?.url ?? null },
+    delivery: {
+      state: delivery.state,
+      mainSha: delivery.mainSha,
+      prdSha: delivery.prdSha,
+      steps: delivery.steps,
+      activeHint: delivery.activeHint,
+      runUrl: delivery.run?.url ?? null,
+    },
     cards,
     recentMain: recentMain.map((c) => ({ ...c, short: short(c.sha), isPrd: c.sha === delivery.prdSha })),
   };

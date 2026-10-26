@@ -137,12 +137,25 @@ button.ghost {
 .verdict[data-level="warn"] { --level: var(--warn); }
 .verdict[data-level="bad"] { --level: var(--bad); }
 
+.kicker {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .verdict-text {
   margin: 0;
   font-size: 1.6rem;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.015em;
+}
+
+.verdict-help {
+  max-width: 62ch;
+  margin: 8px 0 0;
+  font-size: 1rem;
 }
 
 .verdict-extra {
@@ -154,8 +167,15 @@ button.ghost {
 
 .next {
   flex-shrink: 0;
-  max-width: 340px;
-  text-align: right;
+  width: 300px;
+  padding-left: 24px;
+  border-left: 1px solid var(--rule);
+}
+
+.next-explain {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .next button,
@@ -166,12 +186,33 @@ button.ghost {
 
 /* ---------- trilho da entrega ---------- */
 
+.journey {
+  margin: 28px 0;
+}
+
+.section-title {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
 .line {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  margin: 28px 0;
+  margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.line-hint {
+  max-width: 70ch;
+  margin: 16px auto 0;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.95rem;
+  text-align: center;
 }
 
 .line li {
@@ -207,15 +248,21 @@ button.ghost {
 .station {
   position: relative;
   z-index: 1;
+  display: grid;
+  place-items: center;
   width: 32px;
   height: 32px;
-  border: 6px solid var(--c);
+  border: 4px solid var(--c);
   border-radius: 50%;
   background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .line li[data-status="done"] .station {
   background: var(--ok);
+  color: #fff;
 }
 
 .line li[data-status="active"] .station {
@@ -224,6 +271,12 @@ button.ghost {
 
 .line li[data-status="error"] .station {
   background: var(--bad);
+  color: #fff;
+}
+
+.line li[data-status="active"] .station,
+.line li[data-status="warn"] .station {
+  color: var(--warn);
 }
 
 @keyframes pour {
@@ -278,6 +331,22 @@ button.ghost {
 
 .area h2 {
   font-size: 1.05rem;
+}
+
+.area .sub {
+  margin: -4px 0 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.area h3 {
+  margin: 16px 0 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.area h3 + .rows {
+  margin-top: 6px;
 }
 
 .badge {
@@ -481,6 +550,99 @@ dialog h3 {
   color: var(--bad);
 }
 
+.lead {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.note {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 4px solid var(--rule);
+  border-radius: 4px;
+  background: #f4f6f8;
+  font-size: 0.9rem;
+}
+
+.note.ok {
+  border-left-color: var(--ok);
+  background: #edf5ec;
+}
+
+.note.warn {
+  border-left-color: var(--warn);
+  background: #fbf3e4;
+}
+
+/* ---------- guia ---------- */
+
+dialog.guide {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.guide-body {
+  max-height: 68vh;
+  overflow: auto;
+  padding-right: 8px;
+}
+
+.guide-body h3 {
+  margin: 20px 0 8px;
+  font-size: 1rem;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.steps li {
+  margin-bottom: 8px;
+}
+
+.you {
+  display: block;
+  color: var(--run);
+}
+
+.legend {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--off);
+  vertical-align: -1px;
+}
+
+.dot[data-level="ok"] { background: var(--ok); }
+.dot[data-level="run"] { background: var(--run); }
+.dot[data-level="warn"] { background: var(--warn); }
+.dot[data-level="bad"] { background: var(--bad); }
+
+.glossary {
+  grid-template-columns: minmax(150px, max-content) 1fr;
+  gap: 6px 16px;
+}
+
+.glossary dt {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.rules {
+  margin: 0;
+  padding-left: 20px;
+}
+
 .warn-text {
   color: var(--warn);
   font-weight: 600;
@@ -505,21 +667,28 @@ dialog h3 {
 /* ---------- telas estreitas ---------- */
 
 @media (max-width: 820px) {
+  #updated {
+    display: none;
+  }
+
   .verdict {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .next {
-    text-align: left;
+    width: auto;
+    padding: 16px 0 0;
+    border-top: 1px solid var(--rule);
+    border-left: 0;
   }
 
   .areas {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .line {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
   }
 

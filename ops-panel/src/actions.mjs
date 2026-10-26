@@ -31,61 +31,63 @@ function positiveInt(value, name) {
 }
 
 async function devStart() {
-  await must(powershellFile('supervisor.ps1'), 'Ligar DEV');
-  return 'Supervisor do DEV iniciado; API e web sobem em alguns segundos.';
+  await must(powershellFile('supervisor.ps1'), 'Ligar o ambiente de testes');
+  return 'Ambiente de testes ligando; fica pronto em cerca de 30 segundos.';
 }
 
 async function devStop() {
-  await must(powershellFile('stop-dev.ps1'), 'Desligar DEV');
-  return 'DEV desligado.';
+  await must(powershellFile('stop-dev.ps1'), 'Desligar o ambiente de testes');
+  return 'Ambiente de testes desligado.';
 }
 
 async function review(params, state) {
   const runId = positiveInt(params.runId, 'runId');
   const pending = await fetchPendingDeployments(runId);
-  if (!pending?.length) throw new ActionError('Esse run não está mais aguardando aprovação.');
+  if (!pending?.length) throw new ActionError('Essa versão não está mais esperando autorização. Clique em Atualizar.');
   const ids = pending.map((p) => p.environment.id);
   const comment = state === 'approved' ? 'Aprovado pelo painel Ops' : 'Rejeitado pelo painel Ops';
   await reviewDeployment(runId, ids, state, comment);
-  return state === 'approved' ? `Deploy aprovado (run ${runId}); a esteira segue sozinha.` : `Deploy rejeitado (run ${runId}).`;
+  return state === 'approved'
+    ? 'Publicação autorizada. A nova versão fica no ar em 1 a 3 minutos.'
+    : 'Publicação recusada. O site dos clientes continua na versão atual.';
 }
 
 /** Lista fechada: nome → { validate?, run }. Parâmetros vindos do browser são revalidados aqui. */
 export const ACTIONS = {
-  'dev.start': { label: 'Ligar DEV', run: devStart },
-  'dev.stop': { label: 'Desligar DEV', run: devStop },
+  'dev.start': { label: 'Ligar o ambiente de testes', run: devStart },
+  'dev.stop': { label: 'Desligar o ambiente de testes', run: devStop },
   'dev.restart': {
-    label: 'Reiniciar DEV',
+    label: 'Reiniciar o ambiente de testes',
     run: async () => {
       await devStop();
       return devStart();
     },
   },
   'pr.merge': {
-    label: 'Mergear PR',
+    label: 'Aceitar PR',
     run: async (params) => {
       const number = positiveInt(params.number, 'PR');
       const pr = await fetchPr(number);
       if (!isMergeReady(pr)) {
-        throw new ActionError(`PR #${number} não está pronto (CI ${pr.ci}, ${pr.mergeable}${pr.isDraft ? ', draft' : ''}).`);
+        throw new ActionError(`O PR #${number} ainda não pode ser aceito (testes: ${pr.ci}, ${pr.mergeable}${pr.isDraft ? ', rascunho' : ''}).`);
       }
-      await must(run('gh', ['pr', 'merge', String(number), '--repo', config.repo, '--squash'], { timeoutMs: 60_000 }), `Merge do PR #${number}`);
-      return `PR #${number} mergeado. A esteira começa CI + build e para aguardando aprovação.`;
+      await must(run('gh', ['pr', 'merge', String(number), '--repo', config.repo, '--squash'], { timeoutMs: 60_000 }), `Aceitar o PR #${number}`);
+      return `PR #${number} aceito. A esteira começou a testar e vai pedir sua autorização em alguns minutos.`;
     },
   },
-  'deploy.approve': { label: 'Aprovar deploy', run: (params) => review(params, 'approved') },
-  'deploy.reject': { label: 'Rejeitar deploy', run: (params) => review(params, 'rejected') },
+  'deploy.approve': { label: 'Autorizar publicação', run: (params) => review(params, 'approved') },
+  'deploy.reject': { label: 'Recusar publicação', run: (params) => review(params, 'rejected') },
   'deploy.dispatch': {
-    label: 'Publicar commit',
+    label: 'Iniciar a esteira',
     run: async (params) => {
       const sha = params.sha ? String(params.sha) : '';
-      if (sha && !SHA_RE.test(sha)) throw new ActionError('SHA inválido (40 hex).');
-      if (sha && !(await isOnMain(sha))) throw new ActionError('Esse commit não pertence à main.');
+      if (sha && !SHA_RE.test(sha)) throw new ActionError('Versão inválida (SHA de 40 caracteres).');
+      if (sha && !(await isOnMain(sha))) throw new ActionError('Essa versão não faz parte da versão oficial (main).');
       const head = (await run('git', ['rev-parse', 'origin/main'], { cwd: ROOT })).stdout.trim();
       const args = ['workflow', 'run', config.deployWorkflow, '--repo', config.repo, '--ref', 'main'];
       if (sha && sha !== head) args.push('-f', `sha=${sha}`);
-      await must(run('gh', args, { timeoutMs: 30_000 }), 'Disparar a esteira');
-      return `Esteira disparada para ${(sha || head).slice(0, 7)}; ela para aguardando sua aprovação.`;
+      await must(run('gh', args, { timeoutMs: 30_000 }), 'Iniciar a esteira');
+      return `Esteira iniciada para a versão ${(sha || head).slice(0, 7)}. Ela vai pedir sua autorização em alguns minutos.`;
     },
   },
 };
