@@ -103,7 +103,13 @@
             <li>
               <strong>Em revisão (PR).</strong> A mudança é enviada ao GitHub como um pedido de mudança e os testes
               automáticos conferem se nada quebrou.
-              <span class="you">Você: quando aparecer "testes ok", clique em <em>Aceitar o PR</em>.</span>
+              <span class="you">Você: esperar o "testes ok".</span>
+            </li>
+            <li>
+              <strong>Ambiente de testes.</strong> Antes de aceitar, a mudança roda no ambiente de testes deste PC
+              (http://localhost:5202). O site dos clientes não muda.
+              <span class="you">Você: clique em <em>Testar o PR</em>, confira as telas e, se estiver tudo certo, clique em
+              <em>Aceitar o PR</em>. Mudanças que não mexem no sistema (só o painel ou documentos) pulam esta etapa.</span>
             </li>
             <li>
               <strong>Testes e montagem.</strong> A mudança entra na versão oficial; a esteira testa de novo e monta a nova
@@ -169,7 +175,7 @@
             <dt>Mudança no banco de dados (migration)</dt>
             <dd>Quando a versão nova altera a estrutura dos dados. A esteira ensaia numa cópia antes e faz backup.</dd>
             <dt>Versão (V855)</dt>
-            <dd>Cada mudança aceita na versão oficial ganha o próximo número: V856 é a seguinte à V855. O código pequeno ao lado (ex.: 89e7d42) é o mesmo nome em formato técnico, usado pelo GitHub.</dd>
+            <dd>Cada mudança aceita na versão oficial ganha o próximo número: V856 é a seguinte à V855. O código pequeno ao lado (ex.: 89e7d42) é o mesmo nome em formato técnico, usado pelo GitHub. Uma mudança que ainda não foi aceita (um PR em teste, por exemplo) aparece como V855+1: a V855 mais 1 mudança.</dd>
             <dt>Testar o PR</dt>
             <dd>Antes de aceitar um PR que mexe no sistema, coloca a pasta do projeto exatamente nessa mudança e reinicia o ambiente de testes para você conferir. Não aceita o PR nem muda nada para os clientes.</dd>
             <dt>Igualar ao site</dt>
