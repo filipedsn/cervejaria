@@ -55,6 +55,4 @@ if (-not $Quiet) {
   Write-Host "Watchdog daemon iniciado (PID $daemonPid)." -ForegroundColor Green
 }
 
-& "$PSScriptRoot\start-ops-panel.ps1" -Quiet:$Quiet
-
 exit 0

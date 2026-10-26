@@ -68,7 +68,7 @@ Neste PC o alert poller de produção executa `backend/dist` com `backend/node_m
 - `HEAD` difere de `origin/main` depois de `git fetch`;
 - não há atestado de CI local (`deploy/.local-ci-attestation.json`) com `ok: true` para esse SHA.
 
-O Ops Panel usa a mesma regra. Rode `npm run ci` em `main` limpa imediatamente antes do deploy (ou no mesmo SHA após o pull).
+Rode `npm run ci` em `main` limpa imediatamente antes do deploy legado (ou no mesmo SHA após o pull). O painel Ops (`npm run ops:open`, `:3099`) não usa o `deploy.ps1`: ele mergeia PRs com `build-and-unit` verde e aprova ou dispara a esteira Deploy PRD (VPS), sempre com confirmação humana.
 
 `.\deploy.cmd -DryRun` e `-PreflightOnly` mostram o resultado do gate sem alterar nada.
 

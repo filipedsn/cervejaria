@@ -1,5 +1,5 @@
 # Verificacoes de prontidao para deploy (somente leitura).
-# Equivalente ao que o ops-panel mostra no roteiro - rode antes de abrir :3099.
+# Legado do PC como producao; o estado da entrega fica no ops-panel (npm run ops:open).
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
@@ -25,7 +25,7 @@ Write-Host ''
 
 $blockers = 0
 
-Write-Host '[1/4] Git sincronizado' -ForegroundColor Cyan
+Write-Host '[1/3] Git sincronizado' -ForegroundColor Cyan
 $branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
 $fetchOut = git fetch origin main --quiet 2>&1
 if ($LASTEXITCODE -ne 0) {
@@ -91,7 +91,7 @@ if ($blockers -eq 0) {
 }
 
 Write-Host ''
-Write-Host '[2/4] Working tree' -ForegroundColor Cyan
+Write-Host '[2/3] Working tree' -ForegroundColor Cyan
 $dirty = git status --porcelain
 if ($dirty) {
   Write-Host '  BLOQUEIO: arquivos sujos (apague, commite ou ignore):' -ForegroundColor Red
@@ -102,7 +102,7 @@ if ($dirty) {
 }
 
 Write-Host ''
-Write-Host '[3/4] Ambiente' -ForegroundColor Cyan
+Write-Host '[3/3] Ambiente' -ForegroundColor Cyan
 if (Test-DockerContainerRunning -Name 'cervejaria-db') {
   Write-Host '  OK - container cervejaria-db rodando' -ForegroundColor Green
 } else {
@@ -119,29 +119,10 @@ if (Test-Path $logosDir) {
 }
 
 Write-Host ''
-Write-Host '[4/4] Ops-panel' -ForegroundColor Cyan
-try {
-  $release = Invoke-RestMethod -Uri 'http://127.0.0.1:3099/api/release' -TimeoutSec 10
-  if ($release.gate.allowed) {
-    Write-Host '  OK - gate liberado em http://127.0.0.1:3099' -ForegroundColor Green
-    Write-Host "  Pendentes: $($release.pending.Count) commit(s)" -ForegroundColor Gray
-  } else {
-    Write-Host '  BLOQUEIO: gate do ops-panel recusou:' -ForegroundColor Red
-    $release.gate.blockers | ForEach-Object { Write-Host "    - $($_.message)" -ForegroundColor Red }
-    $blockers++
-  }
-} catch {
-  Write-Host '  AVISO: ops-panel indisponivel - rode npm run ops:start' -ForegroundColor Yellow
-  Write-Host "    $($_.Exception.Message)" -ForegroundColor Gray
-}
-
-Write-Host ''
 if ($blockers -gt 0) {
-  Write-Host "Prontidao: $blockers bloqueio(s). Corrija antes de Liberar deploy." -ForegroundColor Red
-  Write-Host 'Painel: http://127.0.0.1:3099 (npm run ops:open)' -ForegroundColor Gray
+  Write-Host "Prontidao: $blockers bloqueio(s)." -ForegroundColor Red
   exit 1
 }
 
-Write-Host 'Prontidao: OK - abra o ops-panel, digite DEPLOY e clique em Liberar deploy.' -ForegroundColor Green
-Write-Host 'Painel: http://127.0.0.1:3099' -ForegroundColor Gray
+Write-Host 'Prontidao: OK. O deploy publico e feito pela esteira Deploy PRD (VPS); acompanhe em npm run ops:open.' -ForegroundColor Green
 exit 0

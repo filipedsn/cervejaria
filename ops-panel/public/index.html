@@ -1,410 +1,184 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quiver Tap — Ops Panel</title>
-  <link rel="stylesheet" href="/styles.css" />
-</head>
-<body>
-  <div class="ops-shell">
-    <aside class="sidebar" aria-label="Navegacao principal">
-      <a class="sidebar-brand" href="#overview" aria-label="QUVER TAP OPS - Visao Geral">
-        <span class="brand-mark" aria-hidden="true">QT</span>
-        <span><strong>QUVER TAP</strong><small>OPS</small></span>
-      </a>
-      <nav class="section-nav" aria-label="Navegacao operacional">
-        <a href="#overview" class="section-nav-link is-active"><span aria-hidden="true">◈</span> Visao Geral</a>
-        <a href="#releaseSection" class="section-nav-link"><span aria-hidden="true">↗</span> Release</a>
-        <a href="#environmentsSection" class="section-nav-link"><span aria-hidden="true">□</span> Ambientes</a>
-        <a href="#observabilitySection" class="section-nav-link"><span aria-hidden="true">⌁</span> Observabilidade</a>
-        <a href="#journeySection" class="section-nav-link"><span aria-hidden="true">≡</span> Jornada</a>
-        <a href="#backupsSection" class="section-nav-link"><span aria-hidden="true">◇</span> Protecao</a>
-        <a href="#toolsSection" class="section-nav-link"><span aria-hidden="true">≡</span> Logs</a>
-      </nav>
-      <div class="sidebar-footer"><span>OPERADOR</span><strong>Painel Local</strong><small>● Conexao local</small></div>
-    </aside>
-    <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">QT</div>
-        <div>
-          <h1>Painel Local</h1>
-          <p class="subtitle" id="opsPanelSubtitle">Control Center</p>
-        </div>
-      </div>
-      <div class="topbar-actions">
-        <span id="opsPanelLiveBadge" class="ops-live-badge ops-live-badge--unknown" title="Status do painel">—</span>
-        <span id="lastUpdate" class="last-update"></span>
-        <button type="button" id="btnRefresh" class="btn btn-ghost">
-          <span class="btn-icon" aria-hidden="true">↻</span>
-          Atualizar
-        </button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quiver Tap Ops</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>Quiver Tap <span>Ops</span></h1>
+      <div class="top-meta">
+        <span id="live" class="live" data-mode="off" title="O painel se atualiza sozinho">
+          <span class="live-dot" aria-hidden="true"></span><span id="updated" aria-live="polite">carregando…</span>
+        </span>
+        <button type="button" id="help" class="ghost">Como funciona?</button>
+        <button type="button" id="refresh" class="ghost" title="Buscar tudo de novo agora">Recarregar</button>
       </div>
     </header>
 
-    <section class="auth-panel auth-panel--local" id="authPanel">
-      <div class="auth-info">
-        <span class="auth-icon" aria-hidden="true">🔐</span>
-        <div>
-          <strong id="authTitle">Sessao local</strong>
-          <p id="authHint">Painel em localhost — acoes autorizadas neste computador, sem colar token.</p>
+    <main>
+      <section id="verdict" class="verdict" data-level="off" aria-live="polite">
+        <div class="verdict-main">
+          <p class="kicker">Situação agora</p>
+          <p id="verdict-text" class="verdict-text">Lendo o estado dos ambientes…</p>
+          <p id="verdict-help" class="verdict-help"></p>
+          <ul id="verdict-extra" class="verdict-extra"></ul>
         </div>
-      </div>
-      <div class="auth-form" id="authForm" hidden>
-        <label class="field">
-          <span class="field-label">Token de operacao</span>
-          <input type="password" id="opsToken" placeholder="Cole o token aqui" autocomplete="off" />
-        </label>
-        <button type="button" id="btnSaveToken" class="btn btn-secondary">Salvar</button>
-      </div>
-      <div id="tokenStatus" class="token-status token-status--ok">Localhost</div>
-    </section>
-
-    <section class="global-state global-state--unknown" id="globalState" aria-live="polite">
-      <div class="global-state-icon" aria-hidden="true">?</div>
-      <div class="global-state-status">
-        <p class="global-state-eyebrow">Estado do ecossistema</p>
-        <h2 id="globalStateTitle">Verificando sistemas</h2>
-        <p id="globalStateSummary">Aguardando sinais locais de producao, release e servicos.</p>
-        <button type="button" id="btnStateDetails" class="state-details">Ver detalhes <span aria-hidden="true">›</span></button>
-      </div>
-      <div class="global-state-action">
-        <p class="global-state-eyebrow">Proxima acao recomendada</p>
-        <strong id="globalStateActionTitle">Verificar estado</strong>
-        <p id="globalStateActionHint">Use os sinais verificados para decidir o proximo passo.</p>
-        <button type="button" id="btnInvestigate" class="btn btn-primary">Investigar servico <span aria-hidden="true">›</span></button>
-      </div>
-    </section>
-
-    <section class="overview" id="overview" aria-label="Resumo do ecossistema">
-      <div class="overview-card" id="overviewProd">
-        <span class="overview-icon" aria-hidden="true">▱</span>
-        <span class="overview-label">Producao</span>
-        <span class="overview-detail" id="overviewProdDetail">Versao</span>
-        <span class="overview-value" id="overviewProdValue">—</span>
-      </div>
-      <div class="overview-card" id="overviewDev">
-        <span class="overview-icon" aria-hidden="true">↗</span>
-        <span class="overview-label">Release Candidate</span>
-        <span class="overview-detail" id="overviewDevDetail">HEAD</span>
-        <span class="overview-value" id="overviewDevValue">—</span>
-      </div>
-      <div class="overview-card" id="overviewCi">
-        <span class="overview-icon" aria-hidden="true">∞</span>
-        <span class="overview-label">CI obrigatorio</span>
-        <span class="overview-detail" id="overviewCiDetail">Checks</span>
-        <span class="overview-value" id="overviewCiValue">—</span>
-      </div>
-      <div class="overview-card" id="overviewRelease">
-        <span class="overview-label">Release</span>
-        <span class="overview-detail" id="overviewReleaseDetail">Gates operacionais</span>
-        <span class="overview-value" id="overviewReleaseValue">â€”</span>
-      </div>
-      <div class="overview-card" id="overviewInfra">
-        <span class="overview-icon" aria-hidden="true">⬡</span>
-        <span class="overview-label">Servicos</span>
-        <span class="overview-detail" id="overviewInfraDetail">Sinais locais</span>
-        <span class="overview-value" id="overviewInfraValue">—</span>
-      </div>
-    </section>
-
-    <section class="service-strip" id="observabilitySection" aria-labelledby="servicesTitle">
-      <div class="service-strip-heading">
-        <h2 id="servicesTitle">Servicos</h2>
-        <p>Apenas sinais verificados localmente; ausencia de fonte aparece como UNKNOWN.</p>
-      </div>
-      <div class="service-list" id="serviceList" aria-live="polite"></div>
-      <article class="card" id="alertsPanel">
-        <div class="card-heading"><div><p>Alertas</p><h2>Atencao operacional</h2></div><span id="alertsSource" class="chip chip--neutral">Carregando</span></div>
-        <div id="pollerSemanticHealth" class="metrics"></div>
-        <div id="activeAlerts" class="metrics"></div>
-        <div id="recoveredAlerts" class="metrics"></div>
-      </article>
-      <div class="quick-actions" aria-label="Acoes rapidas">
-        <div class="quick-actions-heading"><h2>Acoes rapidas</h2><p>Acoes existentes, com suas protecoes originais.</p></div>
-        <div class="quick-action-list">
-          <button type="button" class="quick-action" data-quick-action="restart"><span aria-hidden="true">↻</span> Reiniciar API</button>
-          <button type="button" class="quick-action" data-quick-action="dev-start"><span aria-hidden="true">▷</span> Iniciar DEV</button>
-          <button type="button" class="quick-action" data-quick-action="dev-stop"><span aria-hidden="true">■</span> Parar DEV</button>
-          <button type="button" class="quick-action" data-quick-action="backup"><span aria-hidden="true">▣</span> Backup banco</button>
-          <button type="button" class="quick-action" data-quick-action="logs"><span aria-hidden="true">▤</span> Abrir logs</button>
-          <button type="button" class="quick-action quick-action--secondary" data-quick-action="refresh">Mais acoes</button>
-          <button type="button" class="quick-action quick-action--critical" data-quick-action="sync">Copiar PROD → DEV</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel-section journey-section" id="journeySection" aria-labelledby="journeyTitle">
-      <div class="section-title">
-        <h2 id="journeyTitle">Jornada da operação</h2>
-        <p>Reconstrói a história com audit e telemetria técnica já existentes. Nenhum dado é gravado pelo painel.</p>
-      </div>
-      <article class="card journey-card">
-        <div class="journey-toolbar">
-          <label class="field"><span class="field-label">Quando (início)</span><input id="journeyFrom" type="datetime-local" /></label>
-          <label class="field"><span class="field-label">Quando (fim)</span><input id="journeyTo" type="datetime-local" /></label>
-          <label class="field"><span class="field-label">Empresa (ID)</span><input id="journeyTenant" placeholder="tenant-id" /></label>
-          <label class="field"><span class="field-label">Quem (actor ID)</span><input id="journeyActor" placeholder="actor-id" /></label>
-          <label class="field"><span class="field-label">Ação</span><input id="journeyAction" placeholder="event.action" /></label>
-          <label class="field"><span class="field-label">Onde (rota)</span><input id="journeyWhere" placeholder="/api/..." /></label>
-          <label class="field"><span class="field-label">Resultado</span><select id="journeyOutcome"><option value="">Todos</option><option value="success">Sucesso</option><option value="failure">Falha</option></select></label>
-          <label class="field"><span class="field-label">Jornada / correlation ID</span><input id="journeyCorrelation" placeholder="UUID" /></label>
-          <label class="field"><span class="field-label">Interação (ID)</span><input id="journeyInteraction" placeholder="UUID da ação na tela" /></label>
-          <label class="field"><span class="field-label">Ambiente</span><select id="journeyEnvironment"><option value="dev">DEV</option><option value="prd">PROD</option></select></label>
-          <button type="button" id="btnJourneySearch" class="btn btn-primary">Buscar jornada</button>
-        </div>
-        <p id="journeySource" class="card-hint">Preencha filtros ou use a janela padrão de 24 horas.</p>
-        <div id="journeyTimeline" class="journey-timeline" aria-live="polite"><span class="status-muted">Aguardando consulta.</span></div>
-        <div class="journey-pagination" id="journeyPagination" hidden>
-          <button type="button" id="journeyPrev" class="btn btn-secondary">Anterior</button>
-          <span id="journeyPageStatus" class="journey-page-status"></span>
-          <button type="button" id="journeyNext" class="btn btn-secondary">Próxima</button>
-        </div>
-      </article>
-    </section>
-
-    <section class="home-bottom" aria-label="Resumo operacional">
-      <article class="home-card recent-operations">
-        <div class="home-card-heading"><div><p>Ledger de release</p><h2>Operacoes recentes</h2></div><a href="#releaseSection">Ver historico completo</a></div>
-        <div id="recentOperations" class="recent-operation-list"><span class="status-muted">Carregando historico real…</span></div>
-      </article>
-      <article class="home-card observability-card">
-        <div class="home-card-heading"><div><p>Visao operacional</p><h2>Observabilidade</h2></div><a href="#toolsSection">Abrir logs</a></div>
-        <div class="observability-empty"><strong>SEM DADOS</strong><span>Incidentes, logs e traces nao sao exibidos sem uma fonte leve e confiavel.</span></div>
-      </article>
-    </section>
-
-    <main class="layout">
-      <section class="panel-section" id="environmentsSection">
-        <div class="section-title">
-          <h2>Ambientes</h2>
-          <p>Monitore servicos e execute acoes com um clique.</p>
-        </div>
-
-        <div class="card-grid">
-          <article class="card card--prod" id="cardProd">
-            <header class="card-header">
-              <div class="card-title">
-                <span class="card-icon" aria-hidden="true">🚀</span>
-                <div>
-                  <h3>Producao</h3>
-                  <p>API :3001 · site publico</p>
-                </div>
-              </div>
-              <span id="prodBadge" class="chip chip--neutral">—</span>
-            </header>
-            <div class="metrics" id="prodMetrics"></div>
-            <div class="card-actions">
-              <button type="button" id="btnRestart" class="btn btn-primary">
-                <span class="btn-icon" aria-hidden="true">⟳</span>
-                Reiniciar API
-              </button>
-            </div>
-            <p class="card-hint">O deploy fica no <a href="#releaseSection">console de release</a>, que verifica CI e procedencia antes de liberar.</p>
-          </article>
-
-          <article class="card card--dev" id="cardDev">
-            <header class="card-header">
-              <div class="card-title">
-                <span class="card-icon" aria-hidden="true">🛠</span>
-                <div>
-                  <h3>Desenvolvimento</h3>
-                  <p>API :3002 · Vite :5202</p>
-                </div>
-              </div>
-              <span id="devBadge" class="chip chip--neutral">—</span>
-            </header>
-            <div class="metrics" id="devMetrics"></div>
-            <div class="card-actions">
-              <button type="button" id="btnDevStart" class="btn btn-primary">
-                <span class="btn-icon" aria-hidden="true">▶</span>
-                Iniciar dev
-              </button>
-              <button type="button" id="btnDevStop" class="btn btn-secondary">
-                <span class="btn-icon" aria-hidden="true">■</span>
-                Parar dev
-              </button>
-            </div>
-            <p class="card-hint">Frontend local: <a href="http://localhost:5202" target="_blank" rel="noopener">localhost:5202</a></p>
-          </article>
-
-          <article class="card card--github">
-            <header class="card-header">
-              <div class="card-title">
-                <span class="card-icon" aria-hidden="true">🐙</span>
-                <div>
-                  <h3>GitHub</h3>
-                  <p>Repositorio e CI</p>
-                </div>
-              </div>
-            </header>
-            <div class="metrics" id="githubMetrics"></div>
-            <div class="link-row">
-              <a id="linkPulls" class="link-chip" href="#" target="_blank" rel="noopener">Pull Requests</a>
-              <a id="linkActions" class="link-chip" href="#" target="_blank" rel="noopener">Actions CI</a>
-              <a id="linkBranches" class="link-chip" href="#" target="_blank" rel="noopener">Branches</a>
-              <a id="linkCommits" class="link-chip" href="#" target="_blank" rel="noopener">Commits</a>
-              <a class="link-chip" href="https://tap.quivercloud.com.br" target="_blank" rel="noopener">Site prod</a>
-            </div>
-          </article>
-
-          <article class="card card--infra" id="backupsSection">
-            <header class="card-header">
-              <div class="card-title">
-                <span class="card-icon" aria-hidden="true">⚙</span>
-                <div>
-                  <h3>Infra local</h3>
-                  <p>Processos e backups</p>
-                </div>
-              </div>
-            </header>
-            <div class="metrics" id="infraMetrics"></div>
-            <div class="metrics" id="backupMetrics"></div>
-            <div class="card-actions">
-              <button type="button" id="btnBackupDb" class="btn btn-secondary">
-                <span class="btn-icon" aria-hidden="true">💾</span>
-                Backup banco prod
-              </button>
-              <button type="button" id="btnSyncProdDev" class="btn btn-danger">
-                <span class="btn-icon" aria-hidden="true">⇄</span>
-                Copiar prod → dev
-              </button>
-            </div>
-            <p class="card-hint">Backup abre seletor de pasta do Windows. Copiar prod→dev <strong>substitui</strong> <code>cervejaria_dev</code> e para o ambiente dev antes.</p>
-          </article>
+        <div id="next-box" class="next" hidden>
+          <p class="kicker">O que fazer</p>
+          <div id="next"></div>
+          <p id="next-explain" class="next-explain"></p>
         </div>
       </section>
 
-      <section class="panel-section" id="releaseSection">
-        <div class="section-title">
-          <h2>Console de release</h2>
-          <p>O que esta publicado, o que esta pendente, e se o codigo tem procedencia para ir ao ar.</p>
-        </div>
-
-        <article class="card card--release">
-          <header class="card-header">
-            <div class="card-title">
-              <span class="card-icon" aria-hidden="true">📦</span>
-              <div>
-                <h3>Liberacao para producao</h3>
-                <p>Gate local no lugar da branch protection (plano Free)</p>
-              </div>
-            </div>
-            <span id="releaseBadge" class="chip chip--neutral">—</span>
-          </header>
-
-          <div class="release-summary" id="releaseSummary" aria-live="polite"></div>
-
-          <div class="metrics release-metrics" id="releaseMetrics">
-            <div class="metric-row"><span class="label">Estado</span><span class="value status-muted">Carregando…</span></div>
-          </div>
-
-          <div id="releaseGate" class="release-gate"></div>
-
-          <div id="deployPlaybook" class="deploy-playbook" aria-label="Roteiro de deploy"></div>
-
-          <div class="release-commits">
-            <h4 class="release-subtitle">Commits pendentes de publicacao</h4>
-            <div id="releaseCommits" class="metrics"></div>
-          </div>
-
-          <div class="release-commits">
-            <h4 class="release-subtitle">Checks do commit local</h4>
-            <div id="releaseChecks" class="metrics"></div>
-          </div>
-
-          <div class="release-commits">
-            <h4 class="release-subtitle">Histórico recente de releases</h4>
-            <div id="releaseHistory" class="metrics"></div>
-          </div>
-
-          <div class="card-actions release-primary-action">
-            <button type="button" id="btnPrepareRelease" class="btn btn-primary">Preparar release</button>
-            <button type="button" id="btnReleaseDetails" class="btn btn-secondary" aria-expanded="false">Detalhes de release</button>
-          </div>
-
-          <div class="release-options" id="releaseFlow" hidden>
-            <label class="field" id="deployConfirmField">
-              <span class="field-label">Passo 4 — confirmacao</span>
-              <input type="text" id="deployConfirm" placeholder="Digite DEPLOY para habilitar o botao" autocomplete="off" spellcheck="false" />
-            </label>
-            <label class="release-check">
-              <input type="checkbox" id="ackMigrations" />
-              <span>Confirmo as migrations deste deploy (nao voltam com rollback de artefato)</span>
-            </label>
-            <label class="release-check">
-              <input type="checkbox" id="overrideGate" />
-              <span>Ignorar o gate (registra motivo na auditoria)</span>
-            </label>
-            <label class="field" id="overrideReasonField" hidden>
-              <span class="field-label">Motivo do override</span>
-              <input type="text" id="overrideReason" placeholder="Ex.: hotfix de indisponibilidade, PR #123 revisado manualmente" />
-            </label>
-          </div>
-
-          <div class="card-actions">
-            <button type="button" id="btnReleaseRefresh" class="btn btn-secondary">
-              <span class="btn-icon" aria-hidden="true">↻</span>
-              Verificar release
-            </button>
-            <button type="button" id="btnDeploy" class="btn btn-danger" disabled>
-              <span class="btn-icon" aria-hidden="true">▲</span>
-              Liberar deploy
-            </button>
-            <button type="button" id="btnRollback" class="btn btn-secondary" disabled>
-              <span class="btn-icon" aria-hidden="true">↩</span>
-              Rollback
-            </button>
-          </div>
-          <p class="card-hint" id="deployUacHint">Ao clicar em <strong>Liberar deploy</strong>, o Windows pede permissao de Administrador (UAC) para encerrar a API. Clique em <strong>Sim</strong> — o prompt pode aparecer atras do navegador.</p>
-          <p class="card-hint" id="rollbackHint">Rollback volta os artefatos da release anterior. <strong>Nao reverte banco.</strong></p>
-          <div id="postDeploySmoke" class="post-deploy-smoke" hidden aria-live="polite"></div>
-        </article>
+      <section class="journey" aria-labelledby="h-line">
+        <h2 id="h-line" class="section-title">Caminho de uma mudança até os clientes</h2>
+        <ol id="line" class="line"></ol>
+        <p id="line-hint" class="line-hint"></p>
       </section>
 
-      <section class="panel-section" id="toolsSection">
-        <div class="section-title">
-          <h2>Logs e ferramentas</h2>
-          <p>Detalhes de execucao e investigacao.</p>
-        </div>
-
-        <details class="secondary-details" id="terminalSection">
-          <summary>Terminal de execucao <span>abre automaticamente durante uma operacao</span></summary>
-        <article class="card card--terminal" id="terminalCard">
-          <div class="terminal-bar">
-            <div class="terminal-dots" aria-hidden="true">
-              <span></span><span></span><span></span>
-            </div>
-            <span id="terminalStatus" class="terminal-status">Aguardando acao...</span>
+      <section id="flow" class="flow" aria-labelledby="h-flow" hidden>
+        <div class="flow-head">
+          <div>
+            <h2 id="h-flow" class="section-title">Esteira por dentro</h2>
+            <p id="flow-meta" class="flow-meta"></p>
           </div>
-          <pre id="terminalOutput" class="log log--terminal">Nenhuma acao executada ainda.
-
-Clique em Iniciar dev, Backup banco prod, Copiar prod → dev, etc.
-A saida aparecera aqui linha a linha.</pre>
-        </article>
-        </details>
+          <a id="flow-link" href="#" target="_blank" rel="noopener">Ver no GitHub</a>
+        </div>
+        <div id="flow-graph" class="flow-graph"></div>
       </section>
 
-      <section class="panel-section">
-        <details class="secondary-details" id="logsSection">
-          <summary>Logs do disco <span id="logDescription">Arquivos persistentes em deploy/logs/</span></summary>
-        <article class="card card--logs">
-          <div class="log-tabs" id="logTabs" role="tablist" aria-label="Logs disponiveis"></div>
-          <pre id="logOutput" class="log log--file"></pre>
-        </article>
-        </details>
+      <div class="areas">
+        <section class="area" id="card-git" aria-labelledby="h-git"></section>
+        <section class="area" id="card-dev" aria-labelledby="h-dev"></section>
+        <section class="area" id="card-pipeline" aria-labelledby="h-pipeline"></section>
+        <section class="area" id="card-prd" aria-labelledby="h-prd"></section>
+      </div>
+
+      <section class="log" aria-labelledby="h-log">
+        <h2 id="h-log">Histórico do que foi feito por este painel</h2>
+        <ol id="audit"></ol>
       </section>
     </main>
 
-    <footer class="footer">
-      <p><strong>Fluxo sugerido:</strong> merge na main → <em>Verificar release</em> (sincroniza <code>main</code> automaticamente) → digitar <code>DEPLOY</code> → <em>Liberar deploy</em> → conferir smoke abaixo.</p>
-    </footer>
-    </div>
-  </div>
+    <dialog id="modal">
+      <form method="dialog">
+        <h2 id="modal-title"></h2>
+        <div id="modal-body"></div>
+        <p id="modal-error" class="error" hidden></p>
+        <div class="modal-actions">
+          <button type="submit" value="cancel" class="ghost">Cancelar</button>
+          <button type="button" id="modal-confirm" class="primary"></button>
+        </div>
+      </form>
+    </dialog>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <dialog id="guide" class="guide" aria-labelledby="guide-title">
+      <form method="dialog">
+        <h2 id="guide-title">Como funciona a esteira</h2>
+        <div class="guide-body">
+          <p class="lead">
+            Toda mudança no Quiver Tap faz o mesmo caminho até os clientes. Este painel mostra em que ponto ela está e
+            qual botão apertar. <strong>Nada chega aos clientes sem a sua autorização.</strong>
+          </p>
+          <p>
+            O painel se atualiza sozinho: a cada 5 segundos enquanto algo está andando (bolinha azul piscando no topo) e
+            a cada 15 segundos quando está tudo parado. Não precisa clicar em <em>Recarregar</em>.
+          </p>
 
-  <script src="/app.js"></script>
-</body>
+          <h3>O caminho de uma mudança</h3>
+          <ol class="steps">
+            <li>
+              <strong>No computador.</strong> Quem desenvolve altera o código neste PC.
+              <span class="you">Você: nada a fazer.</span>
+            </li>
+            <li>
+              <strong>Em revisão (PR).</strong> A mudança é enviada ao GitHub como um pedido de mudança e os testes
+              automáticos conferem se nada quebrou.
+              <span class="you">Você: quando aparecer "testes ok", clique em <em>Aceitar o PR</em>.</span>
+            </li>
+            <li>
+              <strong>Testes e montagem.</strong> A mudança entra na versão oficial; a esteira testa de novo e monta a nova
+              versão (cerca de 2 minutos).
+              <span class="you">Você: só esperar.</span>
+            </li>
+            <li>
+              <strong>Sua autorização.</strong> A esteira para e espera você.
+              <span class="you">Você: clique em <em>Publicar no site</em>, confira o que muda e confirme. Se não quiser agora,
+              clique em <em>Não publicar agora</em>.</span>
+            </li>
+            <li>
+              <strong>No ar para clientes.</strong> Antes de trocar a versão, a esteira faz backup do banco de dados. Se algo
+              der errado, ela volta sozinha para a versão anterior.
+            </li>
+          </ol>
+
+          <h3>As cores</h3>
+          <ul class="legend">
+            <li><span class="dot" data-level="ok"></span><strong>Verde:</strong> tudo certo.</li>
+            <li><span class="dot" data-level="run"></span><strong>Azul:</strong> trabalhando; aguarde.</li>
+            <li><span class="dot" data-level="warn"></span><strong>Amarelo:</strong> precisa de você.</li>
+            <li><span class="dot" data-level="bad"></span><strong>Vermelho:</strong> problema; não publique e chame quem desenvolve.</li>
+            <li><span class="dot" data-level="off"></span><strong>Cinza:</strong> desligado ou sem informação.</li>
+          </ul>
+
+          <h3>Os quatro cartões</h3>
+          <dl class="glossary">
+            <dt>Código</dt>
+            <dd>O código guardado no GitHub e os pedidos de mudança (PRs) esperando para entrar.</dd>
+            <dt>Ambiente de testes</dt>
+            <dd>Uma cópia do sistema que roda neste PC para testar antes dos clientes. Ligar ou desligar não afeta o site.</dd>
+            <dt>Esteira</dt>
+            <dd>A linha automática que testa, monta e publica. Sempre pede sua autorização antes de publicar.</dd>
+            <dt>Site dos clientes</dt>
+            <dd>O sistema que os clientes usam, no servidor da Hostinger: se está no ar, qual versão, backup e disco.</dd>
+          </dl>
+
+          <h3>Palavras que aparecem</h3>
+          <dl class="glossary">
+            <dt>GitHub</dt>
+            <dd>O site onde o código fica guardado, com o histórico de todas as mudanças.</dd>
+            <dt>PR (pull request)</dt>
+            <dd>Um pedido para juntar uma mudança à versão oficial. Vem com testes automáticos.</dd>
+            <dt>Aceitar (merge)</dt>
+            <dd>Juntar o PR à versão oficial. Ainda não publica nada.</dd>
+            <dt>Atualizar o PR</dt>
+            <dd>Quando o PR foi feito sobre uma versão oficial antiga, ele precisa trazer as últimas mudanças antes de ser aceito. Os testes rodam de novo e depois aparece o botão Aceitar.</dd>
+            <dt>Esteira por dentro</dt>
+            <dd>O desenho abaixo do caminho: as etapas da esteira (preparar, testes, montagem, publicação), com tempo e situação de cada uma.</dd>
+            <dt>Versão oficial (main)</dt>
+            <dd>O código aprovado, de onde saem as publicações.</dd>
+            <dt>Testes automáticos (CI)</dt>
+            <dd>Verificações que rodam sozinhas a cada mudança. "Testes ok" significa que nada conhecido quebrou.</dd>
+            <dt>Publicar (deploy)</dt>
+            <dd>Colocar uma versão no ar para os clientes.</dd>
+            <dt>Produção (PRD)</dt>
+            <dd>O site que os clientes usam. Ambiente de testes (DEV) é a cópia neste PC.</dd>
+            <dt>Voltar versão (rollback)</dt>
+            <dd>Publicar de novo uma versão anterior, quando a nova deu problema.</dd>
+            <dt>Mudança no banco de dados (migration)</dt>
+            <dd>Quando a versão nova altera a estrutura dos dados. A esteira ensaia numa cópia antes e faz backup.</dd>
+            <dt>Versão (abc1234)</dt>
+            <dd>Os 7 caracteres identificam cada versão do código, como um número de série.</dd>
+          </dl>
+
+          <h3>Regras de ouro</h3>
+          <ol class="rules">
+            <li>Vermelho no topo: não publique; chame quem desenvolve.</li>
+            <li><em>Não publicar agora</em> é sempre seguro: o site continua como está.</li>
+            <li><em>Voltar para uma versão anterior</em> só se o site ficou com problema logo depois de uma publicação.</li>
+            <li>Se o aviso de publicação mostrar mudanças no banco de dados e você tiver dúvida, pergunte antes de confirmar.</li>
+          </ol>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="primary">Entendi</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
 </html>

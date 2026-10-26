@@ -165,7 +165,8 @@ Nunca, em nenhuma hipótese:
 - qualquer comando de produção: `prod:deploy`, `prod:restart`, `db:migrate:prod`,
   `taskkill`, ou escrita em `localhost:3001`
 
-O deploy em produção é sempre liberado por um humano no ops-panel `:3099`. A regra
+O deploy em produção é sempre liberado por um humano: aprovação da esteira Deploy PRD (VPS)
+no environment `production`, pelo painel Ops `:3099` ou pelo GitHub. A regra
 `.cursor/rules/quiver-tap-deploy.mdc` continua valendo integralmente.
 
 Se a correção exigir mudança de schema ou migration, **pare e explique** — não tente

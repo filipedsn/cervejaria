@@ -1,4 +1,4 @@
-# Abre o ops-panel no navegador — so se a versao atual estiver no ar.
+# Abre o ops-panel no navegador; sobe o painel antes se estiver parado.
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_config.ps1"
@@ -7,17 +7,15 @@ $ErrorActionPreference = 'Stop'
 $settings = Get-QuiverTapSettings
 $paths = Resolve-QuiverTapPaths -Settings $settings
 
-$envFile = Join-Path $paths.ProjectRoot 'ops-panel\.env'
-$metaFile = Join-Path $paths.RuntimeDir 'ops-panel.meta.json'
-$port = Get-OpsPanelConfiguredPort -EnvFile $envFile
+$port = Get-OpsPanelConfiguredPort -EnvFile (Join-Path $paths.ProjectRoot 'ops-panel\.env')
+$status = Get-OpsPanelLiveStatus -Port $port
 
-$status = Get-OpsPanelLiveStatus -Port $port -MetaFile $metaFile
-
-if ($status.state -eq 'current') {
-  Start-Process $status.url
-  Write-Host "Abrindo $($status.url)" -ForegroundColor Green
-  exit 0
+if ($status.state -ne 'current') {
+  & "$PSScriptRoot\start-ops-panel.ps1"
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $status = Get-OpsPanelLiveStatus -Port $port
 }
 
-Write-OpsPanelStatusReport -Status $status
-exit 1
+Start-Process $status.url
+Write-Host "Abrindo $($status.url)" -ForegroundColor Green
+exit 0
