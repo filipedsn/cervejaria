@@ -243,6 +243,7 @@ function infraBlock(card, below = '') {
   const { infra } = card;
   return `<div class="infra">
     <div class="infra-server">
+      <h3>Resumo</h3>
       <ul class="tiles">${tiles}</ul>
       <h3>Servidor na Hostinger</h3>
       <p class="spec" data-infra="spec">${esc(infra.spec)}</p>
