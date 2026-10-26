@@ -8,6 +8,8 @@ npm run ops:open      # sobe o painel se estiver parado e abre o navegador
 npm run ops:status    # rodando, parado, painel antigo na porta ou porta ocupada
 npm run ops:stop
 npm run ops:restart
+npm run ops:autostart         # liga o painel sozinho ao entrar no Windows (tarefa QuiverTap-OpsPanel)
+npm run ops:autostart:remove  # desfaz
 ```
 
 Requisitos: Node, `git` e o `gh` logado (`gh auth status`) com acesso ao repositório.

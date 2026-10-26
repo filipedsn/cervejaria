@@ -110,7 +110,9 @@
     "ops:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/stop-ops-panel.ps1",
     "ops:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/start-ops-panel.ps1",
     "ops:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/restart-ops-panel.ps1",
-    "ops:open": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/open-ops-panel.ps1"
+    "ops:open": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/open-ops-panel.ps1",
+    "ops:autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/install-ops-panel-autostart.ps1",
+    "ops:autostart:remove": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prod/install-ops-panel-autostart.ps1 -Remove"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.1",
