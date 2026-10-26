@@ -41,7 +41,21 @@ test('toda tentativa vai para a auditoria, inclusive falhas', () => {
   const lines = readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.ok(lines.length >= 3);
   assert.ok(lines.every((l) => l.ok === false && l.at && l.action));
-  assert.equal(readAudit(2).length, 2);
-  assert.equal(readAudit(2)[0].action, 'deploy.dispatch');
-  assert.equal(readAudit(2)[0].label, 'Iniciar a esteira');
+  const first = readAudit(1, 2);
+  assert.equal(first.items.length, 2);
+  assert.equal(first.items[0].action, 'deploy.dispatch');
+  assert.equal(first.items[0].label, 'Iniciar a esteira');
+});
+
+test('histórico paginado: mais recentes primeiro, página fora do intervalo cai na mais próxima', () => {
+  const all = readAudit(1, 1000);
+  const total = all.total;
+  assert.ok(total >= 3);
+  const last = readAudit(99, 2);
+  assert.equal(last.pages, Math.ceil(total / 2));
+  assert.equal(last.page, last.pages);
+  assert.deepEqual(last.items.at(-1), all.items.at(-1));
+  assert.equal(readAudit('abc', 2).page, 1);
+  assert.equal(readAudit(-3, 2).page, 1);
+  assert.deepEqual(readAudit(2, 2).items[0], all.items[2]);
 });

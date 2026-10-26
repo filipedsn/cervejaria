@@ -39,6 +39,7 @@ const DEPLOY_RESULT = { ok: 'publicada', 'rolled-back': 'falhou e voltou à ante
 let state = null;
 let uiBuild = null;
 let loading = false;
+let auditPage = 1;
 const registry = new Map();
 let seq = 0;
 
@@ -207,22 +208,44 @@ function render(data) {
   area('pipeline', 'Esteira', data.cards.pipeline, runList(data.cards.pipeline.runs));
   area('prd', 'Site dos clientes', data.cards.prd, deployList(data.cards.prd));
 
-  $('audit').innerHTML = data.audit.length
-    ? data.audit
+  if (data.audit) renderAudit(data.audit);
+}
+
+function renderAudit(audit) {
+  auditPage = audit.page;
+  $('audit').innerHTML = audit.items.length
+    ? audit.items
         .map(
           (e) =>
             `<li data-ok="${e.ok}"><time>${esc(when(e.at))}</time> <span>${e.ok ? esc(e.message) : `<strong>${esc(e.label)}</strong>: não deu certo. ${esc(e.message)}`}</span></li>`,
         )
         .join('')
     : '<li class="empty">Nenhuma ação ainda.</li>';
+  $('audit-pager').hidden = audit.pages <= 1;
+  $('audit-newer').disabled = audit.page <= 1;
+  $('audit-older').disabled = audit.page >= audit.pages;
+  $('audit-page').textContent = `Página ${audit.page} de ${audit.pages} · ${audit.total} ações`;
 }
+
+async function goToAuditPage(page) {
+  try {
+    renderAudit(await api(`/api/audit?page=${page}`));
+  } catch (error) {
+    toast(`Não foi possível abrir o histórico: ${error.message}`, false);
+  }
+}
+
+$('audit-newer').addEventListener('click', () => goToAuditPage(auditPage - 1));
+$('audit-older').addEventListener('click', () => goToAuditPage(auditPage + 1));
 
 async function refresh(force = false) {
   if (loading) return;
   loading = true;
   $('refresh').disabled = true;
   try {
-    const data = await api(`/api/state${force ? '?force=1' : ''}`);
+    const askedPage = auditPage;
+    const data = await api(`/api/state?auditPage=${askedPage}${force ? '&force=1' : ''}`);
+    if (askedPage !== auditPage) data.audit = null;
     // A tela foi atualizada no PC: recarrega para não mostrar dados novos com código velho.
     if (uiBuild && data.ui && data.ui !== uiBuild && !modal.open) {
       location.reload();

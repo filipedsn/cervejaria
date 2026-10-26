@@ -755,6 +755,25 @@ dd {
   color: var(--bad);
 }
 
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pager[hidden] {
+  display: none;
+}
+
+.pager button:disabled {
+  cursor: default;
+}
+
 /* ---------- modal e aviso ---------- */
 
 dialog {
