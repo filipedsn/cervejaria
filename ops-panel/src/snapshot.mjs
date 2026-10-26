@@ -1,5 +1,5 @@
 import { collectDev } from './collectors/dev.mjs';
-import { collectGit, commitsBetween, versionsFor } from './collectors/git.mjs';
+import { baseVersionsFor, collectGit, commitsBetween, versionsFor } from './collectors/git.mjs';
 import { collectGithub } from './collectors/github.mjs';
 import { collectPrd } from './collectors/prd.mjs';
 import { cached, collect } from './exec.mjs';
@@ -40,7 +40,13 @@ export async function collectSnapshot({ force = false } = {}) {
   const snapshot = { at: new Date().toISOString(), git: gitNow, github, dev, prd };
   moving = isMoving(snapshot);
   const extra = await collect(() => versionsAndCompare(snapshot));
-  return { ...snapshot, moving, versions: extra.ok ? extra.data.versions : {}, compare: extra.ok ? extra.data.compare : null };
+  return {
+    ...snapshot,
+    moving,
+    versions: extra.ok ? extra.data.versions : {},
+    bases: extra.ok ? extra.data.bases : {},
+    compare: extra.ok ? extra.data.compare : null,
+  };
 }
 
 async function versionsAndCompare({ git, github, dev, prd }) {
@@ -58,5 +64,10 @@ async function versionsAndCompare({ git, github, dev, prd }) {
     devSha && prdSha && devSha !== prdSha
       ? { devOnly: await commitsBetween(prdSha, devSha), prdOnly: await commitsBetween(devSha, prdSha) }
       : null;
-  return { versions, compare };
+  const bases = await baseVersionsFor([
+    devSha,
+    ...(compare?.devOnly ?? []).map((c) => c.sha),
+    ...(github.ok ? github.data.prs.map((p) => p.headSha) : []),
+  ]);
+  return { versions, bases, compare };
 }
