@@ -473,9 +473,15 @@ dd {
   margin-top: 18px;
 }
 
+.infra-server > h3:first-child,
 .infra-containers > h3:first-child {
   margin-top: 0;
   line-height: 1.2;
+}
+
+.infra-server > h3:first-child + .tiles,
+.infra-containers > h3:first-child + .ctrs {
+  margin-top: 8px;
 }
 
 .infra h3 small {
