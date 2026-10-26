@@ -9,6 +9,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Reutilizado pela esteira "Deploy PRD (VPS)" para testar o SHA exato que será publicado.
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ""
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -22,6 +29,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Setup Node 24
         uses: actions/setup-node@v4

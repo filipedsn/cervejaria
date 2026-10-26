@@ -10,7 +10,7 @@ alwaysApply: true
 - DEV: PC local, API Node em `:3002`, Vite em `:5202`, Postgres e Elasticsearch locais.
 - PRD pública: VPS Hostinger, aplicação em Docker atrás de Cloudflare/nginx.
 - Elasticsearch DEV e PRD são clusters diferentes; nunca cruze endpoints ou credenciais.
-- O deploy público é hoje manual no VPS via SSH/Tailscale. O CD futuro está no [handoff interno](../../docs/handoff-vps-hostinger-arquiteto.md) §7.1.
+- O deploy público é feito pela esteira "Deploy PRD (VPS)" com aprovação humana no environment `production` do GitHub ([handoff interno](../../docs/handoff-vps-hostinger-arquiteto.md) §7.1). Enquanto a ativação Tailscale estiver pendente, é manual via SSH/Tailscale. Aprovar o deploy exige autorização explícita do usuário.
 - `deploy.cmd`, `scripts/prod/deploy.ps1`, watchdog e tunnel no Windows são **legados** e não publicam mais o site público.
 
 ## Fluxo de mudança

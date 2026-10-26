@@ -1,28 +1,83 @@
-# Build da imagem Quiver Tap tagueada com o SHA.
-# Deploy SSH no VPS exige Tailscale no runner (secrets) — porta 22 pública está fechada.
-# Enquanto os secrets não existirem, este workflow só valida o `docker build`.
-name: Deploy VPS
+# Esteira de produção do Quiver Tap: CI → build da imagem → aprovação humana → deploy no VPS.
+#
+# - Todo push na main dispara CI + build e para no gate do environment "production"
+#   (required reviewer). Nada chega ao VPS sem aprovação explícita no GitHub.
+# - Execução manual (workflow_dispatch) publica o HEAD da main ou um SHA específico
+#   da main (rollback intencional).
+# - Acesso ao VPS só pela tailnet (tag:ci); a porta 22 continua fechada na internet.
+#   A chave SSH do CI tem forced command (deploy-gate.sh): não abre shell.
+# - Secrets/variables ficam só no environment "production" (liberados após aprovação).
+# Runbook: docs/handoff-vps-hostinger-arquiteto.md §7.1.
+name: Deploy PRD (VPS)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
-      deploy:
-        description: "Também fazer deploy no VPS (requer secrets Tailscale+SSH)"
-        type: boolean
-        default: false
+      sha:
+        description: "SHA da main a publicar (vazio = HEAD da main). Use um SHA antigo para rollback."
+        type: string
+        required: false
+        default: ""
 
-concurrency:
-  group: deploy-vps
-  cancel-in-progress: false
+permissions:
+  contents: read
 
 jobs:
+  resolve:
+    name: resolve-sha
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      mode: ${{ steps.sha.outputs.mode }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolver SHA candidato
+        id: sha
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_SHA:-}" ]; then
+            sha="$(git rev-parse --verify "${INPUT_SHA}^{commit}")"
+            mode=allow-older
+          else
+            sha="$GITHUB_SHA"
+            mode=head-only
+          fi
+          git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha não pertence à main"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Candidato a PRD"
+            echo "- SHA: \`$sha\` ($mode)"
+            echo "- Commit: $(git log -1 --format='%s' "$sha")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ci:
+    name: ci
+    needs: resolve
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+
   build:
     name: docker-build-sha
+    needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -34,64 +89,99 @@ jobs:
           file: deploy/tap-quiver/Dockerfile
           push: false
           load: true
-          tags: |
-            quiver-tap-api:${{ github.sha }}
-            quiver-tap-api:build
-
-      - name: Show image
-        run: docker images 'quiver-tap-api' --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}'
+          tags: quiver-tap-api:${{ needs.resolve.outputs.sha }}
 
   deploy:
-    name: deploy-via-tailscale
-    needs: build
-    if: ${{ inputs.deploy == true }}
+    name: deploy-prd
+    needs: [resolve, ci, build]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://tap.quivercloud.com.br
+    concurrency:
+      group: deploy-prd-vps
+      cancel-in-progress: false
+    env:
+      SHA: ${{ needs.resolve.outputs.sha }}
+      MODE: ${{ needs.resolve.outputs.mode }}
     steps:
-      - name: Require secrets
+      - name: Conferir secrets do environment
         env:
           TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_TAILSCALE_IP: ${{ secrets.VPS_TAILSCALE_IP }}
+          VPS_SSH_HOST_KEY: ${{ vars.VPS_SSH_HOST_KEY }}
         run: |
           missing=0
-          [ -n "$TS_OAUTH_CLIENT_ID" ] || { echo "Falta secret TS_OAUTH_CLIENT_ID"; missing=1; }
-          [ -n "$TS_OAUTH_SECRET" ] || { echo "Falta secret TS_OAUTH_SECRET"; missing=1; }
-          [ -n "$VPS_SSH_KEY" ] || { echo "Falta secret VPS_SSH_KEY"; missing=1; }
+          for name in TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET VPS_SSH_KEY VPS_TAILSCALE_IP VPS_SSH_HOST_KEY; do
+            [ -n "${!name}" ] || { echo "::error::Falta $name no environment production"; missing=1; }
+          done
           exit $missing
 
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Tailscale
-        uses: tailscale/github-action@v3
+      - name: Entrar na tailnet (tag:ci)
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+          ping: ${{ secrets.VPS_TAILSCALE_IP }}
 
-      - name: Setup SSH key
+      - name: Configurar SSH (host key fixada)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_TAILSCALE_IP: ${{ secrets.VPS_TAILSCALE_IP }}
+          VPS_SSH_HOST_KEY: ${{ vars.VPS_SSH_HOST_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps
-          chmod 600 ~/.ssh/vps
-          cat >> ~/.ssh/config <<EOF
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy
+          chmod 600 ~/.ssh/vps_deploy
+          printf '%s %s\n' "$VPS_TAILSCALE_IP" "$VPS_SSH_HOST_KEY" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
           Host quiver-vps
-            HostName ${{ secrets.VPS_TAILSCALE_IP }}
+            HostName $VPS_TAILSCALE_IP
             User root
-            IdentityFile ~/.ssh/vps
-            StrictHostKeyChecking accept-new
+            IdentityFile ~/.ssh/vps_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            ServerAliveInterval 30
           EOF
 
-      - name: Remote build/recreate on VPS
+      - name: Deploy no VPS
+        id: deploy
         run: |
-          ssh quiver-vps 'bash -s' <<'EOS'
-          set -euo pipefail
-          cd /opt/quiver-tap
-          git fetch origin main
-          git checkout -f origin/main
-          cd deploy/tap-quiver
-          docker compose build api
-          docker compose up -d --force-recreate api
-          curl -fsS -o /dev/null -w "ready:%{http_code}\n" http://127.0.0.1:3001/api/ready
-          EOS
+          set +e
+          # shellcheck disable=SC2029
+          ssh quiver-vps "deploy $SHA $MODE"
+          code=$?
+          if [ "$code" -eq 5 ]; then
+            echo "::warning::$SHA não é mais o HEAD da main; deploy ignorado (um run mais novo publica o HEAD)."
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Smoke público
+        if: steps.deploy.outputs.superseded != 'true'
+        run: |
+          for _ in $(seq 1 12); do
+            body="$(curl -fsS -H 'Cache-Control: no-cache' "https://tap.quivercloud.com.br/api/health?ts=$(date +%s)" || true)"
+            if printf '%s' "$body" | grep -q "\"releaseSha\":\"$SHA\""; then
+              echo "health: $body"
+              curl -fsS -o /dev/null -w "ready:%{http_code}\n" "https://tap.quivercloud.com.br/api/ready?ts=$(date +%s)"
+              {
+                echo "### PRD publicado"
+                echo "- SHA: \`$SHA\`"
+                echo "- https://tap.quivercloud.com.br/api/health → releaseSha confere"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::https://tap.quivercloud.com.br não respondeu com releaseSha=$SHA"
+          exit 1
+
+      - name: Remover chave do runner
+        if: always()
+        run: rm -f ~/.ssh/vps_deploy

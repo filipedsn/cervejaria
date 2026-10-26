@@ -19,7 +19,7 @@
 | Restore drill (ensaiar restore) | **Pendente** | Backup ≠ recovery até testar em DB descartável |
 | CI remoto `build-and-unit` + protection em `main` | **Feito** | Repo público; PR obrigatório |
 | `npm run ci` local | **Complementar** | Continua útil (atestado / suite Windows); **não** substitui o check Actions no merge |
-| CD automático no VPS (secrets Tailscale) | **Pendente** | Runbook §7.1; deploy ainda manual via SSH |
+| CD no VPS com aprovação humana | **Implementado — ativação pendente** | Esteira "Deploy PRD (VPS)" (TAP-126, §7.1); falta policy `tag:ci` + OAuth Tailscale |
 | `releaseSha` / rollback imagem n-1 | **Pendente** | |
 | OTEL → ES PRD no VPS | **Feito** | Collector `deploy/tap-quiver/docker-compose.observability.yml` → `*.otel-prd`; cluster PRD ≠ DEV |
 | Equalizar API DEV em Docker | **Pendente** | Hoje API DEV = Node nativo |
@@ -118,7 +118,7 @@ Na dúvida: **pergunte ao humano** antes de apontar qualquer URL de Elastic, Pos
 5. **Não** reativar Cloudflare Tunnel do `tap` no PC.  
 6. **Não** reabrir `:22` / `:3001` / `:9200` / `:5601` na internet.  
 7. **Não** assumir que equalizar DEV em Docker já foi feito — está na lista de evolução.  
-8. Deploy PRD: só via processo do §7.1 + confirmação humana (`deploy=true`).
+8. Deploy PRD: só via esteira do §7.1 com aprovação humana no environment `production` (ou SSH manual com autorização explícita).
 
 ### Prompt curto (Copiar para o Codex)
 
@@ -126,7 +126,7 @@ Na dúvida: **pergunte ao humano** antes de apontar qualquer URL de Elastic, Pos
 Leia docs/handoff-vps-hostinger-arquiteto.md seções 0, 0.1 e 7.1.
 DEV = PC (app Node local hoje; DB/ES Docker local). PRD = só VPS.
 Elastic DEV e Elastic PRD são clusters físicos diferentes — nunca cruzar.
-Não reabra portas; não use tunnel do tap no PC; deploy=true só com minha confirmação.
+Não reabra portas; não use tunnel do tap no PC; deploy PRD só com a minha aprovação na esteira (§7.1).
 Se for equalizar DEV em Docker, proponha PR pequeno (compose dev) sem tocar PRD.
 ```
 
@@ -307,7 +307,7 @@ DKIM cinza (`hostingermail-*._domainkey`) é **só e-mail** (envio/autenticidade
 
 | Lacuna | Evidência |
 |---|---|
-| CD no VPS ainda semi-manual | `deploy-vps.yml` faz `docker build` por SHA; deploy SSH via Tailscale **opcional** (faltam secrets `TS_*` / `VPS_SSH_KEY`) |
+| CD no VPS aguardando ativação | Esteira com aprovação implementada (§7.1); falta policy `tag:ci` + OAuth Tailscale |
 | Sem push para registry | build no runner (`push: false`); tag `quiver-tap-api:<SHA>` |
 | Restore drill | dumps locais + OneDrive **OK**; **restore** ainda não ensaiado |
 | OTEL no VPS | ligado: EDOT na API + collector PRD → `*.otel-prd` |
@@ -325,7 +325,7 @@ DKIM cinza (`hostingermail-*._domainkey`) é **só e-mail** (envio/autenticidade
 | Infra portable / runtime | 2 | **4** | App+DB Docker no VPS = runtime oficial |
 | DR / multi-env | 2 | **4** | Backup cron 01:00 BRT + offsite OneDrive; falta restore drill |
 
-**Síntese:** o SPOF do notebook para **servir** produção foi eliminado. CI remoto e proteção de `main` estão ativos. O SPOF restante é **como** se publica no VPS (deploy ainda depende de secrets Tailscale no Actions ou SSH manual).
+**Síntese:** o SPOF do notebook para **servir** produção foi eliminado. CI remoto e proteção de `main` estão ativos. A publicação no VPS passa a ser pela esteira com aprovação humana (§7.1), assim que o Tailscale do CI for ativado.
 
 ### 5.4 Definição de pronto (plataforma ~4)
 
@@ -382,10 +382,10 @@ branch → PR → CI remoto obrigatório (build-and-unit) → merge main
 4. [x] Atestado local (`npm run ci`) permanece como complemento no fluxo Windows legado.
 
 ### Fase B — CD para o VPS (próximo)
-1. [x] Workflow `deploy-vps.yml` — `docker build` tag = SHA (`workflow_dispatch`).  
-2. [ ] **Ligar a esteira** — seguir o **§7.1 Runbook Codex** (secrets Tailscale + SSH + ACL `tag:ci` + 1º deploy dry-run).  
-3. [ ] Endurecer: backup Postgres antes do recreate · migrate explícito · `releaseSha` no container · (opcional) GHCR.  
-4. [ ] Secrets de app só no VPS (nunca tarball com `.env` no git).
+1. [x] Esteira "Deploy PRD (VPS)" — CI + build por SHA + aprovação no environment `production` + deploy via Tailscale (TAP-126, §7.1).  
+2. [ ] **Ativar** — policy `tag:ci` + OAuth Tailscale + 1º deploy aprovado (§7.1.B/C).  
+3. [x] Endurecer: backup Postgres antes do recreate · bloqueio de migrations · `RELEASE_SHA` a cada deploy · rollback automático para a imagem anterior. (opcional) GHCR.  
+4. [x] Secrets de app só no VPS (Actions só tem Tailscale + chave SSH do CI).
 
 ### Fase C — Cutover — **FEITA**
 1. [x] HTTPS + Cloudflare proxy  
@@ -412,170 +412,94 @@ flowchart LR
   smoke --> pub["https://tap.quivercloud.com.br"]
 ```
 
-### 7.1 Runbook Codex — ligar a esteira de deploy no VPS (mastigado)
+### 7.1 Esteira de deploy PRD (TAP-126)
 
-> **Audiência:** agente Codex (ou humano) com acesso ao GitHub `filipedsn/cervejaria`, Tailscale admin e SSH no VPS via Tailscale.  
-> **Objetivo:** fazer o workflow `.github/workflows/deploy-vps.yml` **executar de verdade** um deploy Docker no VPS, sem reabrir a porta 22 na internet.  
-> **Estado hoje:** CI (`build-and-unit`) OK; o job `deploy-via-tailscale` **existe no YAML mas aborta** porque **não há secrets** no repo (lista vazia em 2026-10-24).
+> **Audiência:** Codex/humano com acesso ao GitHub `filipedsn/cervejaria`, admin Tailscale e SSH no VPS via Tailscale.  
+> **Regra:** nada chega ao VPS sem **aprovação humana** no environment `production` do GitHub. A porta 22 continua fechada na internet.
 
-#### A. O que já existe (não recriar do zero)
+#### A. Como funciona
 
-| Artefato | Path / valor | Papel |
+```
+push na main (ou "Run workflow" manual)
+  → resolve-sha  (SHA precisa pertencer à main)
+  → ci / build-and-unit  (mesmo ci.yml do PR, no SHA exato)
+  → docker-build-sha     (valida a imagem)
+  → deploy-prd  ⏸ aguarda "Review deployments → Approve" (required reviewer)
+       → runner entra na tailnet como tag:ci
+       → ssh com chave exclusiva do CI → forced command deploy-gate.sh
+       → deploy-prd.sh (da origin/main) no VPS
+  → smoke público https://tap.quivercloud.com.br/api/health (releaseSha = SHA)
+```
+
+| Artefato | Path | Papel |
 |---|---|---|
-| Workflow CD | `.github/workflows/deploy-vps.yml` | `workflow_dispatch` · job `docker-build-sha` · job opcional `deploy-via-tailscale` se `inputs.deploy == true` |
-| Dockerfile prod | `deploy/tap-quiver/Dockerfile` | imagem da API + frontend estático |
-| Compose VPS | `deploy/tap-quiver/docker-compose.yml` | serviço `api` · `network_mode: host` · `env_file: .env.staging` · volume `vps_uploads_data` |
-| Código no VPS | `/opt/quiver-tap` (git) | origem do `docker compose build` remoto |
-| Env no VPS | `/opt/quiver-tap/deploy/tap-quiver/.env.staging` | **nunca** no git; não copiar para Actions |
-| VPS Tailscale IP | `100.120.170.89` | host SSH (não usar o IP público `200.141.28.26` para deploy) |
-| Hostname público | `tap.quivercloud.com.br` | smoke externo pós-deploy |
+| Workflow | `.github/workflows/deploy-vps.yml` ("Deploy PRD (VPS)") | push na `main` + `workflow_dispatch` (input `sha` opcional = rollback) |
+| CI reutilizado | `.github/workflows/ci.yml` (`workflow_call`, input `ref`) | mesmo gate do merge |
+| Gate SSH | `deploy/tap-quiver/deploy-gate.sh` → instalado em `/usr/local/sbin/quiver-tap-deploy-gate` | a chave do CI só executa `deploy <sha> [modo]` ou `status`; sem shell |
+| Deploy remoto | `deploy/tap-quiver/deploy-prd.sh` (sempre a versão da `origin/main`) | procedimento abaixo |
+| Histórico | `/var/log/quiver-tap-deploy.log` no VPS | uma linha por deploy (`ok`, `rolled-back`, …) |
 
-**Como o deploy atual funciona (importante):** o job `build` no runner só **valida** que a imagem compila (`push: false`). O job `deploy` **não** envia essa imagem: ele SSH no VPS, faz `git fetch/checkout origin/main`, `docker compose build api` + `up -d --force-recreate` e `curl` em `http://127.0.0.1:3001/api/ready`. Ou seja: **fonte da verdade do deploy = git `main` no VPS**, não o artefato do runner. Evoluir para GHCR é opcional (passo H).
+**`deploy-prd.sh` (ordem):** lock (`flock`) → SHA ∈ `main` (e, no modo `head-only`, = HEAD da main) → **aborta se houver migrations Prisma** desde o `RELEASE_SHA` atual (runtime não tem Prisma CLI; schema é manual) → **backup Postgres** (`backup-postgres.sh`, mesmo do cron, inclui off-site) → imagem atual vira `quiver-tap-api:rollback` → `git checkout` em `/opt/cervejaria-git` + `rsync --delete` para `/opt/quiver-tap` **preservando** `.env.staging`, `.env.observability`, `backup-postgres.*` e `backups/` → `RELEASE_SHA` → `docker compose build api` (tag `:<sha>`) → `up -d --no-build --force-recreate api` → espera `/api/ready` + `releaseSha`. **Falha depois do sync = rollback automático** para o SHA/imagem anteriores. Mantém as 5 últimas imagens `:<sha>`.
 
-#### B. Definition of Done (quando parar)
+**Modos:** push na main = `head-only` (se um run antigo for aprovado depois de um merge mais novo, ele é ignorado com aviso — o run mais novo publica o HEAD). `workflow_dispatch` com `sha` = `allow-older` (rollback intencional).
 
-1. Os 4 secrets Actions existem (nomes exatos na tabela C).  
-2. ACL Tailscale tem `tag:ci` e grant SSH (22) de `tag:ci` → VPS.  
-3. Chave pública do deploy está em `/root/.ssh/authorized_keys` no VPS.  
-4. `gh workflow run "Deploy VPS" -f deploy=false` → job `docker-build-sha` **verde**.  
-5. Com confirmação humana explícita: `gh workflow run "Deploy VPS" -f deploy=true` → job `deploy-via-tailscale` **verde** e `https://tap.quivercloud.com.br/api/ready` responde OK.  
-6. Atualizar este handoff: marcar Fase B item 2 como `[x]` e anotar a data do 1º deploy bem-sucedido.  
-7. Abrir PR (branch protection exige) — **nunca** push direto em `main`.
+**DEV antes de PRD:** a esteira não publica o DEV (que é o PC). Só aprove o deploy depois de validar o mesmo SHA no DEV local (`:3002`/`:5202`).
 
-#### C. Secrets GitHub Actions (criar estes 4)
+#### B. Configuração (uma vez)
 
-Repo → Settings → Secrets and variables → Actions → New repository secret  
-(ou CLI: `gh secret set NOME --repo filipedsn/cervejaria`).
-
-| Secret | Conteúdo | Como obter |
+| Item | Onde | Estado |
 |---|---|---|
-| `TS_OAUTH_CLIENT_ID` | Client ID OAuth Tailscale | Passo D |
-| `TS_OAUTH_SECRET` | Client secret OAuth Tailscale | Passo D (só aparece uma vez) |
-| `VPS_SSH_KEY` | Chave **privada** PEM/OpenSSH completa (com `-----BEGIN…-----`) | Passo E — chave **só** para CI, não reutilizar `cursor-agent` |
-| `VPS_TAILSCALE_IP` | `100.120.170.89` | Fixo (VPS na tailnet) |
+| Environment `production` com required reviewer `filipedsn`, só branch `main` | GitHub → Settings → Environments | ver §7.1.C |
+| Secret `VPS_SSH_KEY` (privada ed25519 só do CI) | environment `production` | ver §7.1.C |
+| Secret `VPS_TAILSCALE_IP` | environment `production` | ver §7.1.C |
+| Variable `VPS_SSH_HOST_KEY` (`ssh-ed25519 AAAA…` do VPS, host key fixada) | environment `production` | ver §7.1.C |
+| Pública do CI em `/root/.ssh/authorized_keys` com `restrict,command="/usr/local/sbin/quiver-tap-deploy-gate"` | VPS | ver §7.1.C |
+| Gate instalado em `/usr/local/sbin/quiver-tap-deploy-gate` (copiado da `origin/main`) | VPS | ver §7.1.C |
+| `tagOwners` com `tag:ci` + grant `tag:ci` → VPS `tcp:22` | Tailscale admin → Access controls | **humano** |
+| OAuth client (scope **Auth Keys: write**, tag `tag:ci`) → secrets `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | Tailscale admin → Settings → OAuth clients; colar no environment `production` | **humano** |
 
-Verificar nomes (valores nunca listados):  
-`gh api repos/filipedsn/cervejaria/actions/secrets -q '.secrets[].name'`  
-Esperado: os quatro acima. Lista vazia = esteira ainda morta.
-
-#### D. Tailscale — ACL `tag:ci` + OAuth client
-
-Docs oficiais: [Tailscale GitHub Action](https://tailscale.com/docs/integrations/github/github-action) · [CI sem exposição pública](https://tailscale.com/docs/solutions/connect-github-cicd-workflows-to-private-infrastructure-without-public-exposure).
-
-1. **ACL / policy** (admin console → Access controls). Garantir algo equivalente a:
+Trecho de policy Tailscale (mesclar com a existente):
 
 ```json
-{
-  "tagOwners": {
-    "tag:ci": []
-  },
-  "grants": [
-    {
-      "src": ["tag:ci"],
-      "dst": ["100.120.170.89"],
-      "ip": ["22"]
-    }
-  ]
-}
+"tagOwners": { "tag:ci": ["autogroup:admin"] },
+"grants": [
+  { "src": ["tag:ci"], "dst": ["<IP Tailscale do VPS>"], "ip": ["tcp:22"] }
+]
 ```
 
-Se a policy já usa `tag:` no VPS, preferir `dst` por tag do servidor em vez do IP — o essencial é: **nó efêmero `tag:ci` alcança TCP/22 do VPS**. Não abrir 22 na internet Hostinger.
+Secrets do app (`.env.staging`, senhas DB/JWT/Elastic) **nunca** vão para o GitHub — o Actions só tem Tailscale + chave SSH do CI + IP + host key.
 
-2. **OAuth client** (Trust credentials → Credential → OAuth):
-   - Descrição: `github-actions-cervejaria-deploy`
-   - Scopes: **Devices → Core → Write** e **Keys → Auth Keys → Write**
-   - Tags do client: **`tag:ci`** (obrigatório — OAuth não herda user)
-   - Copiar Client ID + Secret → secrets `TS_OAUTH_*`
+#### C. Status da ativação
 
-3. No workflow, preferir action atual: `tailscale/github-action@v4` com:
+- [ ] Environment `production` + secrets/variable SSH + gate e chave no VPS  
+- [ ] Policy `tag:ci` + OAuth client Tailscale (humano)  
+- [ ] 1º deploy aprovado e verde (registrar data e SHA aqui)
 
-```yaml
-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-tags: tag:ci
-```
+#### D. Operação do dia a dia
 
-(Se o YAML ainda estiver em `@v3`, atualizar para `@v4` no mesmo PR da esteira.)
+1. Merge do PR na `main` → abre um run "Deploy PRD (VPS)" que para em **Waiting for review**.  
+2. Validar o mesmo SHA no DEV local.  
+3. GitHub → Actions → run → **Review deployments** → `production` → **Approve and deploy** (ou **Reject**).  
+4. O run termina com o resumo (SHA publicado + smoke público).
 
-#### E. Chave SSH dedicada ao CI (no VPS)
+Rollback: Actions → "Deploy PRD (VPS)" → **Run workflow** com `sha` = commit bom da `main` → aprovar.  
+CLI: `gh workflow run "Deploy PRD (VPS)" --repo filipedsn/cervejaria -f sha=<sha40>`.
 
-No PC admin (Tailscale ligado):
+Emergência sem GitHub/Tailscale do runner (SSH humano via Tailscale):  
+`git -C /opt/cervejaria-git fetch origin main && bash <(git -C /opt/cervejaria-git show origin/main:deploy/tap-quiver/deploy-prd.sh) <sha40> allow-older`
 
-```bash
-ssh-keygen -t ed25519 -f ./github-actions-vps -C "github-actions@cervejaria-deploy" -N ""
-# pública → VPS
-ssh root@100.120.170.89 'mkdir -p /root/.ssh && chmod 700 /root/.ssh'
-type .\github-actions-vps.pub | ssh root@100.120.170.89 'tee -a /root/.ssh/authorized_keys > /nul'
-# privada → secret (PowerShell)
-Get-Content .\github-actions-vps -Raw | gh secret set VPS_SSH_KEY --repo filipedsn/cervejaria
-gh secret set VPS_TAILSCALE_IP --repo filipedsn/cervejaria --body "100.120.170.89"
-```
+#### E. Limites conhecidos
 
-Guardar a privada cifrada fora do git (mesmo padrão OneDrive das outras chaves). **Não** commitar. Após o secret, apagar a cópia plain do disco de trabalho se possível.
+- Migrations Prisma: a esteira **recusa** o deploy; aplicar manualmente com backup e só então aprovar/reexecutar.
+- Downtime de segundos no `force-recreate` (container único).
+- Imagem é construída no VPS (sem registry). GHCR continua opcional.
 
-Teste manual antes do Actions:  
-`ssh -i ./github-actions-vps root@100.120.170.89 'hostname && docker ps --format "{{.Names}}" | findstr cervejaria'`  
-(no bash: `grep cervejaria`).
+#### F. Proibições
 
-#### F. Pré-checagens no VPS (uma vez)
-
-SSH como humano/`cursor-agent` e confirmar:
-
-```bash
-cd /opt/quiver-tap && git remote -v && git status -sb
-test -f deploy/tap-quiver/.env.staging && echo env_ok
-docker volume inspect vps_uploads_data >/dev/null && echo vol_ok
-curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3001/api/ready
-```
-
-Se `/opt/quiver-tap` não for clone git de `filipedsn/cervejaria`, **parar** e alinhar (o workflow assume `git fetch origin main`). Deploy remoto precisa de credencial de leitura no remoto git do VPS (HTTPS com deploy key ou SSH).
-
-#### G. Como disparar (ordem segura)
-
-1. **Só build (sem mexer no VPS):**  
-   `gh workflow run "Deploy VPS" --repo filipedsn/cervejaria -f deploy=false`  
-   `gh run watch` até `docker-build-sha` verde.
-
-2. **Deploy real** — **só com confirmação humana explícita** (regra de produto §8.3). Antes: backup rápido opcional no VPS  
-   `bash /opt/quiver-tap/deploy/tap-quiver/backup-postgres.sh` (se o script existir no cron path documentado).  
-   Depois:  
-   `gh workflow run "Deploy VPS" --repo filipedsn/cervejaria -f deploy=true`  
-   Acompanhar logs do job `deploy-via-tailscale`.
-
-3. Smoke externo:  
-   `curl -fsS -o /dev/null -w "%{http_code}\n" https://tap.quivercloud.com.br/api/ready`  
-   Esperado: `200`.
-
-4. Rollback emergencial (manual): no VPS, `git log` / checkout SHA anterior + `docker compose build api && docker compose up -d --force-recreate api`. Documentar o SHA bom no comentário do run.
-
-#### H. Melhorias recomendadas no mesmo esforço (Codex pode fazer em PRs)
-
-Ordem sugerida — cada item = PR pequeno:
-
-1. **Backup + migrate no script remoto** antes do `compose up` (migrate = `npm`/`prisma migrate deploy` **dentro** do fluxo já usado no VPS; sem inventar rollback de schema).  
-2. Passar `RELEASE_SHA=${{ github.sha }}` (ou build-arg) para o container — fecha pendência §11 item 12.  
-3. Atualizar `tailscale/github-action@v4`.  
-4. (Opcional) Push para **GHCR** `ghcr.io/filipedsn/quiver-tap-api:<sha>` e no VPS `docker pull` + retag — aí o job `build` deixa de ser só validação.  
-5. Gate: só permitir `deploy=true` a partir de `main` / SHA de `main`.
-
-#### I. Proibições (não negociável)
-
-- Reabrir porta **22** no firewall Hostinger para `0.0.0.0/0`.  
-- Colocar `.env.staging`, senhas DB/JWT/Elastic ou chave privada no git ou em log do Actions.  
-- Deploy automático em todo push sem confirmação humana (por enquanto `workflow_dispatch` apenas).  
-- Misturar secrets do app nos secrets do Actions — Actions só precisa de Tailscale + SSH + IP.  
-- Usar IP público `200.141.28.26` no SSH do deploy.
-
-#### J. Prompt curto para o Codex (copiar/colar)
-
-```
-Leia docs/handoff-vps-hostinger-arquiteto.md §7.1 e execute a Fase B (ligar CD).
-Não reabra porta 22. Não faça deploy=true sem eu confirmar.
-1) Configure ACL tag:ci + OAuth Tailscale; 2) crie chave SSH só-CI e secrets Actions;
-3) rode deploy=false até verde; 4) pare e peça confirmação para deploy=true;
-5) após sucesso, abra PR atualizando o handoff (Fase B item 2 [x] + data).
-Repo: filipedsn/cervejaria. VPS Tailscale: 100.120.170.89. Workflow: Deploy VPS.
-```
+- Reabrir porta **22** no firewall Hostinger.  
+- Colocar `.env.staging`, senhas ou chave privada no git ou em log do Actions.  
+- Remover o required reviewer do environment `production` ou o forced command da chave do CI.  
+- Usar o IP público no SSH do deploy.
 
 ---
 
@@ -711,7 +635,7 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 ### 11.0 Ainda abertas (checklist curto — preferir esta lista)
 
 1. [ ] **Restore drill** do Postgres (dump VPS ou OneDrive → DB descartável)  
-2. [ ] **CD no VPS** — secrets Tailscale/SSH + 1º `deploy=true` (§7.1)  
+2. [ ] **CD no VPS** — esteira implementada (TAP-126); falta policy/OAuth Tailscale + 1º deploy aprovado (§7.1)  
 3. [ ] **`releaseSha`** no container + rollback imagem n-1 ensaiado  
 4. [ ] Smoke automático no promote  
 5. [x] OTEL → ES **PRD** (collector + EDOT na API) 
@@ -728,7 +652,7 @@ Contas que são break-glass além das chaves: **Hostinger**, **Cloudflare**, **T
 5. [x] SSH só Tailscale + rotação de segredos  
 6. [x] Cloudflared desinstalado no PC  
 7. [x] Chaves SSH humanas + agente documentadas + backup cifrado no OneDrive  
-8. [x] Workflows CI + `deploy-vps.yml` no repo (build por SHA); deploy Tailscale ainda sem secrets — **runbook Codex em §7.1**  
+8. [x] Workflows CI + esteira "Deploy PRD (VPS)" com aprovação, backup, rollback automático e smoke (TAP-126, §7.1); ativação Tailscale pendente  
 9. [x] Repo **público**; branch protection em `main` (PR obrigatório + check `build-and-unit`; sem push direto)  
 10. [x] Backups Postgres agendados no VPS (01:00 BRT, 30 dumps)  
 11. [x] Backup **off-site** OneDrive `…/Backup banco/PRD` via rclone (`OFFSITE_ENABLED=1`, comprovado 2026-10-24)  
@@ -755,4 +679,4 @@ Workflows: `.github/workflows/ci.yml`, `.github/workflows/deploy-vps.yml`.
 
 ## 12. Mensagem executiva (1 parágrafo)
 
-O Quiver Tap **saiu do notebook**: **PRD** só no **VPS** (Cloudflare → nginx → Docker); **DEV** só no **PC**; Elastic **separado** (cluster local ≠ cluster VPS). Backup Postgres **local + off-site OneDrive já configurados e comprovados**; o que falta de DR é **ensaiar o restore**. CI: Actions `build-and-unit` **obriga** merge em `main`; `npm run ci` local é **complementar** (não rivais). Cutover OK com PC desligado. Codex: checklist canônico no topo · Dev/PRD §0.1 · CD §7.1. Outras lacunas: secrets Tailscale do deploy; `releaseSha`/rollback; OTEL PRD; API DEV em Docker. Doc **interno** — não republicar paths/credenciais.
+O Quiver Tap **saiu do notebook**: **PRD** só no **VPS** (Cloudflare → nginx → Docker); **DEV** só no **PC**; Elastic **separado** (cluster local ≠ cluster VPS). Backup Postgres **local + off-site OneDrive já configurados e comprovados**; o que falta de DR é **ensaiar o restore**. CI: Actions `build-and-unit` **obriga** merge em `main`; `npm run ci` local é **complementar** (não rivais). Cutover OK com PC desligado. Codex: checklist canônico no topo · Dev/PRD §0.1 · CD §7.1. Outras lacunas: ativar o Tailscale da esteira de deploy (§7.1); ensaiar rollback; API DEV em Docker. Doc **interno** — não republicar paths/credenciais.
