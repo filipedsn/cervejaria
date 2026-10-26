@@ -263,6 +263,7 @@ function devCard(snapshot, delivery) {
     ...d.containers.map((c) => [DEV_CONTAINER_NAMES[c.name] ?? c.name, c.ok ? 'funcionando' : 'desligado']),
     ['Versão', d.releaseSha ? verFull(d.releaseSha) : '—'],
     ['Comparado ao site', vsSite.text],
+    ['Dados do banco', d.prdCopy ? `cópia do site, ${ageText(Date.parse(snapshot.at) - Date.parse(d.prdCopy.at))}` : 'dados próprios de teste'],
   ];
   if (!d.dockerOk) facts.unshift(['Docker', d.dockerError || 'desligado']);
 
@@ -280,6 +281,10 @@ function devCard(snapshot, delivery) {
           { name: 'dev.restart', label: 'Reiniciar', confirm: 'simple' },
           { name: 'dev.stop', label: 'Desligar', confirm: 'simple' },
         ];
+  const dbUp = d.containers.some((c) => c.name === 'cervejaria-db-dev' && c.ok);
+  if (dbUp && state !== 'degradado') {
+    actions.splice(state === 'parado' ? 1 : 0, 0, { name: 'dev.copyPrd', label: 'Copiar o banco do site', confirm: 'copy' });
+  }
   if (canSync && state !== 'degradado') {
     actions.unshift({ name: 'dev.sync', label: `Trazer a versão oficial (${ver(delivery.mainSha)})`, confirm: 'simple' });
   }
@@ -497,6 +502,14 @@ function prdCard(snapshot, delivery, now) {
     url: p.url,
     now,
   };
+}
+
+function ageText(ms) {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `há ${plural(hours, 'hora', 'horas')}`;
+  return `há ${plural(Math.round(hours / 24), 'dia', 'dias')}`;
 }
 
 function hoursAgo(seconds) {

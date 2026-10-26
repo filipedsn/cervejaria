@@ -13,7 +13,8 @@ Resumo operacional que nenhum agente pode “esquecer”:
 - Elastic DEV ≠ Elastic PRD (clusters físicos diferentes).  
 - CI: Actions `build-and-unit` **obriga** merge; `npm run ci` é complementar.  
 - `deploy.cmd` no PC = **legado**; não publica o Tap público.  
-- Off-site backup Postgres (OneDrive) **já feito**; falta restore drill.  
+- Off-site backup Postgres (OneDrive) **já feito**; restore ensaiado em 2026-10-26 (TAP-129).
+- Cópia do banco PRD→DEV: só pelo botão do painel Ops (exceção decidida pelo usuário, TAP-129); nunca DEV→PRD.  
 - Se `gh` der 403: push da branch + link compare; não loop de auth; produção intocada.
 
 ## Delivery flow

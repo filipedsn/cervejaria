@@ -64,7 +64,7 @@ Regras absolutas:
 ### 1.3 O que AINDA é pendência real (só execute se a missão pedir explicitamente)
 
 Conforme handoff §11.0:
-1. Restore drill do Postgres  
+1. ~~Restore drill do Postgres~~ feito em 2026-10-26 (TAP-129); falta só repetir com o arquivo do OneDrive  
 2. Ativar a esteira de deploy PRD (policy `tag:ci` + OAuth Tailscale) — §7.1 (esteira já implementada, TAP-126)  
 3. `releaseSha` no container + rollback imagem n-1  
 4. Smoke automático no promote  
@@ -172,7 +172,7 @@ Arquivos já flagrados (alinhar todos em missão de docs):
 Padrão de reescrita: PRD=VPS+Cloudflare+Docker; deploy oficial≠`deploy.cmd`; CI Actions obrigatório + `npm run ci` complementar; DEV=localhost; tunnel/watchdog=legado; link handoff; sem duplicar secrets.
 
 ### História única (teste mental)
-Qualquer agente lendo `AGENTS.md` + `CONTRIBUTING.md` + skill de deploy conclui: PRD=VPS; DEV=PC; merge exige `build-and-unit`; publish ≠ deploy.cmd; off-site backup feito; falta restore; Elastic DEV≠PRD; detalhes→handoff.
+Qualquer agente lendo `AGENTS.md` + `CONTRIBUTING.md` + skill de deploy conclui: PRD=VPS; DEV=PC; merge exige `build-and-unit`; publish ≠ deploy.cmd; off-site backup feito; restore ensaiado (TAP-129); Elastic DEV≠PRD; detalhes→handoff.
 
 ---
 
@@ -239,7 +239,7 @@ Docs-only + PR sua + CI verde → squash ok. Senão → regras §2.5.
 - Deploy VPS (aprovar o environment `production` ou SSH manual) sem autorização  
 - Secrets no GitHub sem pedido  
 - Reabrir firewall / recriar tunnel do `tap`  
-- Cruzar Elastic/DB DEV↔PRD  
+- Cruzar Elastic/DB DEV↔PRD (única exceção, decidida pelo usuário no TAP-129: cópia PRD→DEV pelo botão "Copiar o banco do site" do painel Ops; ver handoff, linha Postgres e § Painel Ops)  
 - Apagar scripts legados “para limpar”  
 - Reescrever TAP-96 inteiro  
 - Commitar credenciais  

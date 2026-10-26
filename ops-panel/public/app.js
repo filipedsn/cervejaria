@@ -32,6 +32,7 @@ const SIMPLE_CONFIRM = {
   },
 };
 
+const COPY_WORD = 'COPIAR';
 const CI_TEXT = { success: 'testes ok', failure: 'testes falharam', pending: 'testando…', none: 'sem testes' };
 const DEPLOY_RESULT = { ok: 'publicada', 'rolled-back': 'falhou e voltou à anterior' };
 
@@ -341,6 +342,31 @@ async function handle(action, button) {
   if (action.confirm === 'simple') {
     const text = SIMPLE_CONFIRM[action.name] ?? { title: `${action.label}?`, body: '' };
     openModal(text.title, `<p>${esc(text.body)}</p>`, action.label, () => runAction(action));
+    return;
+  }
+
+  if (action.confirm === 'copy') {
+    openModal(
+      'Copiar o banco do site para o ambiente de testes?',
+      `<p class="lead">O banco do ambiente de testes deste PC será <strong>substituído</strong> por uma cópia, feita agora, do banco do site.</p>
+       <ol class="plain">
+         <li>O servidor gera a cópia na hora, em segundos. O site dos clientes continua funcionando normalmente.</li>
+         <li>O banco de testes atual é guardado antes; se algo falhar, ele volta sozinho.</li>
+         <li>Na cópia, e-mail e notificações para celulares ficam desligados: ninguém de fora recebe nada.</li>
+         <li>O ambiente de testes reinicia (cerca de 1 minuto).</li>
+       </ol>
+       <p class="note warn">A cópia tem dados reais de clientes. Use só para investigar e corrigir problemas, e não compartilhe.</p>
+       <label class="typed">Para confirmar, digite <strong>${COPY_WORD}</strong> <input id="copy-word" autocomplete="off" spellcheck="false" /></label>`,
+      'Copiar o banco',
+      null,
+    );
+    const input = $('copy-word');
+    input.addEventListener('input', () => {
+      const ok = input.value.trim().toUpperCase() === COPY_WORD;
+      onConfirm = ok ? () => runAction(action, { confirm: COPY_WORD }) : null;
+      $('modal-confirm').disabled = !ok;
+    });
+    input.focus();
     return;
   }
 

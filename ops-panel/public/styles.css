@@ -825,6 +825,24 @@ dialog h3 {
   background: #fbf3e4;
 }
 
+.typed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 0.95rem;
+}
+
+.typed input {
+  font: 600 1rem var(--mono);
+  padding: 6px 10px;
+  width: 9em;
+  text-transform: uppercase;
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+}
+
 /* ---------- guia ---------- */
 
 dialog.guide {

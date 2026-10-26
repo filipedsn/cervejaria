@@ -191,7 +191,16 @@ test('dev parado sugere ligar', () => {
   const s = deriveState(snap({ dev: { apiReady: false, webOk: false, supervisorAlive: false } }), NOW);
   assert.equal(s.cards.dev.state, 'parado');
   assert.equal(s.next.name, 'dev.start');
-  assert.deepEqual(s.cards.dev.actions.map((a) => a.name), ['dev.start']);
+  assert.deepEqual(s.cards.dev.actions.map((a) => a.name), ['dev.start', 'dev.copyPrd']);
+});
+
+test('copiar o banco do site: só com o banco de testes ligado; cartão mostra a origem dos dados', () => {
+  const s = deriveState(snap({ dev: { prdCopy: { at: '2026-10-26T15:00:00Z', tables: 54, rows: 1 } } }), NOW);
+  assert.ok(s.cards.dev.actions.some((a) => a.name === 'dev.copyPrd' && a.confirm === 'copy'));
+  assert.equal(Object.fromEntries(s.cards.dev.facts)['Dados do banco'], 'cópia do site, há 3 horas');
+  assert.equal(Object.fromEntries(deriveState(snap(), NOW).cards.dev.facts)['Dados do banco'], 'dados próprios de teste');
+  const dbDown = snap({ dev: { containers: [{ name: 'cervejaria-db-dev', status: null, ok: false }] } });
+  assert.ok(!deriveState(dbDown, NOW).cards.dev.actions.some((a) => a.name === 'dev.copyPrd'));
 });
 
 test('dev subindo', () => {
