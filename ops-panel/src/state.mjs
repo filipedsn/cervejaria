@@ -57,6 +57,11 @@ export function needsUpdate(pr) {
   return prOpenOk(pr) && pr.mergeState === 'BEHIND' && pr.ci !== 'failure';
 }
 
+/** Recém-criado/atualizado: o GitHub ainda não registrou o CI ou não calculou o merge. */
+export function prWarmingUp(pr) {
+  return Boolean(pr && !pr.isDraft && pr.baseBranch === 'main' && (pr.ci === 'none' || pr.mergeable === 'UNKNOWN'));
+}
+
 function prAction(pr) {
   if (isMergeReady(pr)) return { name: 'pr.merge', label: 'Aceitar', params: { number: pr.number }, confirm: 'merge' };
   if (needsUpdate(pr)) return { name: 'pr.update', label: 'Atualizar', params: { number: pr.number }, confirm: 'simple' };
@@ -550,6 +555,8 @@ function decide(delivery, cards) {
         const advice = prAdvice(pr);
         say(advice.level, advice.text, advice.help);
         next ??= advice.next;
+      } else if (prWarmingUp(pr)) {
+        say('run', `O GitHub está preparando os testes do PR #${pr.number}`, 'Acontece logo depois de um PR ser criado ou atualizado. Em alguns segundos os testes começam; o painel acompanha sozinho.');
       } else if (pr.ci === 'pending') {
         say('run', `Os testes do PR #${pr.number} estão rodando`, 'Leva de 1 a 3 minutos. O painel atualiza sozinho e mostra o botão para aceitar quando os testes passarem.');
       } else {

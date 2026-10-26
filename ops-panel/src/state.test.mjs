@@ -76,6 +76,14 @@ test('pr com CI rodando não oferece merge', () => {
   assert.equal(s.cards.git.prs[0].action, null);
 });
 
+test('PR recém-criado (CI ainda não registrado) aparece como preparando, não bloqueado', () => {
+  const fresh = pr({ ci: 'none', mergeable: 'UNKNOWN' });
+  const s = deriveState(snap({ git: { branch: 'feat/x' }, prs: [fresh] }), NOW);
+  assert.equal(s.verdict.level, 'run');
+  assert.match(s.verdict.text, /preparando/);
+  assert.equal(isMoving(snap({ prs: [fresh] }), NOW), true);
+});
+
 test('falhou no PR: CI vermelho', () => {
   const s = deriveState(snap({ git: { branch: 'feat/x' }, prs: [pr({ ci: 'failure' })] }), NOW);
   assert.equal(s.delivery.state, 'falhou');

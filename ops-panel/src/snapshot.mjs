@@ -3,6 +3,7 @@ import { collectGit } from './collectors/git.mjs';
 import { collectGithub } from './collectors/github.mjs';
 import { collectPrd } from './collectors/prd.mjs';
 import { cached, collect } from './exec.mjs';
+import { prWarmingUp } from './state.mjs';
 
 const JUST_MERGED_MS = 5 * 60_000;
 
@@ -13,7 +14,7 @@ const JUST_MERGED_MS = 5 * 60_000;
 export function isMoving({ git, github, prd }, now = Date.now()) {
   const gh = github?.ok ? github.data : null;
   if (gh?.runs.some((r) => r.status !== 'completed' && r.status !== 'waiting')) return true;
-  if (gh?.prs.some((p) => p.ci === 'pending')) return true;
+  if (gh?.prs.some((p) => p.ci === 'pending' || prWarmingUp(p))) return true;
   const g = git?.ok ? git.data : null;
   const prdSha = prd?.ok ? prd.data.releaseSha : null;
   return Boolean(g?.mainSha && prdSha && g.mainSha !== prdSha && g.mainDate && now - Date.parse(g.mainDate) < JUST_MERGED_MS);
