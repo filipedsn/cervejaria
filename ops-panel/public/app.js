@@ -205,16 +205,48 @@ function infraBlock(card, below = '') {
     <div class="infra-server">
       <ul class="tiles">${tiles}</ul>
       <h3>Servidor na Hostinger</h3>
-      <p class="spec">${esc(infra.spec)}</p>
-      <div class="gauges">${infra.gauges.map(gauge).join('')}</div>
+      <p class="spec" data-infra="spec">${esc(infra.spec)}</p>
+      <div class="gauges" data-infra="gauges">${infra.gauges.map(gauge).join('')}</div>
       ${below}
     </div>
     <div class="infra-containers">
-      <h3>Contêineres <small>${esc(infra.summary)}</small></h3>
-      <ul class="ctrs">${infra.containers.map(containerCard).join('')}</ul>
+      <h3>Contêineres <small data-infra="summary">${esc(infra.summary)}</small></h3>
+      <ul class="ctrs" data-infra="containers">${infra.containers.map(containerCard).join('')}</ul>
     </div>
   </div>`;
 }
+
+/** Troca só servidor e contêineres; o resto da tela segue no ritmo do painel. */
+function patchInfra(infra) {
+  const box = document.querySelector('#card-prd .infra');
+  if (!box || !state?.cards.prd.infra) return;
+  state.cards.prd.infra = infra;
+  const parts = {
+    spec: esc(infra.spec),
+    gauges: infra.gauges.map(gauge).join(''),
+    summary: esc(infra.summary),
+    containers: infra.containers.map(containerCard).join(''),
+  };
+  for (const [key, html] of Object.entries(parts)) {
+    const el = box.querySelector(`[data-infra="${key}"]`);
+    if (el && el.innerHTML !== html) el.innerHTML = html;
+  }
+}
+
+const INFRA_REFRESH_MS = 30_000;
+let infraLoading = false;
+async function refreshInfra() {
+  if (infraLoading || document.hidden || !state?.cards.prd.infra) return;
+  infraLoading = true;
+  try {
+    patchInfra((await api('/api/infra')).infra);
+  } catch {
+    // silencioso: a atualização geral do painel mostra se o servidor parou de responder
+  } finally {
+    infraLoading = false;
+  }
+}
+setInterval(refreshInfra, INFRA_REFRESH_MS);
 
 const FLOW_ICON = { done: '✓', waiting: '!', failed: '✕', rejected: '–', cancelled: '–', skipped: '–' };
 

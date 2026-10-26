@@ -41,14 +41,20 @@ async function collectVps() {
   return report;
 }
 
+/** Relatório do VPS compartilhado entre o estado geral e a atualização só da infraestrutura. */
+export function vpsReport(maxAgeMs, force = false, { stale = false } = {}) {
+  return config.vpsSshHost ? cached('vps', maxAgeMs, () => collect(collectVps), force, { stale }) : Promise.resolve(null);
+}
+
+export const vpsHistory = () => history;
+
 export async function collectPrd({ force = false, vpsMaxAgeMs = 60_000 } = {}) {
   const ts = Date.now();
   const [health, ready, vps] = await Promise.all([
     httpProbe(`${config.prdUrl}/api/health?ts=${ts}`, 8_000),
     httpProbe(`${config.prdUrl}/api/ready?ts=${ts}`, 8_000),
-    config.vpsSshHost
-      ? cached('vps', vpsMaxAgeMs, () => collect(collectVps), force)
-      : Promise.resolve(null),
+    // O estado geral não espera o SSH (~5 s): usa a última leitura e renova em segundo plano.
+    vpsReport(vpsMaxAgeMs, force, { stale: true }),
   ]);
   let startedAt = null;
   try {

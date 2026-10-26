@@ -473,6 +473,11 @@ dd {
   margin-top: 18px;
 }
 
+.infra-containers > h3:first-child {
+  margin-top: 0;
+  line-height: 1.2;
+}
+
 .infra h3 small {
   margin-left: 6px;
   color: var(--muted);
