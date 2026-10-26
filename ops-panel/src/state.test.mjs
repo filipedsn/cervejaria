@@ -123,6 +123,34 @@ test('publicando: job deploy-prd rodando', () => {
   assert.equal(stepStatus(s).prd, 'active');
 });
 
+test('publicando: logo depois de autorizar (deploy-prd na fila) a barra não volta para Testes', () => {
+  const done = (name) => ({ name, status: 'completed', conclusion: 'success' });
+  const jobs = (deploy) => [done('resolve-sha'), done('ci / build-and-unit'), done('docker-build-sha'), { name: 'deploy-prd', ...deploy }];
+  for (const deploy of [{ status: 'queued' }, { status: 'in_progress' }, { status: 'completed', conclusion: 'success' }]) {
+    const runs = [run({ status: 'in_progress', conclusion: null, jobs: jobs(deploy) })];
+    const s = deriveState(snap({ runs, prd: { releaseSha: OLD } }), NOW);
+    assert.equal(s.delivery.state, 'publicando', deploy.status);
+    assert.deepEqual(stepStatus(s), { local: 'done', pr: 'done', main: 'done', aguardando: 'done', prd: 'active' });
+    const detail = Object.fromEntries(s.delivery.steps.map((step) => [step.id, step.detail]));
+    assert.equal(detail.aguardando, 'autorizada');
+    assert.match(detail.prd, /^publicando /);
+    assert.match(s.cards.pipeline.title, /^Publicando /);
+  }
+});
+
+test('main: deploy-prd na fila enquanto testes e montagem ainda rodam continua em Testes', () => {
+  const runs = [
+    run({
+      status: 'in_progress',
+      conclusion: null,
+      jobs: [{ name: 'ci / build-and-unit', status: 'in_progress' }, { name: 'deploy-prd', status: 'queued' }],
+    }),
+  ];
+  const s = deriveState(snap({ runs, prd: { releaseSha: OLD } }), NOW);
+  assert.equal(s.delivery.state, 'main');
+  assert.equal(stepStatus(s).main, 'active');
+});
+
 test('falhou no deploy', () => {
   const runs = [run({ conclusion: 'failure' })];
   const s = deriveState(snap({ runs, prd: { releaseSha: OLD } }), NOW);
