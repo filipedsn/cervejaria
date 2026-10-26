@@ -1,4 +1,4 @@
-# Copia o banco de PRD para o ambiente de testes (DEV) - TAP-129.
+﻿# Copia o banco de PRD para o ambiente de testes (DEV) - TAP-129.
 # Fluxo: backup na hora pela chave SSH restrita (forced command quiver-tap-prd-dump,
 # so pg_dump para o stdout) -> confere o arquivo -> backup do banco DEV atual ->
 # desliga o DEV -> recria cervejaria_dev e restaura -> desliga e-mail, push e links
@@ -63,36 +63,36 @@ function Undo-Restore([string]$Reason) {
   }
   & (Join-Path $PSScriptRoot 'supervisor.ps1') | Out-Null
   if ($back) { Fail "$Reason O banco de testes voltou ao estado anterior." }
-  Fail "$Reason Nao foi possivel voltar o banco de testes sozinho; o backup esta em $devBackup."
+  Fail "$Reason Não foi possível voltar o banco de testes sozinho; o backup está em $devBackup."
 }
 
 # 1. Pre-condicoes
 $running = (& docker inspect -f '{{.State.Running}}' $container 2>$null) -join ''
-if ($running -ne 'true') { Fail 'O banco do ambiente de testes (Docker) esta desligado; ligue o ambiente de testes antes.' }
+if ($running -ne 'true') { Fail 'O banco do ambiente de testes (Docker) está desligado; ligue o ambiente de testes antes.' }
 
 # 2. Backup de PRD na hora (o forced command ignora o comando pedido)
 & cmd /c "ssh -T -q -o BatchMode=yes -o ConnectTimeout=10 $sshHost > `"$prdFile`" 2> `"$sshErr`""
 $sshCode = $LASTEXITCODE
-if ($sshCode -eq 75) { Fail 'Ha uma publicacao em andamento no servidor; tente de novo em alguns minutos.' }
+if ($sshCode -eq 75) { Fail 'Há uma publicação em andamento no servidor; tente de novo em alguns minutos.' }
 if ($sshCode -ne 0) {
   $why = (Get-Content -LiteralPath $sshErr -ErrorAction SilentlyContinue | Select-Object -First 1) -join ''
-  Fail "Nao foi possivel copiar o banco do site (ssh $sshCode). $why"
+  Fail "Não foi possível copiar o banco do site (ssh $sshCode). $why"
 }
 $size = (Get-Item -LiteralPath $prdFile).Length
 $header = if ($size -ge 5) { [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($prdFile), 0, 5) } else { '' }
-if ($header -ne 'PGDMP') { Fail 'O arquivo recebido do site nao e um backup valido.' }
+if ($header -ne 'PGDMP') { Fail 'O arquivo recebido do site não é um backup válido.' }
 
 & docker cp $prdFile "${container}:$prdInContainer" 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail 'Nao foi possivel levar o backup para o banco de testes.' }
+if ($LASTEXITCODE -ne 0) { Fail 'Não foi possível levar o backup para o banco de testes.' }
 $tables = (& docker exec $container sh -c "pg_restore --list $prdInContainer | grep -c 'TABLE DATA'" 2>$null) -join ''
-if (-not ($tables -match '^\d+$') -or [int]$tables -eq 0) { Fail 'O backup do site nao tem tabelas; nada foi alterado.' }
+if (-not ($tables -match '^\d+$') -or [int]$tables -eq 0) { Fail 'O backup do site não tem tabelas; nada foi alterado.' }
 
 # 3. Backup do banco DEV atual (fora do repositorio)
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 & docker exec $container sh -c "pg_dump -U `$POSTGRES_USER -d $database -Fc -f $devInContainer" 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail 'Nao foi possivel fazer o backup do banco de testes; nada foi alterado.' }
+if ($LASTEXITCODE -ne 0) { Fail 'Não foi possível fazer o backup do banco de testes; nada foi alterado.' }
 & docker cp "${container}:$devInContainer" $devBackup 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $devBackup)) { Fail 'Nao foi possivel guardar o backup do banco de testes; nada foi alterado.' }
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $devBackup)) { Fail 'Não foi possível guardar o backup do banco de testes; nada foi alterado.' }
 Get-ChildItem -LiteralPath $backupDir -Filter 'dev-antes-copia-prd-*.dump' | Sort-Object LastWriteTime -Descending |
   Select-Object -Skip $keepBackups | Remove-Item -Force -ErrorAction SilentlyContinue
 
@@ -102,7 +102,7 @@ if (-not (Reset-Database)) { Undo-Restore 'Falha ao recriar o banco de testes.' 
 $restore = Restore-Archive $prdInContainer
 if ($restore.Code -ne 0) {
   $tail = ($restore.Out | Select-Object -Last 2) -join ' '
-  Undo-Restore "Falha ao restaurar a copia do site: $tail"
+  Undo-Restore "Falha ao restaurar a cópia do site: $tail"
 }
 
 # 5. A copia nao pode falar com clientes nem com a equipe: sem push, sem SMTP de
@@ -116,7 +116,7 @@ UPDATE public."SystemConfig"
  WHERE key = 'platform';
 '@
 $n = Invoke-Sql $neutralize
-if ($n.Code -ne 0) { Undo-Restore "Falha ao desligar e-mail e notificacoes na copia: $(($n.Out | Select-Object -Last 1) -join '')" }
+if ($n.Code -ne 0) { Undo-Restore "Falha ao desligar e-mail e notificações na cópia: $(($n.Out | Select-Object -Last 1) -join '')" }
 
 # 6. Migrations do codigo DEV (run-with-env so aceita cervejaria_dev :5434)
 $migrateLog = Join-Path $paths.LogDir 'copy-prd-migrate.log'
@@ -129,7 +129,7 @@ try {
 }
 if ($migrateCode -ne 0) {
   $tail = (Get-Content -LiteralPath $migrateLog -Tail 2 -ErrorAction SilentlyContinue) -join ' '
-  Undo-Restore "Falha ao aplicar as mudancas de banco do ambiente de testes na copia: $tail"
+  Undo-Restore "Falha ao aplicar as mudanças de banco do ambiente de testes na cópia: $tail"
 }
 
 # 7. Conferencia, limpeza e religar

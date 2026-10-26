@@ -211,7 +211,7 @@ function render(data) {
     ? data.audit
         .map(
           (e) =>
-            `<li data-ok="${e.ok}"><time>${esc(when(e.at))}</time> <span>${esc(e.ok ? e.message : `${e.label}: não deu certo. ${e.message}`)}</span></li>`,
+            `<li data-ok="${e.ok}"><time>${esc(when(e.at))}</time> <span>${e.ok ? esc(e.message) : `<strong>${esc(e.label)}</strong>: não deu certo. ${esc(e.message)}`}</span></li>`,
         )
         .join('')
     : '<li class="empty">Nenhuma ação ainda.</li>';

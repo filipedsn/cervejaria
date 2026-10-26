@@ -6,7 +6,17 @@ import { test } from 'node:test';
 
 const logFile = join(mkdtempSync(join(tmpdir(), 'ops-panel-')), 'audit.log');
 process.env.OPS_PANEL_AUDIT_LOG = logFile;
-const { ACTIONS, ActionError, executeAction, readAudit } = await import('./actions.mjs');
+const { ACTIONS, ActionError, executeAction, powershellCommand, readAudit } = await import('./actions.mjs');
+
+test('PowerShell: UTF-8 antes do script, aspas escapadas e código de saída propagado', () => {
+  const args = powershellCommand("C:\\pasta d'água\\x.ps1", ['a b']);
+  assert.deepEqual(args.slice(0, 4), ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command']);
+  const command = args[4];
+  assert.ok(command.startsWith('[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false);'));
+  assert.ok(command.includes("& 'C:\\pasta d''água\\x.ps1' 'a b';"));
+  assert.ok(command.includes('exit $LASTEXITCODE'));
+  assert.ok(command.includes('exit 1'));
+});
 
 test('lista fechada de ações', () => {
   assert.deepEqual(Object.keys(ACTIONS).sort(), [
