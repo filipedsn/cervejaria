@@ -5,7 +5,7 @@ import { config, ROOT } from './config.mjs';
 import { firstLine, run } from './exec.mjs';
 import { isOnMain } from './collectors/git.mjs';
 import { fetchPendingDeployments, fetchPr, reviewDeployment } from './collectors/github.mjs';
-import { vpsReport } from './collectors/prd.mjs';
+import { collectPrd, vpsReport } from './collectors/prd.mjs';
 import { BACKUP_NAME_RE, backupsView } from './infra.mjs';
 import { isMergeReady, needsUpdate, ver } from './state.mjs';
 
@@ -14,13 +14,15 @@ const SHA_RE = /^[0-9a-f]{40}$/;
 export class ActionError extends Error {}
 
 const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+// Nome de parâmetro (-Sha) não pode ir entre aspas, senão vira valor posicional.
+const psArg = (value) => (/^-[A-Za-z]+$/.test(value) ? value : psQuote(value));
 
 /**
  * -Command em vez de -File: fixa UTF-8 antes do script, senão as mensagens do próprio
  * PowerShell 5.1 saem no código de página do console (cp850) e os acentos quebram.
  */
 export function powershellCommand(path, args = []) {
-  const call = [path, ...args].map(psQuote).join(' ');
+  const call = [psQuote(path), ...args.map(psArg)].join(' ');
   return [
     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
     `[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); try { & ${call}; exit $LASTEXITCODE } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`,
@@ -56,19 +58,51 @@ async function devStart() {
   return 'Ambiente de testes ligando; fica pronto em cerca de 30 segundos.';
 }
 
+// Quando o lockfile muda, a troca reinstala as dependências: pode levar minutos.
+const SWITCH_TIMEOUT_MS = 900_000;
+
 async function devSync() {
-  await must(powershellFile('sync-dev-main.ps1', [], 600_000), 'Trazer a versão oficial');
+  await must(powershellFile('sync-dev-main.ps1', [], SWITCH_TIMEOUT_MS), 'Trazer a versão oficial');
   return 'Ambiente de testes atualizado com a versão oficial; fica pronto em cerca de 30 segundos.';
 }
 
 export const COPY_PRD_WORD = 'COPIAR';
 
-async function devCopyPrd(params) {
-  if (params.confirm !== COPY_PRD_WORD) throw new ActionError(`Para confirmar, digite ${COPY_PRD_WORD}.`);
+async function copyPrdDb() {
   const result = await must(powershellFile('copy-prd-to-dev.ps1', [], 900_000), 'Copiar o banco do site');
   const m = result.stdout.match(/PRD_COPY_OK tables=(\d+) rows=(\d+)/);
-  const detail = m ? ` (${m[1]} tabelas, ${Number(m[2]).toLocaleString('pt-BR')} linhas)` : '';
+  return m ? ` (${m[1]} tabelas, ${Number(m[2]).toLocaleString('pt-BR')} linhas)` : '';
+}
+
+async function devCopyPrd(params) {
+  if (params.confirm !== COPY_PRD_WORD) throw new ActionError(`Para confirmar, digite ${COPY_PRD_WORD}.`);
+  const detail = await copyPrdDb();
   return `Banco do site copiado para o ambiente de testes${detail}. Na cópia, e-mail e notificações ficam desligados. Pronto em cerca de 30 segundos.`;
+}
+
+/** Coloca no DEV a versão que está no site agora; com withDb, copia também o banco do site. */
+async function devMatchPrd(params) {
+  const withDb = params.withDb === true;
+  if (withDb && params.confirm !== COPY_PRD_WORD) throw new ActionError(`Para copiar o banco do site, digite ${COPY_PRD_WORD}.`);
+  const prd = await collectPrd();
+  const sha = prd.releaseSha;
+  if (!sha || !SHA_RE.test(sha)) throw new ActionError('Não foi possível ler a versão do site agora. Tente de novo em instantes.');
+  if (!(await isOnMain(sha))) throw new ActionError('A versão do site não faz parte da versão oficial (main); chame quem desenvolve.');
+  const args = ['-Sha', sha, '-Kind', 'prd', ...(withDb ? ['-SkipMigrate'] : [])];
+  await must(powershellFile('switch-dev-code.ps1', args, SWITCH_TIMEOUT_MS), 'Igualar ao site');
+  if (!withDb) return `Ambiente de testes com a mesma versão do site (${ver(sha)}), mantendo os dados de teste. Pronto em cerca de 30 segundos.`;
+  const detail = await copyPrdDb();
+  return `Ambiente de testes igual ao site: versão ${ver(sha)} e banco copiado${detail}. Na cópia, e-mail e notificações ficam desligados. Pronto em cerca de 30 segundos.`;
+}
+
+/** Coloca no DEV a última versão de um PR pronto, para testar antes de aceitar. */
+async function devTestPr(params) {
+  const number = positiveInt(params.number, 'PR');
+  const pr = await fetchPr(number);
+  if (!isMergeReady(pr)) throw new ActionError(`O PR #${number} ainda não está pronto (testes: ${pr.ci}). Só dá para testar PR que passou nos testes.`);
+  if (!SHA_RE.test(pr.headSha ?? '')) throw new ActionError(`Não foi possível ler a versão do PR #${number}.`);
+  await must(powershellFile('switch-dev-code.ps1', ['-Sha', pr.headSha, '-Kind', 'pr', '-Pr', String(number)], SWITCH_TIMEOUT_MS), `Testar o PR #${number}`);
+  return `Ambiente de testes com o PR #${number}; fica pronto em cerca de 30 segundos em http://localhost:5202. O site dos clientes não mudou e o PR ainda não foi aceito.`;
 }
 
 /** Backup que está no servidor agora (lista recém-lida), com o sha256 esperado. */
@@ -124,6 +158,8 @@ export const ACTIONS = {
   'dev.stop': { label: 'Desligar o ambiente de testes', run: devStop },
   'dev.sync': { label: 'Trazer a versão oficial para o ambiente de testes', run: devSync },
   'dev.copyPrd': { label: 'Copiar o banco do site para o ambiente de testes', run: devCopyPrd },
+  'dev.matchPrd': { label: 'Igualar o ambiente de testes ao site', run: devMatchPrd },
+  'dev.testPr': { label: 'Testar PR no ambiente de testes', run: devTestPr },
   'dev.restart': {
     label: 'Reiniciar o ambiente de testes',
     run: async () => {

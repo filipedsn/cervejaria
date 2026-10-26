@@ -29,10 +29,14 @@ function normalizePr(pr) {
     mergeState: pr.mergeStateStatus,
     baseBranch: pr.baseRefName,
     ci: ciState(pr.statusCheckRollup),
+    touchesApp: Array.isArray(pr.files) ? pr.files.some((f) => APP_PATH_RE.test(f.path)) : null,
   };
 }
 
-const PR_FIELDS = 'number,title,url,headRefName,headRefOid,baseRefName,isDraft,mergeable,mergeStateStatus,statusCheckRollup';
+/** Arquivos que mudam o sistema dos clientes (o que o ambiente de testes roda). */
+const APP_PATH_RE = /^(backend|frontend)\//;
+
+const PR_FIELDS = 'number,title,url,headRefName,headRefOid,baseRefName,isDraft,mergeable,mergeStateStatus,statusCheckRollup,files';
 
 /** O gh devolve 0001-01-01 para datas ainda não preenchidas. */
 const isoOrNull = (value) => (value && !String(value).startsWith('0001') ? value : null);
@@ -117,7 +121,7 @@ export async function collectGithub() {
 }
 
 export async function fetchPr(number) {
-  const pr = await gh(['pr', 'view', String(number), '--repo', R, '--json', `${PR_FIELDS},state,commits,files`]);
+  const pr = await gh(['pr', 'view', String(number), '--repo', R, '--json', `${PR_FIELDS},state,commits`]);
   return {
     ...normalizePr(pr),
     state: pr.state,
