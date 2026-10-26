@@ -200,6 +200,18 @@ export function Layout() {
       : [...navItemsCervejaria, ...navItemsComplementares];
 
   const navItemsOperacaoModo = getOperationalModeNavItems({ ...operacao, isDono, permissoesOperacao: usuario?.permissoesOperacao });
+  const navItemsOperacaoUnificados = [
+    ...(operacao.operationMode === 'EVENTO'
+      ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
+      : []),
+    ...getOperacaoNavItems({
+      temCozinha: operacao.temCozinha,
+      controlaEstoque: operacao.controlaEstoque,
+      isDono,
+      permissoesOperacao: usuario?.permissoesOperacao,
+      operationMode: operacao.operationMode,
+    }),
+  ];
   const catalogoNavItem = navItemsOperacaoModo.find((item) => item.path === '/operacao/catalogo');
   const navItemsCervejariaComCatalogo = catalogoNavItem
     ? [
@@ -209,25 +221,16 @@ export function Layout() {
       ]
     : navItemsCervejariaOrdenados;
   const navItemsOperacaoModoSemCatalogo = navItemsOperacaoModo.filter((item) => item.path !== '/operacao/catalogo');
-  const navItems = inOperacao
+  // Keep one operational menu while moving between operation and brewery pages
+  // such as Clientes. Previously each route built a different list and order.
+  const navItems = operacao.ativo
+    ? navItemsOperacaoUnificados
+    : inOperacao
     ? operacaoLoading
       ? navItemsComandasOperacao
-      : operacao.ativo
-        ? [
-            ...(operacao.operationMode === 'EVENTO'
-              ? [{ path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const }]
-              : []),
-            ...getOperacaoNavItems({
-              temCozinha: operacao.temCozinha,
-              controlaEstoque: operacao.controlaEstoque,
-              isDono,
-              permissoesOperacao: usuario?.permissoesOperacao,
-              operationMode: operacao.operationMode,
-            }),
-          ]
-        : operacao.operationMode === 'EVENTO'
-          ? navItemsCervejariaComCatalogo
-          : navItemsComandasOperacao
+      : operacao.operationMode === 'EVENTO'
+        ? navItemsCervejariaComCatalogo
+        : navItemsComandasOperacao
     : operacao.operationMode === 'CAIXA'
       ? [...navItemsOperacaoModoSemCatalogo, ...navItemsCervejariaComCatalogo]
       : [...navItemsCervejariaComCatalogo, ...navItemsOperacaoModoSemCatalogo];
