@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  isAllowedAction,
   isAllowedOrigin,
   isLoopbackIp,
   isTrustedLocalOperator,
@@ -59,6 +60,20 @@ test('IP remoto nao opera mesmo com Origin correto', () => {
       { ip: '203.0.113.9', headers: { origin: 'http://127.0.0.1:3099' } },
       { port: 3099 },
     ),
+    false,
+  );
+});
+
+test('porta antiga 3100 nao e mais origem valida', () => {
+  assert.equal(isAllowedOrigin('http://127.0.0.1:3100', 3099), false);
+});
+
+test('acao exige o header x-ops-panel alem de operador local', () => {
+  const local = { ip: '127.0.0.1', headers: { origin: 'http://127.0.0.1:3099' } };
+  assert.equal(isAllowedAction(local, { port: 3099 }), false);
+  assert.equal(isAllowedAction({ ...local, headers: { ...local.headers, 'x-ops-panel': '1' } }, { port: 3099 }), true);
+  assert.equal(
+    isAllowedAction({ ip: '127.0.0.1', headers: { origin: 'http://evil.example', 'x-ops-panel': '1' } }, { port: 3099 }),
     false,
   );
 });

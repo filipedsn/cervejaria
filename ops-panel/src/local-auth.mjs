@@ -1,8 +1,10 @@
 /**
- * O painel so escuta em localhost. Quem abre http://127.0.0.1:3099 no browser
- * desta maquina ja e o operador — nao faz sentido colar de novo o token que
- * esta no .env. CSRF de outra origem continua bloqueado pelo Origin.
+ * O painel só escuta em 127.0.0.1 e só atende o navegador desta máquina.
+ * Ações (POST) exigem o header x-ops-panel: um formulário de outra origem não consegue enviá-lo
+ * sem preflight CORS, que o painel não libera.
  */
+
+export const ACTION_HEADER = 'x-ops-panel';
 
 export function normalizeIp(ip) {
   return String(ip || '')
@@ -26,26 +28,21 @@ export function originOf(headers = {}) {
   }
 }
 
-export function   allowedOrigins(port, extra = []) {
-  return [
-    `http://127.0.0.1:${port}`,
-    `http://localhost:${port}`,
-    `http://[::1]:${port}`,
-    'http://127.0.0.1:3099',
-    'http://localhost:3099',
-    'http://127.0.0.1:3100',
-    'http://localhost:3100',
-    ...extra,
-  ];
+export function allowedOrigins(port) {
+  return [`http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`];
 }
 
-export function isAllowedOrigin(origin, port, extra = []) {
+export function isAllowedOrigin(origin, port) {
   if (!origin) return true;
-  return allowedOrigins(port, extra).includes(origin);
+  return allowedOrigins(port).includes(origin);
 }
 
-export function isTrustedLocalOperator(request, { port, extraOrigins = [] } = {}) {
+export function isTrustedLocalOperator(request, { port } = {}) {
   const ip = request.ip || request.socket?.remoteAddress;
   if (!isLoopbackIp(ip)) return false;
-  return isAllowedOrigin(originOf(request.headers || {}), port, extraOrigins);
+  return isAllowedOrigin(originOf(request.headers || {}), port);
+}
+
+export function isAllowedAction(request, options) {
+  return isTrustedLocalOperator(request, options) && request.headers?.[ACTION_HEADER] === '1';
 }

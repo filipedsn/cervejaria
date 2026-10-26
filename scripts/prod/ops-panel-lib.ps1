@@ -1,6 +1,8 @@
-# Funcoes compartilhadas do ops-panel — uma porta, um estado, sem surpresas.
+# Funcoes compartilhadas do ops-panel: uma porta, um estado, sem surpresas.
 
 $ErrorActionPreference = 'Stop'
+
+$script:OpsPanelVersion = 2
 
 function Get-OpsPanelConfiguredPort {
   param([string]$EnvFile)
@@ -12,23 +14,12 @@ function Get-OpsPanelConfiguredPort {
   return 3099
 }
 
-function Test-OpsPanelCurrent {
+function Get-OpsPanelHealth {
   param([int]$Port)
   try {
-    $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/session" -UseBasicParsing -TimeoutSec 3
-    return $r.StatusCode -eq 200
+    return Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 3
   } catch {
-    return $false
-  }
-}
-
-function Test-OpsPanelHealthOnly {
-  param([int]$Port)
-  try {
-    $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/health" -UseBasicParsing -TimeoutSec 3
-    return $r.StatusCode -eq 200
-  } catch {
-    return $false
+    return $null
   }
 }
 
@@ -45,143 +36,66 @@ function Stop-PortListener {
   if (-not $procId) { return $false }
   $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$procId" -ErrorAction SilentlyContinue
   if (-not $proc -or $proc.Name -ine 'node.exe' -or $proc.CommandLine -notlike '*server.mjs*') {
-    if (-not $Quiet) { Write-Host "Listener :$Port (PID $procId) nao e o Ops Panel identificado; nao sera encerrado." -ForegroundColor Yellow }
+    if (-not $Quiet) { Write-Host "Listener :$Port (PID $procId) nao e o Ops Panel; nao sera encerrado." -ForegroundColor Yellow }
     return $false
   }
   if (-not $Quiet) { Write-Host "Encerrando listener :$Port (PID $procId)..." -ForegroundColor Yellow }
-  Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-  Start-Sleep -Milliseconds 400
   & taskkill.exe /F /PID $procId 2>$null | Out-Null
   Start-Sleep -Milliseconds 400
   return $null -eq (Get-PortListenerPid -Port $Port)
 }
 
-function Read-OpsPanelMeta {
-  param([string]$MetaFile)
-  if (-not (Test-Path $MetaFile)) { return $null }
-  try {
-    $raw = Get-Content -LiteralPath $MetaFile -Raw -Encoding UTF8
-    if ($raw.Length -gt 0 -and [int][char]$raw[0] -eq 0xFEFF) { $raw = $raw.Substring(1) }
-    return $raw | ConvertFrom-Json
-  } catch {
-    return $null
-  }
-}
-
 <#
   Estados:
-  - current   versao atual respondendo em /api/session
-  - legacy    /api/health ok mas sem /api/session (instancia antiga)
-  - blocked   porta ocupada mas nao responde como ops-panel
+  - current   /api/health responde app=quiver-tap-ops na versao atual
+  - legacy    /api/health responde, mas e o painel antigo
+  - blocked   porta ocupada por algo que nao e o painel
   - stopped   porta livre
 #>
 function Get-OpsPanelLiveStatus {
-  param(
-    [int]$Port,
-    [string]$MetaFile = ''
-  )
+  param([int]$Port)
 
   $url = "http://127.0.0.1:$Port"
-  $meta = if ($MetaFile) { Read-OpsPanelMeta -MetaFile $MetaFile } else { $null }
+  $health = Get-OpsPanelHealth -Port $Port
+  $listener = Get-PortListenerPid -Port $Port
 
-  if (Test-OpsPanelCurrent -Port $Port) {
-    return [ordered]@{
-      state = 'current'
-      port = $Port
-      url = $url
-      pid = if ($meta -and $meta.pid) { [int]$meta.pid } else { Get-PortListenerPid -Port $Port }
-      meta = $meta
-    }
-  }
-
-  if (Test-OpsPanelHealthOnly -Port $Port) {
-    return [ordered]@{
-      state = 'legacy'
-      port = $Port
-      url = $url
-      pid = Get-PortListenerPid -Port $Port
-      meta = $null
-    }
-  }
-
-  $blocker = Get-PortListenerPid -Port $Port
-  if ($blocker) {
-    return [ordered]@{
-      state = 'blocked'
-      port = $Port
-      url = $url
-      pid = $blocker
-      meta = $null
-    }
+  $state = if ($health -and $health.app -eq 'quiver-tap-ops' -and $health.version -eq $script:OpsPanelVersion) {
+    'current'
+  } elseif ($health) {
+    'legacy'
+  } elseif ($listener) {
+    'blocked'
+  } else {
+    'stopped'
   }
 
   return [ordered]@{
-    state = 'stopped'
+    state = $state
     port = $Port
     url = $url
-    pid = $null
-    meta = $null
+    pid = if ($health -and $health.pid) { [int]$health.pid } else { $listener }
   }
 }
 
 function Write-OpsPanelStatusReport {
-  param(
-    [object]$Status,
-    [int[]]$ExtraPortsToScan = @(3100)
-  )
-
-  $state = $Status.state
-  $port = $Status.port
-  $url = $Status.url
+  param([object]$Status)
 
   Write-Host ''
-  Write-Host 'Quiver Tap Ops Panel' -ForegroundColor Cyan
-  Write-Host '====================' -ForegroundColor Cyan
-  Write-Host "Porta configurada   $port"
-  Write-Host "URL                 $url"
+  Write-Host "Quiver Tap Ops  $($Status.url)" -ForegroundColor Cyan
 
-  switch ($state) {
+  switch ($Status.state) {
     'current' {
-      Write-Host 'Estado              RODANDO (versao atual)' -ForegroundColor Green
-      if ($Status.pid) { Write-Host "PID                 $($Status.pid)" }
-      if ($Status.meta -and $Status.meta.startedAt) {
-        Write-Host "Iniciado em         $($Status.meta.startedAt)"
-      }
+      Write-Host "Rodando (PID $($Status.pid))" -ForegroundColor Green
     }
     'legacy' {
-      Write-Host 'Estado              LEGADO - instancia antiga na porta' -ForegroundColor Red
-      Write-Host "PID bloqueando      $($Status.pid)" -ForegroundColor Yellow
-      Write-Host ''
-      Write-Host 'Esta instancia nao tem sessao local nem agente de suporte.' -ForegroundColor Yellow
-      Write-Host 'Encerre o processo (PowerShell como Administrador):' -ForegroundColor Yellow
-      Write-Host "  taskkill /F /PID $($Status.pid)" -ForegroundColor Gray
-      Write-Host '  npm run ops:start' -ForegroundColor Gray
+      Write-Host "Painel antigo na porta (PID $($Status.pid)). Rode: npm run ops:restart" -ForegroundColor Red
     }
     'blocked' {
-      Write-Host 'Estado              PORTA OCUPADA por outro processo' -ForegroundColor Red
-      Write-Host "PID bloqueando      $($Status.pid)" -ForegroundColor Yellow
-      Write-Host ''
-      Write-Host 'A porta nao responde como ops-panel. Libere-a ou encerre o processo.' -ForegroundColor Yellow
+      Write-Host "Porta ocupada por outro processo (PID $($Status.pid)). Libere a porta ou mude OPS_PANEL_PORT em ops-panel/.env" -ForegroundColor Red
     }
     default {
-      Write-Host 'Estado              PARADO' -ForegroundColor Yellow
-      Write-Host ''
-      Write-Host 'Para subir: npm run ops:start' -ForegroundColor Gray
+      Write-Host 'Parado. Para subir: npm run ops:start' -ForegroundColor Yellow
     }
   }
-
-  foreach ($extra in $ExtraPortsToScan) {
-    if ($extra -eq $port) { continue }
-    $extraStatus = Get-OpsPanelLiveStatus -Port $extra
-    if ($extraStatus.state -eq 'current') {
-      Write-Host ''
-      Write-Host "AVISO: outra instancia CURRENT na porta $extra ($($extraStatus.url))." -ForegroundColor Yellow
-      Write-Host 'Pare com: npm run ops:stop' -ForegroundColor Gray
-    } elseif ($extraStatus.state -in @('legacy', 'blocked')) {
-      Write-Host ''
-      Write-Host "AVISO: processo estranho na porta $extra (PID $($extraStatus.pid))." -ForegroundColor DarkYellow
-    }
-  }
-
   Write-Host ''
 }
