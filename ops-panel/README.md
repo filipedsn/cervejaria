@@ -1,4 +1,4 @@
-# Quiver Tap Ops
+# Tap Quiver Ops
 
 Painel local, numa tela só, para saber em que pé está a entrega e agir sem abrir GitHub, terminal ou VPS.
 Roda no PC em `http://127.0.0.1:3099` e só atende o navegador desta máquina.

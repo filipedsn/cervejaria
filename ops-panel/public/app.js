@@ -37,6 +37,7 @@ const CI_TEXT = { success: 'testes ok', failure: 'testes falharam', pending: 'te
 const DEPLOY_RESULT = { ok: 'publicada', 'rolled-back': 'falhou e voltou à anterior' };
 
 let state = null;
+let uiBuild = null;
 let loading = false;
 const registry = new Map();
 let seq = 0;
@@ -171,7 +172,7 @@ function render(data) {
   registry.clear();
   $('updated').textContent = `${data.moving ? 'ao vivo · ' : ''}atualizado às ${time(data.at)}`;
   $('live').dataset.mode = data.moving ? 'fast' : 'idle';
-  document.title = data.verdict.level === 'warn' || data.verdict.level === 'bad' ? '(!) Quiver Tap Ops' : 'Quiver Tap Ops';
+  document.title = data.verdict.level === 'warn' || data.verdict.level === 'bad' ? '(!) Tap Quiver Ops' : 'Tap Quiver Ops';
   if (previous && previous.verdict.text !== data.verdict.text) {
     const box = $('verdict');
     box.classList.remove('changed');
@@ -221,7 +222,14 @@ async function refresh(force = false) {
   loading = true;
   $('refresh').disabled = true;
   try {
-    render(await api(`/api/state${force ? '?force=1' : ''}`));
+    const data = await api(`/api/state${force ? '?force=1' : ''}`);
+    // A tela foi atualizada no PC: recarrega para não mostrar dados novos com código velho.
+    if (uiBuild && data.ui && data.ui !== uiBuild && !modal.open) {
+      location.reload();
+      return;
+    }
+    uiBuild ??= data.ui;
+    render(data);
   } catch (error) {
     $('updated').textContent = `sem resposta do painel: ${error.message}`;
     $('live').dataset.mode = 'off';
@@ -300,7 +308,7 @@ function previewHtml(p, actionName) {
   const from = versionTag(p.fromVersion, p.from.slice(0, 7));
   const to = versionTag(p.toVersion, p.to.slice(0, 7));
   if (p.direction === 'rollback') {
-    return `<p class="lead warn-text">O site dos clientes vai voltar da versão <code>${from}</code> para a versão <code>${to}</code>, mais antiga.</p>
+    return `<p class="lead warn-text">O site dos clientes vai voltar da versão ${from} para a versão ${to}, mais antiga.</p>
       <h3>Estas mudanças saem do ar</h3>${commitList(p.commits)}
       ${migrationsHtml(p.migrations, 'rollback')}
       <p class="note">Ao confirmar, a esteira testa essa versão e, no fim, pede sua autorização aqui.</p>`;
@@ -313,7 +321,7 @@ function previewHtml(p, actionName) {
           <li>Se algo der errado, a esteira volta sozinha para a versão atual.</li>
         </ol>`
       : '<p class="note">Ao confirmar, a esteira testa de novo e, no fim, pede sua autorização aqui. Nada vai ao ar sem esse segundo clique.</p>';
-  return `<p class="lead">O site dos clientes vai passar da versão <code>${from}</code> para a versão <code>${to}</code>.</p>
+  return `<p class="lead">O site dos clientes vai passar da versão ${from} para a versão ${to}.</p>
     <h3>O que muda</h3>${commitList(p.commits)}
     ${migrationsHtml(p.migrations, 'forward')}
     <h3>O que acontece ao confirmar</h3>${steps}`;

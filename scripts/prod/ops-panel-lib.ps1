@@ -81,7 +81,7 @@ function Write-OpsPanelStatusReport {
   param([object]$Status)
 
   Write-Host ''
-  Write-Host "Quiver Tap Ops  $($Status.url)" -ForegroundColor Cyan
+  Write-Host "Tap Quiver Ops  $($Status.url)" -ForegroundColor Cyan
 
   switch ($Status.state) {
     'current' {
