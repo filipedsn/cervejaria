@@ -458,6 +458,8 @@ dd {
 /* ---------- infraestrutura do servidor (cartão Site dos clientes) ---------- */
 
 .area.wide,
+#card-git,
+#card-dev,
 .areas:has(#card-prd.wide) #card-pipeline {
   grid-column: 1 / -1;
 }
