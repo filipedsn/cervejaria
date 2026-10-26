@@ -6,6 +6,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/tap-quiver/Dockerfile
+      target: runner
     image: quiver-tap-api:staging
     container_name: cervejaria-api
     restart: unless-stopped
@@ -33,6 +34,19 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  # Só para o deploy (`docker compose run --rm migrator ...`); nunca fica rodando.
+  migrator:
+    profiles: ["tools"]
+    build:
+      context: ../..
+      dockerfile: deploy/tap-quiver/Dockerfile
+      target: migrator
+    image: quiver-tap-migrator:staging
+    network_mode: host
+    env_file:
+      - .env.staging
+    restart: "no"
 
 volumes:
   uploads_data:

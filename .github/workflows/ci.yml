@@ -26,6 +26,20 @@ jobs:
     name: build-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: cervejaria
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d cervejaria"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,6 +69,27 @@ jobs:
       - name: Prisma generate
         working-directory: backend
         run: npx prisma generate
+
+      - name: Migrations aplicam do zero (Postgres 16)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/cervejaria?schema=public
+        run: npx --no-install prisma migrate deploy
+
+      # known-drift.sql = divergência histórica (constraints/índices só em SQL) entre migrations e
+      # schema.prisma. Qualquer diferença nova significa schema.prisma alterado sem migration (ou o
+      # contrário). Ao corrigir de propósito, regenere o arquivo com o mesmo comando.
+      - name: schema.prisma coerente com as migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/cervejaria?schema=public
+        run: |
+          npx --no-install prisma migrate diff --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma --script > "$RUNNER_TEMP/drift.sql"
+          if ! diff -u prisma/known-drift.sql "$RUNNER_TEMP/drift.sql"; then
+            echo "::error::schema.prisma e migrations divergem além do known-drift.sql. Gere a migration (npm run db:migrate) ou atualize o known-drift.sql se a mudança for intencional."
+            exit 1
+          fi
 
       - name: Backend unit tests
         run: npm run test:unit --prefix backend

@@ -384,7 +384,7 @@ branch → PR → CI remoto obrigatório (build-and-unit) → merge main
 ### Fase B — CD para o VPS (próximo)
 1. [x] Esteira "Deploy PRD (VPS)" — CI + build por SHA + aprovação no environment `production` + deploy via Tailscale (TAP-126, §7.1).  
 2. [ ] **Ativar** — policy `tag:ci` + OAuth Tailscale + 1º deploy aprovado (§7.1.B/C).  
-3. [x] Endurecer: backup Postgres antes do recreate · bloqueio de migrations · `RELEASE_SHA` a cada deploy · rollback automático para a imagem anterior. (opcional) GHCR.  
+3. [x] Endurecer: backup Postgres antes do recreate · migrations com guard + ensaio em cópia da PRD + `prisma migrate deploy` (§7.1.G) · `RELEASE_SHA` a cada deploy · rollback automático para a imagem anterior. (opcional) GHCR.  
 4. [x] Secrets de app só no VPS (Actions só tem Tailscale + chave SSH do CI).
 
 ### Fase C — Cutover — **FEITA**
@@ -421,9 +421,9 @@ flowchart LR
 
 ```
 push na main (ou "Run workflow" manual)
-  → resolve-sha  (SHA precisa pertencer à main)
-  → ci / build-and-unit  (mesmo ci.yml do PR, no SHA exato)
-  → docker-build-sha     (valida a imagem)
+  → resolve-sha  (SHA precisa pertencer à main; lista migrations PRD → SHA no resumo)
+  → ci / build-and-unit  (mesmo ci.yml do PR, no SHA exato; migrations do zero + drift)
+  → docker-build-sha     (valida as imagens api e migrator)
   → deploy-prd  ⏸ aguarda "Review deployments → Approve" (required reviewer)
        → runner entra na tailnet como tag:ci
        → ssh com chave exclusiva do CI → forced command deploy-gate.sh
@@ -433,13 +433,16 @@ push na main (ou "Run workflow" manual)
 
 | Artefato | Path | Papel |
 |---|---|---|
-| Workflow | `.github/workflows/deploy-vps.yml` ("Deploy PRD (VPS)") | push na `main` + `workflow_dispatch` (input `sha` opcional = rollback) |
+| Workflow | `.github/workflows/deploy-vps.yml` ("Deploy PRD (VPS)") | push na `main` + `workflow_dispatch` (input `sha` opcional = rollback; `allow_destructive` = autoriza migration destrutiva) |
 | CI reutilizado | `.github/workflows/ci.yml` (`workflow_call`, input `ref`) | mesmo gate do merge |
-| Gate SSH | `deploy/tap-quiver/deploy-gate.sh` → instalado em `/usr/local/sbin/quiver-tap-deploy-gate` | a chave do CI só executa `deploy <sha> [modo]` ou `status`; sem shell |
+| Gate SSH | `deploy/tap-quiver/deploy-gate.sh` → instalado em `/usr/local/sbin/quiver-tap-deploy-gate` | a chave do CI só executa `deploy <sha> [modo] [allow-destructive]` ou `status`; sem shell |
 | Deploy remoto | `deploy/tap-quiver/deploy-prd.sh` (sempre a versão da `origin/main`) | procedimento abaixo |
+| Guard de migrations | `deploy/tap-quiver/migration-guard.sh` | lista migrations entre dois SHAs; marca SQL destrutivo e migration alterada |
+| Imagem migrator | `Dockerfile` target `migrator` + serviço `migrator` (profile `tools`) no compose | Prisma CLI + migrations do mesmo SHA; só roda via `compose run --rm` |
+| Baseline de drift | `backend/prisma/known-drift.sql` | divergência histórica schema × migrations aceita pelo CI |
 | Histórico | `/var/log/quiver-tap-deploy.log` no VPS | uma linha por deploy (`ok`, `rolled-back`, …) |
 
-**`deploy-prd.sh` (ordem):** lock (`flock`) → SHA ∈ `main` (e, no modo `head-only`, = HEAD da main) → **aborta se houver migrations Prisma** desde o `RELEASE_SHA` atual (runtime não tem Prisma CLI; schema é manual) → **backup Postgres** (`backup-postgres.sh`, mesmo do cron, inclui off-site) → imagem atual vira `quiver-tap-api:rollback` → `git checkout` em `/opt/cervejaria-git` + `rsync --delete` para `/opt/quiver-tap` **preservando** `.env.staging`, `.env.observability`, `backup-postgres.*` e `backups/` → `RELEASE_SHA` → `docker compose build api` (tag `:<sha>`) → `up -d --no-build --force-recreate api` → espera `/api/ready` + `releaseSha`. **Falha depois do sync = rollback automático** para o SHA/imagem anteriores. Mantém as 5 últimas imagens `:<sha>`.
+**`deploy-prd.sh` (ordem):** lock (`flock`) → SHA ∈ `main` (e, no modo `head-only`, = HEAD da main) → **guard de migrations** desde o `RELEASE_SHA` atual (destrutiva sem `allow-destructive` ou migration alterada = recusa, código 6, nada muda) → **backup Postgres** (`backup-postgres.sh`, mesmo do cron, inclui off-site) → imagem atual vira `quiver-tap-api:rollback` → `git checkout` em `/opt/cervejaria-git` + `rsync --delete` para `/opt/quiver-tap` **preservando** `.env.staging`, `.env.observability`, `backup-postgres.*` e `backups/` → `RELEASE_SHA` → `docker compose build api` (tag `:<sha>`) → **se houver migrations:** build do `migrator` → **ensaio** (restaura o backup recém-feito num Postgres descartável em `127.0.0.1:55432` e roda `prisma migrate deploy` nele) → `prisma migrate deploy` em PRD → `up -d --no-build --force-recreate api` → espera `/api/ready` + `releaseSha`. **Falha depois do sync = rollback automático** do código/imagem; o schema não é revertido (§7.1.G). Mantém as 5 últimas imagens `:<sha>` de api e migrator.
 
 **Modos:** push na main = `head-only` (se um run antigo for aprovado depois de um merge mais novo, ele é ignorado com aviso — o run mais novo publica o HEAD). `workflow_dispatch` com `sha` = `allow-older` (rollback intencional).
 
@@ -490,7 +493,8 @@ Emergência sem GitHub/Tailscale do runner (SSH humano via Tailscale):
 
 #### E. Limites conhecidos
 
-- Migrations Prisma: a esteira **recusa** o deploy; aplicar manualmente com backup e só então aprovar/reexecutar.
+- Migrations rodam **antes** do recreate, com a API antiga no ar: só funciona com expand/contract (§7.1.G).
+- Schema não tem rollback automático; o ponto de restauração é o backup do início do deploy.
 - Downtime de segundos no `force-recreate` (container único).
 - Imagem é construída no VPS (sem registry). GHCR continua opcional.
 
@@ -501,6 +505,28 @@ Emergência sem GitHub/Tailscale do runner (SSH humano via Tailscale):
 - Remover o required reviewer do environment `production` ou o forced command da chave do CI.  
 - Usar o IP público no SSH do deploy.
 
+#### G. Migrations Prisma
+
+**Regra expand/contract.** A migration roda enquanto a versão anterior da API ainda atende, e um rollback de código volta a API antiga sobre o schema novo. Então toda migration precisa ser compatível com o código anterior:
+
+1. **Expand** (deploy normal): só adiciona — tabela, coluna nullable ou com default, índice, FK. Código novo passa a usar.
+2. **Contract** (deploy separado, depois que nenhum código usa o legado): `DROP`, `RENAME`, mudança de tipo, `SET NOT NULL`, `DELETE`/`TRUNCATE`. O guard marca isso como destrutivo; publicar só via **Run workflow** com `allow_destructive` marcado, após revisar o SQL no resumo do `resolve-sha`.
+3. Migration já publicada **nunca** é editada nem removida (guard recusa). Corrigir = nova migration.
+
+**Onde cada coisa é checada:**
+
+| Etapa | O que garante |
+|---|---|
+| PR (`build-and-unit`) | todas as migrations aplicam do zero em Postgres 16; `schema.prisma` não diverge das migrations além de `known-drift.sql` |
+| `resolve-sha` | lista no resumo as migrations entre o `releaseSha` público e o candidato; falha cedo se destrutiva sem `allow_destructive` |
+| VPS (`deploy-prd.sh`) | repete o guard contra o `RELEASE_SHA` real; ensaia na cópia recém-feita da PRD; só então `migrate deploy` em PRD |
+
+**DEV primeiro:** os scripts de release do DEV não aplicam migrations. Rodar `npm run db:migrate` (ou `prisma migrate deploy`) no DEV local e validar antes de aprovar o deploy de PRD.
+
+**`known-drift.sql`:** constraints/índices criados só em SQL nas migrations antigas fazem `prisma migrate diff` não sair vazio. O CI compara com esse baseline; diferença nova = migration faltando (ou `schema.prisma` esquecido). Para regenerar, num Postgres vazio com as migrations aplicadas: `npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script > prisma/known-drift.sql` (LF, sem BOM).
+
+**Se o deploy falhar depois do `migrate deploy`:** o código volta sozinho; o log avisa que o schema ficou migrado. Conferir `docker compose --profile tools run --rm -T migrator npx --no-install prisma migrate status` no VPS. Migration com falha no meio: corrigir com nova migration ou `prisma migrate resolve`; em último caso restaurar o backup do início do deploy (perde escritas posteriores — decisão humana).
+
 ---
 
 ## 8. Restrições de produto (não negociáveis)
@@ -508,7 +534,7 @@ Emergência sem GitHub/Tailscale do runner (SSH humano via Tailscale):
 1. `PDV_CANONICAL_ALL=1` + production → `DATABASE_URL` host ∈ `{localhost,127.0.0.1,[::1]}`, porta 5432, DB `cervejaria`.
 2. Cookies Secure apenas em HTTPS (`authCookiesShouldBeSecure` / `APP_URL`).
 3. Deploy prod exige confirmação humana explícita (skills).
-4. Migrations: sem rollback automático de schema — backup antes obrigatório.
+4. Migrations: sem rollback automático de schema — backup antes obrigatório; expand/contract (§7.1.G).
 5. ES/Kibana **nunca** expor na internet pública; ops via Tailscale.
 6. SSH admin **via Tailscale**; não reabrir `:22` “any” sem necessidade.
 7. **Segregação Dev/PRD (§0.1):** app/DB/Elastic de DEV no PC; app/DB/Elastic de PRD no VPS. Clusters Elastic **não** são compartilhados. Não cruzar URLs nem credenciais entre mundos.

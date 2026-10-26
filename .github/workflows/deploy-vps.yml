@@ -20,6 +20,11 @@ on:
         type: string
         required: false
         default: ""
+      allow_destructive:
+        description: "Autorizo migrations destrutivas (DROP/RENAME/TYPE/NOT NULL/DELETE) — fase contract, já revisada."
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -33,6 +38,7 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
       mode: ${{ steps.sha.outputs.mode }}
+      destructive_flag: ${{ steps.migrations.outputs.flag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,6 +67,43 @@ jobs:
             echo "- Commit: $(git log -1 --format='%s' "$sha")"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Prévia contra o SHA que está em PRD agora. O VPS repete a checagem contra o
+      # RELEASE_SHA real no momento do deploy (é lá que a decisão vale).
+      - name: Migrations até o candidato
+        id: migrations
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          ALLOW_DESTRUCTIVE: ${{ inputs.allow_destructive && 'true' || 'false' }}
+        run: |
+          set -uo pipefail
+          health="$(curl -fsS -H 'Cache-Control: no-cache' "https://tap.quivercloud.com.br/api/health?ts=$(date +%s)" || true)"
+          prd="$(printf '%s' "$health" | sed -n 's/.*"releaseSha":"\([0-9a-f]\{40\}\)".*/\1/p')"
+          flag=""
+          [ "$ALLOW_DESTRUCTIVE" = "true" ] && flag="allow-destructive"
+          echo "flag=$flag" >> "$GITHUB_OUTPUT"
+          if [ -z "$prd" ] || ! git cat-file -e "${prd}^{commit}" 2>/dev/null; then
+            echo "::warning::Não deu para ler o releaseSha de PRD; o VPS fará a checagem de migrations no deploy."
+            exit 0
+          fi
+          out="$(bash deploy/tap-quiver/migration-guard.sh "$prd" "$SHA")"
+          code=$?
+          {
+            echo "### Migrations (PRD \`${prd:0:12}\` → \`${SHA:0:12}\`)"
+            if [ -z "$out" ]; then echo "- nenhuma"; else printf '%s\n' "$out" | sed 's/^/- /'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ -n "$out" ] && printf '%s\n' "$out"
+          case "$code" in
+            0) ;;
+            3)
+              if [ "$ALLOW_DESTRUCTIVE" != "true" ]; then
+                echo "::error::Há migration destrutiva. Revise (expand/contract) e rode o workflow manualmente com allow_destructive=true."
+                exit 1
+              fi
+              echo "::warning::Migration destrutiva autorizada por allow_destructive=true." ;;
+            4) echo "::error::Migration já publicada foi alterada/removida; crie uma nova migration."; exit 1 ;;
+            *) echo "::error::migration-guard falhou (código $code)."; exit 1 ;;
+          esac
+
   ci:
     name: ci
     needs: resolve
@@ -87,9 +130,20 @@ jobs:
         with:
           context: .
           file: deploy/tap-quiver/Dockerfile
+          target: runner
           push: false
           load: true
           tags: quiver-tap-api:${{ needs.resolve.outputs.sha }}
+
+      - name: Build migrator (Prisma CLI + migrations)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/tap-quiver/Dockerfile
+          target: migrator
+          push: false
+          load: true
+          tags: quiver-tap-migrator:${{ needs.resolve.outputs.sha }}
 
   deploy:
     name: deploy-prd
@@ -105,6 +159,7 @@ jobs:
     env:
       SHA: ${{ needs.resolve.outputs.sha }}
       MODE: ${{ needs.resolve.outputs.mode }}
+      DESTRUCTIVE_FLAG: ${{ needs.resolve.outputs.destructive_flag }}
     steps:
       - name: Conferir secrets do environment
         env:
@@ -153,13 +208,15 @@ jobs:
         run: |
           set +e
           # shellcheck disable=SC2029
-          ssh quiver-vps "deploy $SHA $MODE"
+          ssh quiver-vps "deploy $SHA $MODE $DESTRUCTIVE_FLAG"
           code=$?
-          if [ "$code" -eq 5 ]; then
-            echo "::warning::$SHA não é mais o HEAD da main; deploy ignorado (um run mais novo publica o HEAD)."
-            echo "superseded=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          case "$code" in
+            5)
+              echo "::warning::$SHA não é mais o HEAD da main; deploy ignorado (um run mais novo publica o HEAD)."
+              echo "superseded=true" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+            6) echo "::error::Deploy recusado antes de mexer em PRD (migration destrutiva sem autorização, migration alterada ou RELEASE_SHA ausente). Veja o log acima." ;;
+          esac
           exit "$code"
 
       - name: Smoke público
