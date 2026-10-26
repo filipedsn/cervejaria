@@ -332,8 +332,8 @@ DKIM cinza (`hostingermail-*._domainkey`) é **só e-mail** (envio/autenticidade
 - [x] `tap.quivercloud.com.br` no VPS com HTTPS; PC não serve prod  
 - [x] `:3001` não pública; SSH restrito  
 - [x] Todo PR em `main` exige CI verde no GitHub (`build-and-unit`)  
-- [ ] Todo deploy de prod vem de imagem tagueada com SHA de `main` (build SHA ok; promote automático pendente)  
-- [ ] Smoke automático no VPS antes do promote  
+- [x] Todo deploy de prod vem de imagem tagueada com SHA de `main` (esteira "Deploy PRD (VPS)", §7.1)  
+- [x] Smoke automático no VPS antes de concluir o deploy (`/api/ready` + `releaseSha`, com rollback)  
 - [x] Backup DB no VPS agendado (30 dumps + rclone OneDrive) · [ ] restore ensaiado  
 - [ ] Rollback de app (imagem n-1) documentado e testado  
 
@@ -383,7 +383,7 @@ branch → PR → CI remoto obrigatório (build-and-unit) → merge main
 
 ### Fase B — CD para o VPS (próximo)
 1. [x] Esteira "Deploy PRD (VPS)" — CI + build por SHA + aprovação no environment `production` + deploy via Tailscale (TAP-126, §7.1).  
-2. [ ] **Ativar** — policy `tag:ci` + OAuth Tailscale + 1º deploy aprovado (§7.1.B/C).  
+2. [x] **Ativar** — policy `tag:ci` + OAuth Tailscale + 1º deploy aprovado (§7.1.B/C) — 2026-10-26.  
 3. [x] Endurecer: backup Postgres antes do recreate · migrations com guard + ensaio em cópia da PRD + `prisma migrate deploy` (§7.1.G) · `RELEASE_SHA` a cada deploy · rollback automático para a imagem anterior. (opcional) GHCR.  
 4. [x] Secrets de app só no VPS (Actions só tem Tailscale + chave SSH do CI).
 
@@ -460,25 +460,24 @@ push na main (ou "Run workflow" manual)
 | Variable `VPS_SSH_HOST_KEY` (`ssh-ed25519 AAAA…` do VPS, host key fixada) | environment `production` | ver §7.1.C |
 | Pública do CI em `/root/.ssh/authorized_keys` com `restrict,command="/usr/local/sbin/quiver-tap-deploy-gate"` | VPS | ver §7.1.C |
 | Gate instalado em `/usr/local/sbin/quiver-tap-deploy-gate` (copiado da `origin/main`) | VPS | ver §7.1.C |
-| `tagOwners` com `tag:ci` + grant `tag:ci` → VPS `tcp:22` | Tailscale admin → Access controls | **humano** |
-| OAuth client (scope **Auth Keys: write**, tag `tag:ci`) → secrets `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | Tailscale admin → Settings → OAuth clients; colar no environment `production` | **humano** |
+| `tagOwners` com `tag:ci` (acesso à porta 22 do VPS vem do grant da policy) | Tailscale admin → Access controls | ok |
+| OAuth client `github-actions-tap-deploy` (scope `auth_keys`, tag `tag:ci`) → secrets `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | Tailscale admin → Settings → Trust credentials; environment `production` | ok |
 
-Trecho de policy Tailscale (mesclar com a existente):
+A policy do tailnet ainda é a padrão (grant `*` → `*`), então só foi preciso declarar o `tag:ci`:
 
 ```json
 "tagOwners": { "tag:ci": ["autogroup:admin"] },
-"grants": [
-  { "src": ["tag:ci"], "dst": ["<IP Tailscale do VPS>"], "ip": ["tcp:22"] }
-]
 ```
+
+Se a policy for restringida no futuro, manter um grant `{ "src": ["tag:ci"], "dst": ["<IP Tailscale do VPS>"], "ip": ["tcp:22"] }` para a esteira continuar funcionando.
 
 Secrets do app (`.env.staging`, senhas DB/JWT/Elastic) **nunca** vão para o GitHub — o Actions só tem Tailscale + chave SSH do CI + IP + host key.
 
 #### C. Status da ativação
 
-- [ ] Environment `production` + secrets/variable SSH + gate e chave no VPS  
-- [ ] Policy `tag:ci` + OAuth client Tailscale (humano)  
-- [ ] 1º deploy aprovado e verde (registrar data e SHA aqui)
+- [x] Environment `production` + secrets/variable SSH + gate e chave no VPS  
+- [x] Policy `tag:ci` + OAuth client Tailscale  
+- [x] 1º deploy aprovado e verde — 2026-10-26, `12ea58d8` (inclui #125 e #127), anterior `4a2988ee`, 0 migrations, `result=ok`
 
 #### D. Operação do dia a dia
 
