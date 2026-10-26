@@ -18,6 +18,10 @@ const SIMPLE_CONFIRM = {
     title: 'Reiniciar o ambiente de testes?',
     body: 'O ambiente de testes deste PC será desligado e ligado de novo (cerca de 30 segundos). O site dos clientes não é afetado.',
   },
+  'dev.sync': {
+    title: 'Trazer a versão oficial para o ambiente de testes?',
+    body: 'O ambiente de testes deste PC recebe a versão oficial mais recente: o código é atualizado, as mudanças no banco de testes são aplicadas e ele reinicia (1 a 3 minutos). O site dos clientes não é afetado.',
+  },
   'pr.update': {
     title: 'Atualizar o PR?',
     body: 'O PR recebe as últimas mudanças da versão oficial e os testes automáticos rodam de novo (1 a 3 minutos). Quando passarem, aparece o botão para aceitar. Nada muda para os clientes.',
@@ -57,8 +61,29 @@ function control(action) {
   return `<button type="button" class="${action.primary ? 'primary' : ''}" data-action="${id}">${esc(action.label)}</button>`;
 }
 
+/** "V855 (89e7d42)" → V855 com o código técnico pequeno ao lado. */
+const withHash = (text) => esc(text).replace(/ \(([0-9a-f]{7})\)/g, ' <small class="hash">$1</small>');
+const versionTag = (version, short) =>
+  version && version !== short
+    ? `<strong class="ver">${esc(version)}</strong> <small class="hash">${esc(short)}</small>`
+    : `<code>${esc(short)}</code>`;
+
 const facts = (list) =>
-  list?.length ? `<dl>${list.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '';
+  list?.length ? `<dl>${list.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${withHash(v)}</dd>`).join('')}</dl>` : '';
+
+function compareLists(lists) {
+  if (!lists) return '';
+  const block = (title, items) =>
+    items.length
+      ? `<h3>${esc(title)}</h3><ul class="rows">${items
+          .map((c) => `<li><span>${versionTag(c.version, c.sha.slice(0, 7))} ${esc(plain(c.subject))}</span></li>`)
+          .join('')}</ul>`
+      : '';
+  return (
+    block('Só no site (o ambiente de testes ainda não tem)', lists.prdOnly) +
+    block('Só no ambiente de testes (ainda não está no site)', lists.devOnly)
+  );
+}
 
 function area(id, title, card, extra = '') {
   $(`card-${id}`).innerHTML = `
@@ -93,7 +118,7 @@ function runList(runs) {
   return `<h3>Últimas passagens pela esteira</h3><ul class="rows">${runs
     .map(
       (r) => `<li>
-        <a href="${esc(r.url)}" target="_blank" rel="noopener" title="Abrir no GitHub"><code>${esc(r.short)}</code> ${esc(plain(r.title))}</a>
+        <a href="${esc(r.url)}" target="_blank" rel="noopener" title="Abrir no GitHub">${versionTag(r.version, r.short)} ${esc(plain(r.title))}</a>
         <span class="chip" data-run="${esc(r.rejected ? 'rejected' : (r.conclusion ?? r.status))}">${esc(r.label)}</span>
       </li>`,
     )
@@ -104,7 +129,7 @@ function deployList(card) {
   const rows = card.deploys?.length
     ? `<h3>Últimas publicações</h3><ul class="rows">${card.deploys
         .map(
-          (d) => `<li><span><code>${esc(String(d.sha).slice(0, 7))}</code> ${esc(when(d.at))}</span>
+          (d) => `<li><span>${versionTag(d.version, String(d.sha).slice(0, 7))} ${esc(when(d.at))}</span>
             <span class="chip" data-run="${d.result === 'ok' ? 'success' : 'failure'}">${esc(DEPLOY_RESULT[d.result] ?? d.result)}</span></li>`,
         )
         .join('')}</ul>`
@@ -132,7 +157,7 @@ function renderFlow(flow) {
   if (!flow) return;
   const took = flow.total ? ` · ${flow.live ? 'rodando há' : 'levou'} ${esc(flow.total)}` : '';  $('h-flow').textContent = flow.live ? 'Esteira por dentro (agora)' : 'Esteira por dentro (última passagem)';
   $('flow-meta').innerHTML = `<span class="chip" data-level="${esc(flow.level)}">${esc(flow.label)}</span>
-    versão <code>${esc(flow.sha)}</code> · ${esc(plain(flow.title))} · ${esc(flow.trigger)} · ${esc(when(flow.startedAt))}${took}`;
+    versão ${versionTag(flow.version, flow.sha)} · ${esc(plain(flow.title))} · ${esc(flow.trigger)} · ${esc(when(flow.startedAt))}${took}`;
   $('flow-link').href = flow.url;
   $('flow-graph').innerHTML = flow.columns
     .map((column) => `<div class="flow-col${column.length > 1 ? ' group' : ''}">${column.map(jobBox).join('')}</div>`)
@@ -176,7 +201,7 @@ function render(data) {
   renderFlow(data.flow);
 
   area('git', 'Código', data.cards.git, prList(data.cards.git.prs));
-  area('dev', 'Ambiente de testes', data.cards.dev);
+  area('dev', 'Ambiente de testes', data.cards.dev, compareLists(data.cards.dev.compare));
   area('pipeline', 'Esteira', data.cards.pipeline, runList(data.cards.pipeline.runs));
   area('prd', 'Site dos clientes', data.cards.prd, deployList(data.cards.prd));
 
@@ -271,8 +296,8 @@ function migrationsHtml(migrations, direction) {
 }
 
 function previewHtml(p, actionName) {
-  const from = esc(p.from.slice(0, 7));
-  const to = esc(p.to.slice(0, 7));
+  const from = versionTag(p.fromVersion, p.from.slice(0, 7));
+  const to = versionTag(p.toVersion, p.to.slice(0, 7));
   if (p.direction === 'rollback') {
     return `<p class="lead warn-text">O site dos clientes vai voltar da versão <code>${from}</code> para a versão <code>${to}</code>, mais antiga.</p>
       <h3>Estas mudanças saem do ar</h3>${commitList(p.commits)}
@@ -359,7 +384,7 @@ async function handle(action, button) {
       .map(
         (c) => `<label class="pick">
           <input type="radio" name="sha" value="${esc(c.sha)}" ${c.isPrd ? 'disabled' : ''} />
-          <span><code>${esc(c.short)}</code> ${esc(when(c.date))} ${esc(plain(c.subject))} ${c.isPrd ? '<em>(no ar agora)</em>' : ''}</span>
+          <span>${versionTag(c.version, c.short)} ${esc(when(c.date))} ${esc(plain(c.subject))} ${c.isPrd ? '<em>(no ar agora)</em>' : ''}</span>
         </label>`,
       )
       .join('');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isMoving } from './snapshot.mjs';
-import { deriveState, isMergeReady, needsUpdate } from './state.mjs';
+import { compareWithSite, deriveState, isMergeReady, needsUpdate } from './state.mjs';
 
 const MAIN = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
@@ -13,7 +13,7 @@ function snap({ git = {}, prs = [], runs = [], dev = {}, prd = {} } = {}) {
     git: {
       ok: true,
       data: {
-        branch: 'main', headSha: MAIN, dirtyCount: 0, ahead: 0, behind: 0,
+        branch: 'main', headSha: MAIN, dirtyCount: 0, trackedDirty: 0, ahead: 0, behind: 0,
         mainSha: MAIN, mainSubject: 'feat: x', mainDate: '2026-10-26T17:00:00Z',
         recentMain: [{ sha: MAIN, date: '2026-10-26T17:00:00Z', subject: 'feat: x' }, { sha: OLD, date: '2026-10-25T10:00:00Z', subject: 'old' }],
         ...git,
@@ -209,6 +209,60 @@ test('dev em outra versão vira informação, não ação', () => {
   const s = deriveState(snap({ dev: { releaseSha: OLD } }), NOW);
   assert.equal(s.cards.dev.behindMain, true);
   assert.equal(s.next.info, true);
+});
+
+const withVersions = (base, compare = null) => ({ ...base, versions: { [MAIN]: 855, [OLD]: 854 }, compare });
+
+test('versões viram V<n> com o código técnico ao lado', () => {
+  const s = deriveState(withVersions(snap()), NOW);
+  assert.equal(s.delivery.mainVersion, 'V855');
+  const prdFacts = Object.fromEntries(s.cards.prd.facts);
+  assert.match(prdFacts['Versão no ar'], /^V855 \(aaaaaaa\)/);
+  assert.equal(s.recentMain[1].version, 'V854');
+});
+
+test('sem número de versão, cai no código técnico', () => {
+  const s = deriveState(snap(), NOW);
+  assert.equal(s.delivery.mainVersion, 'aaaaaaa');
+});
+
+test('dev atrás do site: compara, lista o que falta e oferece trazer a oficial', () => {
+  const compare = { prdOnly: [{ sha: MAIN, subject: 'feat: x' }], devOnly: [] };
+  const s = deriveState(withVersions(snap({ dev: { releaseSha: OLD } }), compare), NOW);
+  const dev = s.cards.dev;
+  assert.equal(dev.title, 'Ligado · V854');
+  const facts = Object.fromEntries(dev.facts);
+  assert.equal(facts['Versão'], 'V854 (bbbbbbb)');
+  assert.equal(facts['Comparado ao site'], '1 versão atrás do site');
+  assert.equal(dev.compare.prdOnly[0].version, 'V855');
+  assert.equal(dev.canSync, true);
+  assert.equal(dev.actions[0].name, 'dev.sync');
+  assert.match(dev.actions[0].label, /V855/);
+  assert.match(s.next.label, /Trazer a versão oficial/);
+});
+
+test('trazer a oficial só com o PC na main e sem alterações versionadas', () => {
+  const sync = (git) => deriveState(withVersions(snap({ git, dev: { releaseSha: OLD } })), NOW).cards.dev;
+  assert.equal(sync({ trackedDirty: 2, dirtyCount: 2 }).canSync, false);
+  assert.equal(sync({ branch: 'feat/x' }).canSync, false);
+  assert.equal(sync({ dirtyCount: 3 }).canSync, true, 'arquivos novos não versionados não bloqueiam');
+  assert.ok(!sync({ branch: 'feat/x' }).actions.some((a) => a.name === 'dev.sync'));
+});
+
+test('compareWithSite: igual, atrás, à frente e versão de trabalho', () => {
+  deriveState(withVersions(snap()), NOW);
+  assert.equal(compareWithSite(MAIN, MAIN, null).text, 'igual ao site');
+  assert.equal(compareWithSite(OLD, MAIN, null).text, '1 versão atrás do site');
+  assert.equal(compareWithSite(MAIN, OLD, null).text, '1 versão à frente do site');
+  const branch = 'c'.repeat(40);
+  const out = compareWithSite(branch, MAIN, { devOnly: [{ sha: branch, subject: 'wip' }, { sha: 'd'.repeat(40), subject: 'x' }], prdOnly: [] });
+  assert.equal(out.text, '2 mudanças em teste que não estão no site');
+  assert.equal(out.lists.devOnly[0].version, 'ccccccc');
+});
+
+test('cartão Código: cópia atrasada é informação, trabalho local é andamento', () => {
+  assert.equal(deriveState(snap({ git: { behind: 3 } }), NOW).cards.git.level, 'off');
+  assert.equal(deriveState(snap({ git: { behind: 3, dirtyCount: 1 } }), NOW).cards.git.state, 'alteracoes');
 });
 
 test('coletor indisponível não derruba o estado', () => {

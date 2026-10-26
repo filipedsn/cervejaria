@@ -1,5 +1,5 @@
 import { collectDev } from './collectors/dev.mjs';
-import { collectGit } from './collectors/git.mjs';
+import { collectGit, commitsBetween, versionsFor } from './collectors/git.mjs';
 import { collectGithub } from './collectors/github.mjs';
 import { collectPrd } from './collectors/prd.mjs';
 import { cached, collect } from './exec.mjs';
@@ -39,5 +39,24 @@ export async function collectSnapshot({ force = false } = {}) {
 
   const snapshot = { at: new Date().toISOString(), git: gitNow, github, dev, prd };
   moving = isMoving(snapshot);
-  return { ...snapshot, moving };
+  const extra = await collect(() => versionsAndCompare(snapshot));
+  return { ...snapshot, moving, versions: extra.ok ? extra.data.versions : {}, compare: extra.ok ? extra.data.compare : null };
+}
+
+async function versionsAndCompare({ git, github, dev, prd }) {
+  const devSha = dev.ok ? dev.data.releaseSha : null;
+  const prdSha = prd.ok ? prd.data.releaseSha : null;
+  const vps = prd.ok && prd.data.vps?.ok ? prd.data.vps.data : null;
+  const versions = await versionsFor([
+    ...(git.ok ? [git.data.mainSha, ...git.data.recentMain.map((c) => c.sha)] : []),
+    prdSha,
+    devSha,
+    ...(github.ok ? github.data.runs.map((r) => r.sha) : []),
+    ...(vps?.deploys ?? []).map((d) => d.sha),
+  ]);
+  const compare =
+    devSha && prdSha && devSha !== prdSha
+      ? { devOnly: await commitsBetween(prdSha, devSha), prdOnly: await commitsBetween(devSha, prdSha) }
+      : null;
+  return { versions, compare };
 }

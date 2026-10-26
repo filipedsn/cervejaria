@@ -10,7 +10,7 @@ const { ACTIONS, ActionError, executeAction, readAudit } = await import('./actio
 
 test('lista fechada de ações', () => {
   assert.deepEqual(Object.keys(ACTIONS).sort(), [
-    'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.restart', 'dev.start', 'dev.stop', 'pr.merge', 'pr.update',
+    'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'pr.merge', 'pr.update',
   ]);
 });
 

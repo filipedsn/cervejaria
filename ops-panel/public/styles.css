@@ -43,6 +43,15 @@ code {
   font: 0.9em var(--mono);
 }
 
+.ver {
+  font-variant-numeric: tabular-nums;
+}
+
+.hash {
+  font: 0.78em var(--mono);
+  color: var(--muted);
+}
+
 a {
   color: var(--run);
 }
