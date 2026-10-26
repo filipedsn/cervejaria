@@ -183,7 +183,7 @@ function containerCard(c) {
   ].filter(Boolean);
   return `<li class="ctr" data-level="${esc(c.level)}" title="${esc(c.image)}">
     <div class="ctr-head">
-      <span class="dot" aria-hidden="true"></span>
+      <span class="ctr-dot" aria-hidden="true"></span>
       <strong>${esc(c.label)}</strong>
       <span class="chip" data-level="${esc(c.level)}">${esc(c.statusText)}</span>
     </div>
@@ -193,8 +193,8 @@ function containerCard(c) {
   </li>`;
 }
 
-function infraBlock(card) {
-  if (!card.infra) return '';
+function infraBlock(card, below = '') {
+  if (!card.infra) return below;
   const tiles = card.tiles
     .map(
       (t) => `<li data-level="${esc(t.level)}"><span>${esc(t.label)}</span><strong>${esc(t.value)}</strong><small>${esc(t.note)}</small></li>`,
@@ -207,6 +207,7 @@ function infraBlock(card) {
       <h3>Servidor na Hostinger</h3>
       <p class="spec">${esc(infra.spec)}</p>
       <div class="gauges">${infra.gauges.map(gauge).join('')}</div>
+      ${below}
     </div>
     <div class="infra-containers">
       <h3>Contêineres <small>${esc(infra.summary)}</small></h3>
@@ -281,7 +282,7 @@ function render(data) {
   area('git', 'Código', data.cards.git, prList(data.cards.git.prs));
   area('dev', 'Ambiente de testes', data.cards.dev, compareLists(data.cards.dev.compare));
   area('pipeline', 'Esteira', data.cards.pipeline, runList(data.cards.pipeline.runs));
-  area('prd', 'Site dos clientes', data.cards.prd, infraBlock(data.cards.prd) + deployList(data.cards.prd));
+  area('prd', 'Site dos clientes', data.cards.prd, infraBlock(data.cards.prd, deployList(data.cards.prd)));
   $('card-prd').classList.toggle('wide', Boolean(data.cards.prd.infra));
 
   if (data.audit) renderAudit(data.audit);

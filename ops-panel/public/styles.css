@@ -636,7 +636,7 @@ dd {
   margin-left: auto;
 }
 
-.dot {
+.ctr-dot {
   flex: none;
   width: 9px;
   height: 9px;
@@ -644,7 +644,7 @@ dd {
   background: var(--c);
 }
 
-.ctr[data-level="ok"] .dot {
+.ctr[data-level="ok"] .ctr-dot {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 20%, transparent);
 }
 
