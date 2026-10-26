@@ -82,7 +82,7 @@ function runList(runs) {
 function deployList(card) {
   const rows = card.deploys?.length
     ? `<ul class="rows">${card.deploys
-        .map((d) => `<li><span><code>${esc(String(d.sha).slice(0, 7))}</code> ${esc(d.at)}</span><span class="chip" data-run="${d.result === 'ok' ? 'success' : 'failure'}">${esc(d.result)}</span></li>`)
+        .map((d) => `<li><span><code>${esc(String(d.sha).slice(0, 7))}</code> ${esc(new Date(d.at).toLocaleString('pt-BR'))}</span><span class="chip" data-run="${d.result === 'ok' ? 'success' : 'failure'}">${esc(d.result)}</span></li>`)
         .join('')}</ul>`
     : '';
   return `${rows}<p class="links"><a href="${esc(card.url)}" target="_blank" rel="noopener">Abrir o site</a></p>`;
