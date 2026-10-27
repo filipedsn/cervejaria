@@ -332,13 +332,21 @@ function CozinhaTvShell({ children }: { children: ReactNode }) {
 
 function CozinhaTvEntry() {
   const [searchParams] = useSearchParams();
+  const forceTabletLayout = searchParams.get('tablet') === '1';
+  const pedidosParam = Number.parseInt(searchParams.get('pedidos') ?? '', 10);
+  const pedidoCount = Number.isFinite(pedidosParam) && pedidosParam > 0 ? pedidosParam : undefined;
+
   if (searchParams.get('demo') === '1') {
-    return <div className="qt-tv qt-cozinha-tv"><OperacaoCozinhaTvDemoPage tabletFixture={searchParams.get('tablet') === '1'} /></div>;
+    return (
+      <div className="qt-tv qt-cozinha-tv">
+        <OperacaoCozinhaTvDemoPage tabletFixture={forceTabletLayout} pedidoCount={pedidoCount} />
+      </div>
+    );
   }
 
   return (
     <CozinhaTvShell>
-      <OperacaoCozinhaTvPage />
+      <OperacaoCozinhaTvPage forceTabletLayout={forceTabletLayout} />
     </CozinhaTvShell>
   );
 }

@@ -101,6 +101,20 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
     expect(layout.minActionHeight).toBeGreaterThanOrEqual(44);
   }
 
+  // Slot estável: 1 pedido não estica a linha inteira (capacidade do viewport, não cards.length).
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/operacao/cozinha/tv?demo=1&tablet=1&pedidos=1', { waitUntil: 'networkidle' });
+  const singleGrid = page.locator('.cozinha-tv-grid');
+  await expect(singleGrid).toHaveAttribute('data-kitchen-columns', '4');
+  await expect(singleGrid).toHaveAttribute('data-force-tablet-layout', '1');
+  await expect(singleGrid.locator('article')).toHaveCount(1);
+  const slotRatio = await singleGrid.evaluate((grid) => {
+    const card = grid.querySelector('article');
+    if (!card) return 1;
+    return card.getBoundingClientRect().width / grid.getBoundingClientRect().width;
+  });
+  expect(slotRatio).toBeLessThan(0.4);
+
   const browser = page.context().browser();
   if (!browser) throw new Error('Browser unavailable for touch tablet layout check');
   const tabletContext = await browser.newContext({ viewport: { width: 1920, height: 1200 }, hasTouch: true });
@@ -112,7 +126,7 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
     await expect(tabletGrid).toHaveAttribute('data-kitchen-columns', '4');
     const columns = tabletGrid.locator('.cozinha-tv-grid-column');
     await expect(columns).toHaveCount(4);
-    await expect(tabletGrid.locator('article')).toHaveCount(30);
+    await expect(tabletGrid.locator('article')).toHaveCount(4);
     const firstCardTops = await columns.locator('> article:first-child').evaluateAll((elements) =>
       elements.map((element) => Math.round(element.getBoundingClientRect().top)),
     );

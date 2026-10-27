@@ -20,7 +20,7 @@ type ConfirmacaoCancelamento =
   | { tipo: 'confirmar-pedido'; pedido: PedidoCozinha }
   | { tipo: 'cancelar-item'; pedido: PedidoCozinha; itemId: string; nome: string };
 
-export function OperacaoCozinhaTvPage() {
+export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabletLayout?: boolean }) {
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [erroCancelamentoAcao, setErroCancelamentoAcao] = useState('');
   const [erroStatus, setErroStatus] = useState<{ pedidoId: string; numero: number; mensagem: string } | null>(null);
@@ -233,6 +233,7 @@ export function OperacaoCozinhaTvPage() {
         <CozinhaTvGrid
           paused={interacaoPendente}
           profile={displaySettings.profile}
+          forceTabletLayout={forceTabletLayout}
         >
           {naFila.map((pedido, indice) => (
             <CozinhaPedidoCard

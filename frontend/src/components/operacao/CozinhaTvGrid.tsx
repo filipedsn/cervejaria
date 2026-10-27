@@ -29,12 +29,21 @@ interface Props {
   profile?: 'automatico' | 'ampliada' | 'mais-pedidos';
   operational?: boolean;
   countLabel?: string;
+  /** Força o layout tablet (slots por capacidade) no PC — ex.: ?tablet=1 na demo/QA. */
+  forceTabletLayout?: boolean;
 }
 
 type CardElement = ReactElement<CozinhaCardLayoutProps>;
 
 /** Continuous CSS grid with manual vertical scroll; preserves scrollTop while interacting. */
-export function CozinhaTvGrid({ children, paused = false, profile = 'automatico', operational = false, countLabel = 'na fila atual' }: Props) {
+export function CozinhaTvGrid({
+  children,
+  paused = false,
+  profile = 'automatico',
+  operational = false,
+  countLabel = 'na fila atual',
+  forceTabletLayout = false,
+}: Props) {
   const cards = useMemo(() => Children.toArray(children).filter(isValidElement) as CardElement[], [children]);
   const shellRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -62,15 +71,18 @@ export function CozinhaTvGrid({ children, paused = false, profile = 'automatico'
       const tabletLandscape = window.matchMedia(
         '(orientation: landscape) and (min-width: 700px) and (max-width: 1366px), (orientation: landscape) and (min-width: 700px) and (pointer: coarse)',
       ).matches;
-      if (operational || !tabletLandscape) {
+      const useTabletLayout = forceTabletLayout || tabletLandscape;
+      if (operational || !useTabletLayout) {
         grid.style.removeProperty('--cozinha-grid-columns');
         delete grid.dataset.kitchenColumns;
+        delete grid.dataset.forceTabletLayout;
         setTabletColumns(null);
         return;
       }
       if (!cards.length) {
         grid.style.removeProperty('--cozinha-grid-columns');
         delete grid.dataset.kitchenColumns;
+        delete grid.dataset.forceTabletLayout;
         setTabletColumns(null);
         return;
       }
@@ -88,10 +100,14 @@ export function CozinhaTvGrid({ children, paused = false, profile = 'automatico'
       const gap = Number.parseFloat(styles.columnGap) || 0;
       const availableWidth = grid.clientWidth;
       const columnsThatFit = Math.max(1, Math.floor((availableWidth + gap) / (minCardWidth + gap)));
-      const columns = Math.min(4, columnsThatFit, cards.length);
+      // Slot count follows viewport capacity only — not how many orders are in the queue —
+      // so a lone card keeps a tablet-sized column instead of stretching full-bleed.
+      const columns = Math.min(4, columnsThatFit);
 
       grid.style.setProperty('--cozinha-grid-columns', String(columns));
       grid.dataset.kitchenColumns = String(columns);
+      if (forceTabletLayout) grid.dataset.forceTabletLayout = '1';
+      else delete grid.dataset.forceTabletLayout;
       setTabletColumns((current) => (current === columns ? current : columns));
     };
 
@@ -102,8 +118,9 @@ export function CozinhaTvGrid({ children, paused = false, profile = 'automatico'
       observer.disconnect();
       grid.style.removeProperty('--cozinha-grid-columns');
       delete grid.dataset.kitchenColumns;
+      delete grid.dataset.forceTabletLayout;
     };
-  }, [cards.length, operational]);
+  }, [cards.length, operational, forceTabletLayout]);
 
   const releaseInteraction = useCallback((immediate = false) => {
     if (interactionTimer.current !== null) window.clearTimeout(interactionTimer.current);
