@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   COZINHA_MAX_COLUNAS_MAX,
   COZINHA_MAX_COLUNAS_MIN,
@@ -11,6 +12,8 @@ const MAX_COLUNAS_OPTIONS = Array.from(
 
 export function CozinhaVisualSettingsPanel() {
   const { settings, update } = useCozinhaDisplaySettings();
+  const simulacaoPath = `/operacao/cozinha/tv?demo=1&maxColunas=${settings.maxColunasPorLinha}&pedidos=4`;
+
   return (
     <section className="space-y-3 rounded-xl border border-line bg-surface-lighter p-3" aria-labelledby="cozinha-visual-title">
       <div>
@@ -46,6 +49,21 @@ export function CozinhaVisualSettingsPanel() {
           A tela usa o menor entre este valor e o que cabe na largura do aparelho.
         </span>
       </label>
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-ink">Simulação no PC</p>
+        <p className="text-xs text-ink-muted">
+          Abre a cozinha com pedidos fictícios e o teto atual ({settings.maxColunasPorLinha} por linha), sem precisar de tablet.
+        </p>
+        <Link
+          to={simulacaoPath}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white hover:bg-brand-600"
+        >
+          Abrir simulação
+        </Link>
+        <p className="break-all font-mono text-[0.7rem] text-ink-muted">{simulacaoPath}</p>
+      </div>
     </section>
   );
 }
