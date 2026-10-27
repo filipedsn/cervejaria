@@ -125,6 +125,17 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
   });
   expect(slotRatio).toBeLessThan(0.4);
 
+  // Simulação por URL: ?maxColunas=2 força no máximo 2 por linha (e liga layout tablet no PC).
+  await page.goto('/operacao/cozinha/tv?demo=1&maxColunas=2&pedidos=4', { waitUntil: 'networkidle' });
+  const cappedGrid = page.locator('.cozinha-tv-grid');
+  await expect(cappedGrid).toHaveAttribute('data-max-columns', '2');
+  await expect(cappedGrid).toHaveAttribute('data-kitchen-columns', '2');
+  await expect(cappedGrid.locator('article')).toHaveCount(4);
+  const cappedRows = await cappedGrid.locator('article').evaluateAll((elements) =>
+    new Set(elements.map((element) => Math.round(element.getBoundingClientRect().top))).size,
+  );
+  expect(cappedRows).toBe(2);
+
   const browser = page.context().browser();
   if (!browser) throw new Error('Browser unavailable for touch tablet layout check');
   const tabletContext = await browser.newContext({ viewport: { width: 1920, height: 1200 }, hasTouch: true });

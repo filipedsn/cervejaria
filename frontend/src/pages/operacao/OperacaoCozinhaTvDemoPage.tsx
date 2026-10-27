@@ -83,10 +83,13 @@ function buildDemoPedidos(count: number, tabletFixture = false): PedidoCozinha[]
 export function OperacaoCozinhaTvDemoPage({
   tabletFixture = false,
   pedidoCount,
+  maxColunas,
 }: {
   tabletFixture?: boolean;
   /** Override da quantidade de pedidos fictícios (ex.: ?pedidos=1 para validar slot no PC). */
   pedidoCount?: number;
+  /** Teto de colunas via URL (?maxColunas=2); se omitido, usa o default do grid (6). */
+  maxColunas?: number;
 }) {
   const count = Math.max(1, Math.min(DEMO_COUNT, pedidoCount ?? (tabletFixture ? 4 : DEMO_COUNT)));
   const pedidos = useMemo(() => buildDemoPedidos(count, tabletFixture), [count, tabletFixture]);
@@ -96,6 +99,10 @@ export function OperacaoCozinhaTvDemoPage({
   const itensNaFila = naFila.reduce((n, p) => n + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
   const itensPreparo = emPreparo.reduce((n, p) => n + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
   const itensProntos = prontos.reduce((n, p) => n + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
+  const badgeExtras = [
+    tabletFixture ? 'tablet' : null,
+    maxColunas != null ? `máx ${maxColunas}/linha` : null,
+  ].filter(Boolean);
 
   return (
     <div className="cozinha-tv-shell" aria-label="Simulação da tela de cozinha">
@@ -121,10 +128,16 @@ export function OperacaoCozinhaTvDemoPage({
             <span className="cozinha-tv-stat-value">{naFila.length}</span>
             <span className="cozinha-tv-stat-label">novos</span>
           </div>
-          <span className="cozinha-tv-demo-badge">{pedidos.length} pedidos fictícios{tabletFixture ? ' · tablet' : ''}</span>
+          <span className="cozinha-tv-demo-badge">
+            {pedidos.length} pedidos fictícios{badgeExtras.length ? ` · ${badgeExtras.join(' · ')}` : ''}
+          </span>
         </div>
       </header>
-      <CozinhaTvGrid countLabel="na simulação" forceTabletLayout={tabletFixture}>
+      <CozinhaTvGrid
+        countLabel="na simulação"
+        forceTabletLayout={tabletFixture}
+        maxColumns={maxColunas}
+      >
         {pedidos.map((pedido, indice) => (
           <CozinhaPedidoCard
             key={pedido.id}
