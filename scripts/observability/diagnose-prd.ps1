@@ -58,7 +58,9 @@ function Get-LatestAgeMinutes {
   $hit = @($r.hits.hits) | Select-Object -First 1
   if (-not $hit) { return $null }
   $raw = $hit._source.'@timestamp'
-  $ts = if ($raw -is [datetime]) { [DateTimeOffset]$raw.ToUniversalTime() } else { [DateTimeOffset]::Parse([string]$raw, [Globalization.CultureInfo]::InvariantCulture) }
+# O exporter OTel grava @timestamp como texto em milissegundos (ex.: "1793059738435.0"); regras do Kibana gravam ISO.
+  $text = [string]$raw
+  $ts = if ($raw -is [datetime]) { [DateTimeOffset]$raw.ToUniversalTime() } elseif ($text -match '^\d+(\.\d+)?$') { [DateTimeOffset]::FromUnixTimeMilliseconds([long][math]::Floor([double]::Parse($text, [Globalization.CultureInfo]::InvariantCulture))) } else { [DateTimeOffset]::Parse($text, [Globalization.CultureInfo]::InvariantCulture) }
   return [math]::Round(([DateTimeOffset]::UtcNow - $ts).TotalMinutes, 1)
 }
 
@@ -219,4 +221,5 @@ $payload = [ordered]@{ generatedAt = (Get-Date).ToString('o'); target = 'prd'; r
 [IO.File]::WriteAllText($outFile, ($payload | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 $results | Format-Table -AutoSize -Wrap
 Write-Host "JSON completo: $outFile"
+
 
