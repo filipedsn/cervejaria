@@ -1,5 +1,9 @@
 import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { PedidoCozinha, StatusPedido } from '../../lib/operacao';
+import {
+  clampMaxColunasPorLinha,
+  COZINHA_MAX_COLUNAS_DEFAULT,
+} from '../../hooks/useCozinhaDisplaySettings';
 
 /** Kept for CozinhaPedidoCard typing; the grid no longer splits tall orders into pages. */
 export interface CozinhaPedidoFragmento {
@@ -31,6 +35,8 @@ interface Props {
   countLabel?: string;
   /** Força o layout tablet (slots por capacidade) no PC — ex.: ?tablet=1 na demo/QA. */
   forceTabletLayout?: boolean;
+  /** Teto de colunas; a grade usa min(maxColumns, o que cabe na largura). */
+  maxColumns?: number;
 }
 
 type CardElement = ReactElement<CozinhaCardLayoutProps>;
@@ -43,7 +49,9 @@ export function CozinhaTvGrid({
   operational = false,
   countLabel = 'na fila atual',
   forceTabletLayout = false,
+  maxColumns = COZINHA_MAX_COLUNAS_DEFAULT,
 }: Props) {
+  const columnCap = clampMaxColunasPorLinha(maxColumns);
   const cards = useMemo(() => Children.toArray(children).filter(isValidElement) as CardElement[], [children]);
   const shellRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -100,12 +108,13 @@ export function CozinhaTvGrid({
       const gap = Number.parseFloat(styles.columnGap) || 0;
       const availableWidth = grid.clientWidth;
       const columnsThatFit = Math.max(1, Math.floor((availableWidth + gap) / (minCardWidth + gap)));
-      // Slot count follows viewport capacity only — not how many orders are in the queue —
+      // Slot count = min(configured ceiling, viewport capacity) — never cards.length,
       // so a lone card keeps a tablet-sized column instead of stretching full-bleed.
-      const columns = Math.min(4, columnsThatFit);
+      const columns = Math.min(columnCap, columnsThatFit);
 
       grid.style.setProperty('--cozinha-grid-columns', String(columns));
       grid.dataset.kitchenColumns = String(columns);
+      grid.dataset.maxColumns = String(columnCap);
       if (forceTabletLayout) grid.dataset.forceTabletLayout = '1';
       else delete grid.dataset.forceTabletLayout;
       setTabletColumns((current) => (current === columns ? current : columns));
@@ -118,9 +127,10 @@ export function CozinhaTvGrid({
       observer.disconnect();
       grid.style.removeProperty('--cozinha-grid-columns');
       delete grid.dataset.kitchenColumns;
+      delete grid.dataset.maxColumns;
       delete grid.dataset.forceTabletLayout;
     };
-  }, [cards.length, operational, forceTabletLayout]);
+  }, [cards.length, operational, forceTabletLayout, columnCap]);
 
   const releaseInteraction = useCallback((immediate = false) => {
     if (interactionTimer.current !== null) window.clearTimeout(interactionTimer.current);

@@ -234,6 +234,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
           paused={interacaoPendente}
           profile={displaySettings.profile}
           forceTabletLayout={forceTabletLayout}
+          maxColumns={displaySettings.maxColunasPorLinha}
         >
           {naFila.map((pedido, indice) => (
             <CozinhaPedidoCard
