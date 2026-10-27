@@ -309,7 +309,7 @@ export function DashboardPage() {
     <div className="space-y-6 pb-6">
       <div>
         <p className="page-eyebrow">Visão geral</p>
-        <h1 className="page-title">{cervejaria?.nome ?? 'Dashboard'}</h1>
+        <h1 className="page-title">{cervejaria?.nome ?? 'Quadro'}</h1>
         <p className="page-subtitle">Performance mensal do negócio</p>
       </div>
 
