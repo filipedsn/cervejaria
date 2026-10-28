@@ -1896,6 +1896,29 @@ button[title="Excluir"].icon-btn-danger {
   }
 }
 
+/* Colunas por capacidade: valem no media tablet e quando ?tablet=1 força o layout no PC. */
+.qt-cozinha-tv .cozinha-tv-grid-columns {
+  grid-template-columns: repeat(var(--cozinha-grid-columns), minmax(0, 1fr));
+  align-items: start;
+}
+
+.qt-cozinha-tv .cozinha-tv-grid-column {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.65rem, 1.2vw, 1rem);
+  min-width: 0;
+}
+
+.qt-cozinha-tv .cozinha-tv-grid-column > article {
+  min-width: 0;
+  height: fit-content;
+  flex-shrink: 0;
+}
+
+.qt-cozinha-tv .cozinha-tv-grid-columns .cozinha-tv-card-actions {
+  margin-top: 0.35rem;
+}
+
 @media (orientation: landscape) and (min-width: 700px) and (max-width: 1366px),
   (orientation: landscape) and (min-width: 700px) and (pointer: coarse) {
   .qt-cozinha-tv .cozinha-tv-grid {
@@ -1908,28 +1931,6 @@ button[title="Excluir"].icon-btn-danger {
 
   .qt-cozinha-tv .cozinha-tv-card-actions {
     margin-top: auto;
-  }
-
-  .qt-cozinha-tv .cozinha-tv-grid-columns {
-    grid-template-columns: repeat(var(--cozinha-grid-columns), minmax(0, 1fr));
-    align-items: start;
-  }
-
-  .qt-cozinha-tv .cozinha-tv-grid-column {
-    display: flex;
-    flex-direction: column;
-    gap: clamp(0.65rem, 1.2vw, 1rem);
-    min-width: 0;
-  }
-
-  .qt-cozinha-tv .cozinha-tv-grid-column > article {
-    min-width: 0;
-    height: fit-content;
-    flex-shrink: 0;
-  }
-
-  .qt-cozinha-tv .cozinha-tv-grid-columns .cozinha-tv-card-actions {
-    margin-top: 0.35rem;
   }
 }
 
