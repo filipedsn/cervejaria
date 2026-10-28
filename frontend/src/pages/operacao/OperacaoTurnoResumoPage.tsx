@@ -116,7 +116,7 @@ export function OperacaoTurnoResumoPage() {
     return (
       <div className="space-y-6 pb-6">
         <div>
-          <Link to={dashboardHref} className="touch-btn-secondary touch-btn-sm inline-flex items-center gap-1.5 mb-3">Dashboard</Link>
+          <Link to={dashboardHref} className="touch-btn-secondary touch-btn-sm inline-flex items-center gap-1.5 mb-3">Quadro</Link>
           <p className="page-eyebrow">Relatório do turno</p>
           <h1 className="page-title">{titulo}</h1>
           <p className="page-subtitle">{pontoNome}</p>
@@ -151,7 +151,7 @@ export function OperacaoTurnoResumoPage() {
           className="touch-btn-secondary touch-btn-sm inline-flex items-center gap-1.5 uppercase tracking-wide leading-none mb-3"
         >
           <ChevronLeftIcon className="w-5 h-5 shrink-0" />
-          <span className="text-xs font-bold uppercase tracking-wide leading-none">Dashboard</span>
+          <span className="text-xs font-bold uppercase tracking-wide leading-none">Quadro</span>
         </Link>
 
         <div className="flex flex-wrap items-start justify-between gap-3">
