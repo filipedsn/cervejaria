@@ -332,13 +332,28 @@ function CozinhaTvShell({ children }: { children: ReactNode }) {
 
 function CozinhaTvEntry() {
   const [searchParams] = useSearchParams();
+  const maxColunasParam = Number.parseInt(searchParams.get('maxColunas') ?? '', 10);
+  const maxColunas = Number.isFinite(maxColunasParam) && maxColunasParam > 0 ? maxColunasParam : undefined;
+  // maxColunas na demo implica layout tablet no PC (senão o teto não entra no grid).
+  const forceTabletLayout = searchParams.get('tablet') === '1' || maxColunas !== undefined;
+  const pedidosParam = Number.parseInt(searchParams.get('pedidos') ?? '', 10);
+  const pedidoCount = Number.isFinite(pedidosParam) && pedidosParam > 0 ? pedidosParam : undefined;
+
   if (searchParams.get('demo') === '1') {
-    return <div className="qt-tv qt-cozinha-tv"><OperacaoCozinhaTvDemoPage tabletFixture={searchParams.get('tablet') === '1'} /></div>;
+    return (
+      <div className="qt-tv qt-cozinha-tv">
+        <OperacaoCozinhaTvDemoPage
+          tabletFixture={forceTabletLayout}
+          pedidoCount={pedidoCount}
+          maxColunas={maxColunas}
+        />
+      </div>
+    );
   }
 
   return (
     <CozinhaTvShell>
-      <OperacaoCozinhaTvPage />
+      <OperacaoCozinhaTvPage forceTabletLayout={forceTabletLayout} />
     </CozinhaTvShell>
   );
 }
