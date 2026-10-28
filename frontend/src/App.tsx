@@ -46,7 +46,7 @@ import { ClientesPage } from './pages/ClientesPage';
 import { NovoClientePage } from './pages/NovoClientePage';
 import { ClienteDetailPage } from './pages/ClienteDetailPage';
 import { CadastroLinkDescontinuadoPage } from './pages/CadastroLinkDescontinuadoPage';
-import { PortalClientePage } from './pages/PortalClientePage';
+import { PortalEventoRedirectPage } from './pages/PortalEventoRedirectPage';
 import { PortalPdvPage } from './pages/PortalPdvPage';
 import { Layout } from './components/Layout';
 import { AdminLayout } from './components/AdminLayout';
@@ -352,7 +352,7 @@ const router = createBrowserRouter([
       { path: '/ranking/tv/:eventoId', element: <RankingTvEntry /> },
       { path: '/operacao/cozinha/tv', element: <CozinhaTvEntry /> },
       { path: '/c/:slug/cadastro', element: <CadastroLinkDescontinuadoPage /> },
-      { path: '/c/:slug/t/:trailerId', element: <PortalClientePage /> },
+      { path: '/c/:slug/t/:trailerId', element: <PortalEventoRedirectPage /> },
       { path: '/c/:slug/p/:pontoVendaId', element: <PortalPdvPage /> },
       {
         element: <PublicOnly />,

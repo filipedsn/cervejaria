@@ -29,7 +29,8 @@ export function PortalQrButton({
 
   if (!cervejaria?.slug) return null;
 
-  const portalUrl = buildPublicAppUrl(`/c/${cervejaria.slug}/t/${trailerId}`, origin);
+  // Portal de evento descontinuado: QR aponta para o PDV (mesmo id pós-cutover).
+  const portalUrl = buildPublicAppUrl(`/c/${cervejaria.slug}/p/${trailerId}`, origin);
 
   const iconButtonClass =
     variant === 'hero'

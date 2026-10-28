@@ -12,7 +12,8 @@ export function TrailerPortalQr({ trailer }: { trailer: Trailer }) {
 
   if (!cervejaria?.slug) return null;
 
-  const portalUrl = buildPublicAppUrl(`/c/${cervejaria.slug}/t/${trailer.id}`, origin);
+  // Portal de evento descontinuado: QR aponta para o PDV (mesmo id pós-cutover).
+  const portalUrl = buildPublicAppUrl(`/c/${cervejaria.slug}/p/${trailer.id}`, origin);
 
   const copyLink = async () => {
     try {
@@ -27,11 +28,11 @@ export function TrailerPortalQr({ trailer }: { trailer: Trailer }) {
   return (
     <div className="mt-3 pt-3 border-t border-line space-y-2">
       <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">
-        QR abrir comanda — {formatTrailerLabel(trailer)}
+        QR abrir comanda (PDV) — {formatTrailerLabel(trailer)}
       </p>
       <p className="text-xs text-ink-muted">
-        Cliente escaneia, informa nome e telefone, abre a comanda e pode pedir pelo cardápio. Pedidos
-        entram na comanda após confirmação do atendente.
+        Cliente escaneia, informa nome e telefone e abre a comanda no ponto de venda enquanto o caixa
+        estiver aberto.
       </p>
       {isLocalhostQr && (
         <p className="text-xs text-amber-700">

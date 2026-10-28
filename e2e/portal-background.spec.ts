@@ -57,7 +57,7 @@ async function mock(page: Page, image: Buffer, initialBackground: string | null 
     } });
     if (p.endsWith('/info')) return route.fulfill({ json: {
       cervejaria: company(), trailer: { id: 'synthetic', nome: 'Trailer sintético' },
-      pontoVenda: { nome: 'Caixa sintético' }, evento: available ? { id: 'synthetic-event', nome: 'Evento sintético', local: 'QA', data: null } : null,
+      pontoVenda: { id: 'synthetic', nome: 'Caixa sintético' }, evento: available ? { id: 'synthetic-event', nome: 'Evento sintético', local: 'QA', data: null } : null,
       disponivel: available,
     } });
     if (p.endsWith('/cliente-por-telefone')) return route.fulfill({ json: { encontrado: known, nome: known ? 'Cliente sintético' : undefined } });
@@ -151,44 +151,10 @@ for (const shape of shapes) for (const viewport of viewports) {
   test(`${shape.name} ${viewport.width}x${viewport.height}: portal, layouts, rolagem e rotação`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     const state = await mock(page, await syntheticImage(shape));
+    // /t/ redireciona para /p/ quando o ponto existe (mock de info PDV).
     state.setAvailable(false);
     await page.goto('/c/synthetic/t/synthetic');
-    await expect(page.getByText('Evento indisponível', { exact: true })).toBeVisible();
-    await checkFraming(page, shape);
-    state.setAvailable(true);
-    await page.reload();
-    await page.locator('#portal-telefone').fill('11999999999');
-    await page.locator('#portal-nome').fill('Cliente sintético');
-    await checkFraming(page, shape);
-    state.setKnown(true);
-    await page.getByRole('button', { name: /Abrir comanda/ }).click();
-    await expect(page.getByText('Confirmar identidade', { exact: true })).toBeVisible();
-    await checkFraming(page, shape);
-    await page.getByRole('button', { name: 'Não sou eu', exact: true }).click();
-    await expect(page.getByText('Cadastro não confere', { exact: true })).toBeVisible();
-    await checkFraming(page, shape);
-    await page.getByRole('button', { name: 'Usar outro telefone', exact: true }).click();
-    state.setKnown(false);
-    await page.locator('#portal-telefone').fill('11999999999');
-    await page.locator('#portal-nome').fill('Cliente sintético');
-    await page.getByRole('button', { name: /Abrir comanda/ }).click();
-    await page.getByPlaceholder('Seu nome').fill('Cliente sintético');
-    await checkFraming(page, shape);
-    await page.getByRole('button', { name: 'Abrir comanda', exact: true }).click();
-    await expect(page.getByRole('button', { name: /^(Pedir|Resumo)$/ })).toBeVisible();
-    if (await page.getByRole('button', { name: /^Pedir$/ }).count()) {
-      await page.getByRole('button', { name: /^Pedir$/ }).click();
-    }
-    await expect(page.getByText('Produto sintético 44', { exact: true })).toBeVisible();
-    const before = await checkFraming(page, shape);
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    expect(await page.evaluate(() => scrollY)).toBeGreaterThan(viewport.height);
-    const after = await checkFraming(page, shape);
-    expect(after.box).toEqual(before.box);
-    await page.getByRole('button', { name: /^(Resumo|Comanda)$/ }).tap();
-    await checkFraming(page, shape);
-    state.setAvailable(false);
-    await page.goto('/c/synthetic/p/synthetic');
+    await expect(page).toHaveURL(/\/c\/synthetic\/p\/synthetic/);
     await expect(page.getByText('Caixa indisponível', { exact: true })).toBeVisible();
     await checkFraming(page, shape);
     state.setAvailable(true);
@@ -198,9 +164,11 @@ for (const shape of shapes) for (const viewport of viewports) {
     state.setPdvSession(true);
     await page.reload();
     await expect(page.getByText('Produto sintético 44', { exact: true })).toBeVisible();
-    await checkFraming(page, shape);
+    const before = await checkFraming(page, shape);
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await checkFraming(page, shape);
+    expect(await page.evaluate(() => scrollY)).toBeGreaterThan(viewport.height);
+    const after = await checkFraming(page, shape);
+    expect(after.box).toEqual(before.box);
     await page.getByRole('button', { name: /^(Voltar|Resumo da conta)$/ }).click();
     await checkFraming(page, shape);
     await page.setViewportSize({ width: viewport.height, height: viewport.width });
@@ -242,7 +210,7 @@ test('fundo padrão, arquivo indisponível e troca de empresa não reutilizam im
   const state = await mock(page, await syntheticImage(shapes[0]), null);
   for (const src of [null, '/uploads/missing.webp']) {
     state.setBackground(src);
-    for (const path of ['/c/synthetic/t/synthetic', '/c/synthetic/p/synthetic', '/configuracoes/aparencia']) {
+    for (const path of ['/c/synthetic/p/synthetic', '/configuracoes/aparencia']) {
       await page.goto(path);
       await expect(page.getByText('Abrir comanda', { exact: true }).first()).toBeVisible();
       await expect(page.locator('.portal-background')).toHaveCount(0);
@@ -250,10 +218,10 @@ test('fundo padrão, arquivo indisponível e troca de empresa não reutilizam im
     }
   }
   state.setBackground('/uploads/company-a.webp');
-  await page.goto('/c/synthetic/t/synthetic');
+  await page.goto('/c/synthetic/p/synthetic');
   await expect(page.locator('.portal-background img')).toBeVisible();
   state.setBackground(null);
-  await page.goto('/c/other-company/t/synthetic');
+  await page.goto('/c/other-company/p/synthetic');
   await expect(page.locator('.portal-login-card')).toBeVisible();
   await expect(page.locator('.portal-background')).toHaveCount(0);
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([]);

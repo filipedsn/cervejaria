@@ -39,9 +39,9 @@ export function PdvPortalQrButton({ pontoVendaId, trailerId, className, iconOnly
     return digits.length >= 10 && digits.length <= 13;
   }), [clientesQuery.data]);
   if (!cervejaria?.slug) return null;
-  const isEventPortal = Boolean(trailerId);
-  const targetId = trailerId ?? pontoVendaId!;
-  const url = buildPublicAppUrl(`/c/${cervejaria.slug}/${isEventPortal ? 't' : 'p'}/${targetId}`, origin);
+  // Portal de evento descontinuado: trailerId (legado) vira alvo do PDV (mesmo id pós-cutover).
+  const targetId = pontoVendaId ?? trailerId!;
+  const url = buildPublicAppUrl(`/c/${cervejaria.slug}/p/${targetId}`, origin);
   const clientesSelecionados = Object.values(selected);
   const whatsappButtonClass = 'group inline-flex min-h-12 items-center gap-3 rounded-xl border border-emerald-400/60 bg-gradient-to-r from-emerald-950 to-emerald-900 px-4 text-sm font-semibold text-white shadow-[0_0_18px_rgba(16,185,129,0.16)] transition hover:border-emerald-300 hover:from-emerald-900 hover:to-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -58,9 +58,8 @@ export function PdvPortalQrButton({ pontoVendaId, trailerId, className, iconOnly
   const abrirWhatsApp = (cliente: Cliente) => {
     const telefone = (cliente.telefone ?? '').replace(/\D/g, '');
     const telefoneComPais = telefone.startsWith('55') ? telefone : '55' + telefone;
-    const contextoLink = isEventPortal
-      ? 'O link abre a comanda no evento ativo deste trailer.'
-      : 'O link abre a comanda neste ponto de venda enquanto o caixa estiver aberto.';
+    const contextoLink =
+      'O link abre a comanda neste ponto de venda enquanto o caixa estiver aberto.';
     const texto = `Oi, ${cliente.nome}! Para abrir sua comanda no ${cervejaria.nome}, acesse este link:\n${url}\n\nInforme seu nome e telefone. ${contextoLink}`;
     const janela = window.open(`https://wa.me/${telefoneComPais}?text=${encodeURIComponent(texto)}`, '_blank');
     if (!janela) {
@@ -119,12 +118,12 @@ export function PdvPortalQrButton({ pontoVendaId, trailerId, className, iconOnly
       <IconQr className={iconOnly ? 'h-6 w-6' : 'w-4 h-4'} />
       {!iconOnly && 'QR Code para abrir comanda'}
     </button>
-    <Modal open={open} onClose={fechar} wide hideHeader={view === 'clients'} title={view === 'qr' ? `QR Code — Abrir comanda no ${isEventPortal ? 'Evento' : 'Caixa'}` : 'Enviar link por WhatsApp'} footer={view === 'qr' ? <button type="button" className="touch-btn-orange w-full" onClick={fechar}>Fechar</button> : <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between"><button type="button" className="touch-btn-orange inline-flex min-h-14 min-w-[9rem] items-center justify-center gap-3 px-5" onClick={() => { setView('qr'); setShareError(''); }}>Voltar</button>{queue.length === 0 ? <button type="button" className={whatsappButtonClass + ' justify-center'} disabled={!clientesSelecionados.length} onClick={iniciarEnvios}><IconWhatsApp className="h-6 w-6" /><span>Abrir WhatsApp ({clientesSelecionados.length})</span><span aria-hidden="true" className="ml-auto text-xl text-emerald-200">›</span></button> : queueIndex < queue.length ? <button type="button" className={whatsappButtonClass} onClick={abrirProximo}><IconWhatsApp className="h-6 w-6" /><span className="max-w-56 truncate">Próximo: {queue[queueIndex].nome}</span><span aria-hidden="true" className="ml-auto text-xl text-emerald-200">›</span></button> : <button type="button" className="touch-btn-primary inline-flex min-h-14 min-w-[9rem] items-center justify-center gap-3 px-6" onClick={fechar}>Enviar</button>}</div>}>
+    <Modal open={open} onClose={fechar} wide hideHeader={view === 'clients'} title={view === 'qr' ? 'QR Code — Abrir comanda no Caixa' : 'Enviar link por WhatsApp'} footer={view === 'qr' ? <button type="button" className="touch-btn-orange w-full" onClick={fechar}>Fechar</button> : <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between"><button type="button" className="touch-btn-orange inline-flex min-h-14 min-w-[9rem] items-center justify-center gap-3 px-5" onClick={() => { setView('qr'); setShareError(''); }}>Voltar</button>{queue.length === 0 ? <button type="button" className={whatsappButtonClass + ' justify-center'} disabled={!clientesSelecionados.length} onClick={iniciarEnvios}><IconWhatsApp className="h-6 w-6" /><span>Abrir WhatsApp ({clientesSelecionados.length})</span><span aria-hidden="true" className="ml-auto text-xl text-emerald-200">›</span></button> : queueIndex < queue.length ? <button type="button" className={whatsappButtonClass} onClick={abrirProximo}><IconWhatsApp className="h-6 w-6" /><span className="max-w-56 truncate">Próximo: {queue[queueIndex].nome}</span><span aria-hidden="true" className="ml-auto text-xl text-emerald-200">›</span></button> : <button type="button" className="touch-btn-primary inline-flex min-h-14 min-w-[9rem] items-center justify-center gap-3 px-6" onClick={fechar}>Enviar</button>}</div>}>
       {view === 'qr' ? (
         <div className="grid gap-4 py-1 sm:gap-5 lg:grid-cols-[minmax(220px,.75fr)_minmax(0,1.25fr)] lg:items-center">
-          <div className="mx-auto flex w-full max-w-xs items-center justify-center rounded-2xl border border-brand-600/40 bg-surface-lighter/50 p-3 sm:p-4"><QrCodeImage value={url} size={256} title={isEventPortal ? 'QR Code abrir comanda no evento' : 'QR Code abrir comanda no caixa'} /></div>
+          <div className="mx-auto flex w-full max-w-xs items-center justify-center rounded-2xl border border-brand-600/40 bg-surface-lighter/50 p-3 sm:p-4"><QrCodeImage value={url} size={256} title="QR Code abrir comanda no caixa" /></div>
           <div className="space-y-4 sm:space-y-5">
-            <div><h3 className="text-xl font-bold text-ink">Como funciona?</h3><p className="mt-2 text-base leading-relaxed text-ink-muted sm:text-lg">{isEventPortal ? 'O cliente escaneia o QR Code para abrir a comanda no evento ativo deste trailer. Ele informa nome e telefone para continuar.' : 'O cliente escaneia o QR Code para abrir a comanda. Ele informa nome e telefone; a comanda é aberta neste ponto de venda enquanto o caixa estiver aberto.'}</p></div>
+            <div><h3 className="text-xl font-bold text-ink">Como funciona?</h3><p className="mt-2 text-base leading-relaxed text-ink-muted sm:text-lg">O cliente escaneia o QR Code para abrir a comanda. Ele informa nome e telefone; a comanda é aberta neste ponto de venda enquanto o caixa estiver aberto.</p></div>
             <button type="button" className={whatsappButtonClass + ' w-full'} onClick={() => { setView('clients'); setShareError(''); }}><IconWhatsApp className="h-6 w-6" /><span>Enviar link por WhatsApp</span><span aria-hidden="true" className="ml-auto text-xl text-emerald-200 transition-transform group-hover:translate-x-0.5">›</span></button>
           </div>
         </div>

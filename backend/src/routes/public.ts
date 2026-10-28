@@ -13,8 +13,6 @@ import {
   lookupClientePortalPorTelefone,
   ClientePortalInativoError,
   registerClientePortalPdv,
-  resolveTrailerPortalContext,
-  startClientePortalSession,
 } from '../lib/portal-cliente.js';
 import { normalizePhone } from '../lib/phone.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../lib/operacao/caixa.js';
@@ -32,15 +30,8 @@ import { assertCommandOccurrenceMatchesSession, cashOccurrenceContextEnabled } f
 import { resolveUniqueOpenCashSession } from '../lib/operacao/cash-session-resolution.js';
 
 import {
-
   getClienteSession,
-
-  setClienteSessionCookie,
-
   clearClienteSessionCookie,
-
-  signClienteSession,
-
 } from '../lib/cliente-session.js';
 import { PDV_CLIENTE_COOKIE_NAME, type PdvClienteSessionPayload } from '../types/cliente-session.js';
 
@@ -62,9 +53,6 @@ import { registrarTransacao } from '../lib/transacao-log.js';
 import { recordPaymentRequestTransition } from '../lib/payment-request-observability.js';
 
 import { getDevFrontendOrigin } from '../lib/lan-url.js';
-import { assertLegacyWriteAllowed } from '../lib/legacy-write-guard.js';
-
-
 
 const PUBLIC_RATE_LIMIT_MAX =
 
@@ -73,16 +61,6 @@ const PUBLIC_RATE_LIMIT_MAX =
     ? Number(process.env.QA_PUBLIC_RATE_LIMIT_MAX ?? 200)
 
     : 10;
-
-
-
-const sessaoSchema = z.object({
-
-  nome: z.string().min(2).max(120),
-
-  telefone: z.string().min(10),
-
-});
 
 const telefoneQuerySchema = z.object({
   telefone: z.string().min(10),
@@ -333,28 +311,11 @@ export async function publicRoutes(app: FastifyInstance) {
 
 
 
-  app.get('/cervejarias/:slug/trailers/:trailerId/info', async (request, reply) => {
-
-    const { slug, trailerId } = request.params as { slug: string; trailerId: string };
-
-    const ctx = await resolveTrailerPortalContext(slug, trailerId);
-
-    if (!ctx) return reply.status(404).send({ error: 'Link inválido' });
-
-
-
-    return {
-
-      cervejaria: { ...ctx.cervejaria, logoVersion: resolveLogoVersion(ctx.cervejaria) },
-
-      trailer: ctx.trailer,
-
-      evento: ctx.evento,
-
-      disponivel: !!ctx.evento,
-
-    };
-
+  app.get('/cervejarias/:slug/trailers/:trailerId/info', async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'Portal de evento descontinuado. Use o QR do ponto de venda (/c/:slug/p/:pontoVendaId).',
+      code: 'PORTAL_EVENTO_DESCONTINUADO',
+    });
   });
 
   app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/info', async (request, reply) => {
@@ -659,111 +620,20 @@ export async function publicRoutes(app: FastifyInstance) {
 
   app.get('/cervejarias/:slug/trailers/:trailerId/cliente-por-telefone', {
     config: { rateLimit: { max: PUBLIC_RATE_LIMIT_MAX, timeWindow: '1 minute' } },
-  }, async (request, reply) => {
-    const { slug, trailerId } = request.params as { slug: string; trailerId: string };
-    const query = telefoneQuerySchema.parse(request.query);
-
-    const ctx = await resolveTrailerPortalContext(slug, trailerId);
-    if (!ctx) return reply.status(404).send({ error: 'Link inválido' });
-
-    const telefone = normalizePhone(query.telefone);
-    if (!telefone) {
-      return reply.status(400).send({ error: 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).' });
-    }
-
-    return lookupClientePortalPorTelefone(ctx.cervejaria.id, telefone);
+  }, async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'Portal de evento descontinuado. Use o QR do ponto de venda (/c/:slug/p/:pontoVendaId).',
+      code: 'PORTAL_EVENTO_DESCONTINUADO',
+    });
   });
 
-
-
   app.post('/cervejarias/:slug/trailers/:trailerId/sessao', {
-
     config: { rateLimit: { max: PUBLIC_RATE_LIMIT_MAX, timeWindow: '1 minute' } },
-
-  }, async (request, reply) => {
-
-    const { slug, trailerId } = request.params as { slug: string; trailerId: string };
-
-    const ctx = await resolveTrailerPortalContext(slug, trailerId);
-
-    if (ctx) assertLegacyWriteAllowed(request.method, ctx.cervejaria.id);
-
-    const body = sessaoSchema.parse(request.body);
-
-    if (!ctx) return reply.status(404).send({ error: 'Link inválido' });
-
-    if (!ctx.evento) {
-
-      return reply.status(503).send({ error: 'Nenhum evento aberto neste trailer no momento' });
-
-    }
-
-
-
-    try {
-
-      const { cliente, comanda, portalGeneration } = await startClientePortalSession({
-
-        cervejariaId: ctx.cervejaria.id,
-
-        eventoId: ctx.evento.id,
-
-        trailerId: ctx.trailer.id,
-
-        nome: body.nome,
-
-        telefone: body.telefone,
-
-      });
-
-
-
-      const token = signClienteSession(app, {
-
-        cervejariaId: ctx.cervejaria.id,
-
-        eventoId: ctx.evento.id,
-
-        trailerId: ctx.trailer.id,
-
-        clienteId: cliente.id,
-
-        comandaId: comanda.id,
-
-        portalGeneration,
-
-      });
-
-      setClienteSessionCookie(reply, token);
-
-
-
-      const comandaResumo = await serializeComandaForCliente(comanda.id);
-
-
-
-      return reply.status(201).send({
-
-        cliente: { id: cliente.id, nome: cliente.nome },
-
-        evento: ctx.evento,
-
-        trailer: ctx.trailer,
-
-        cervejaria: { nome: ctx.cervejaria.nome, slug: ctx.cervejaria.slug, logoUrl: ctx.cervejaria.logoUrl },
-
-        comanda: comandaResumo,
-
-      });
-
-    } catch (err) {
-
-      const message = err instanceof Error ? err.message : 'Não foi possível iniciar sessão';
-
-      return reply.status(400).send({ error: message });
-
-    }
-
+  }, async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'Portal de evento descontinuado. Use o QR do ponto de venda (/c/:slug/p/:pontoVendaId).',
+      code: 'PORTAL_EVENTO_DESCONTINUADO',
+    });
   });
 
 
