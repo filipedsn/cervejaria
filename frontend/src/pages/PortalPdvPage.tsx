@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { api, ApiError, assetUrl } from '../lib/api';
+import { api, ApiError, assetUrl, formatCurrency } from '../lib/api';
 import { formatPhone } from '../lib/phone';
 import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { Modal } from '../components/Modal';
+import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../components/NavIcons';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
 
 type Info = {
@@ -93,6 +94,7 @@ export function PortalPdvPage() {
   const [menuTab, setMenuTab] = useState<'pedidos' | 'resumo'>('pedidos');
   const [cart, setCart] = useState<PdvCartItem[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState<PdvProduct | null>(null);
+  const [quantidadeItem, setQuantidadeItem] = useState(1);
   const [paraViagem, setParaViagem] = useState(false);
   const [observacao, setObservacao] = useState('');
   const [opcionais, setOpcionais] = useState<Record<string, number>>({});
@@ -188,8 +190,16 @@ export function PortalPdvPage() {
     itens.filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm);
   const totalConsumido = displayedComanda?.total ?? 0;
   const valorEmAberto = displayedComanda?.valorEmAberto ?? 0;
+  const closeProductModal = () => {
+    setProdutoSelecionado(null);
+    setQuantidadeItem(1);
+    setParaViagem(false);
+    setObservacao('');
+    setOpcionais({});
+  };
   const addProduct = (product: PdvProduct) => {
     setProdutoSelecionado(product);
+    setQuantidadeItem(1);
     setParaViagem(false);
     setObservacao('');
     setOpcionais({});
@@ -203,8 +213,27 @@ export function PortalPdvPage() {
     const volumeMl = (product.volumeMl ?? 0) > 1 ? product.volumeMl : undefined;
     const base = product.precoEfetivo ?? 0;
     const name = nomeProduto(product);
-    setCart((current) => [...current, { chave: details, produtoId: product.id, volumeMl, nome: name, quantidade: 1, preco: base + options.reduce((sum, option) => sum + option.precoAdicional * option.quantidade, 0), paraViagem, observacao: observacao.trim() || undefined, opcionais: options }]);
-    setProdutoSelecionado(null);
+    const unitPrice = base + options.reduce((sum, option) => sum + option.precoAdicional * option.quantidade, 0);
+    setCart((current) => {
+      const existing = current.find((item) => item.chave === details);
+      if (existing) {
+        return current.map((item) =>
+          item.chave === details ? { ...item, quantidade: item.quantidade + quantidadeItem } : item,
+        );
+      }
+      return [...current, {
+        chave: details,
+        produtoId: product.id,
+        volumeMl,
+        nome: name,
+        quantidade: quantidadeItem,
+        preco: unitPrice,
+        paraViagem,
+        observacao: observacao.trim() || undefined,
+        opcionais: options,
+      }];
+    });
+    closeProductModal();
   };
   const changeQuantity = (chave: string, delta: number) => {
     setCart((current) => current
@@ -421,13 +450,140 @@ export function PortalPdvPage() {
           </form>
         )}
       </div>
-      <Modal open={Boolean(produtoSelecionado)} onClose={() => setProdutoSelecionado(null)} title={produtoSelecionado ? `Adicionar ${nomeProduto(produtoSelecionado)}` : 'Adicionar item'} footer={<div className="flex justify-end gap-3"><button type="button" className="btn-secondary" onClick={() => setProdutoSelecionado(null)}>Cancelar</button><button type="button" className="btn-primary" onClick={confirmProduct}>Adicionar ao pedido</button></div>}>
-        {produtoSelecionado && <div className="space-y-4 pb-5">
-          <p className="text-sm text-ink-muted">R$ {(produtoSelecionado.precoEfetivo ?? 0).toFixed(2).replace('.', ',')} por unidade</p>
-          {produtoSelecionado.gruposOpcionais?.flatMap((group) => group.opcoes).map((option) => <label key={option.id} className="flex items-center justify-between gap-3 rounded-xl border border-line p-3"><span className="flex items-center gap-3"><input type="checkbox" checked={Boolean(opcionais[option.id])} onChange={() => setOpcionais((current) => current[option.id] ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== option.id)) : { ...current, [option.id]: 1 })} />{option.nome}</span><span>{option.precoAdicional ? `+ R$ ${option.precoAdicional.toFixed(2).replace('.', ',')}` : 'Grátis'}</span></label>)}
-          <label className="flex items-center gap-3 rounded-xl border border-line p-3"><input type="checkbox" checked={paraViagem} onChange={(event) => setParaViagem(event.target.checked)} />Para levar</label>
-          <label className="block text-sm font-semibold">Observações<textarea className="input mt-2 min-h-20 w-full" maxLength={280} value={observacao} onChange={(event) => setObservacao(event.target.value)} /></label>
-        </div>}
+      <Modal
+        open={Boolean(produtoSelecionado)}
+        onClose={closeProductModal}
+        title=""
+        hideHeaderClose
+        footer={(
+          <>
+            <button type="button" className="touch-btn-primary w-full flex items-center justify-center gap-2" onClick={confirmProduct}>
+              <IconPlus className="h-5 w-5" />
+              Adicionar item
+            </button>
+            <button type="button" className="touch-btn-orange w-full flex items-center justify-center gap-2" onClick={closeProductModal}>
+              Voltar
+            </button>
+          </>
+        )}
+      >
+        {produtoSelecionado && (
+          <div className="space-y-6 rounded-2xl border border-line bg-surface-lighter p-5 sm:p-7">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-ink">{nomeProduto(produtoSelecionado)}</h2>
+              <p className="mt-1 text-sm text-ink-muted">{formatCurrency(produtoSelecionado.precoEfetivo ?? 0)} por unidade</p>
+            </div>
+
+            <section className="space-y-3 border-b border-line pb-5">
+              <div className="mb-3 flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
+                  <IconChefHat className="h-6 w-6" />
+                </span>
+                <div>
+                  <h3 className="text-lg font-bold">Opcionais</h3>
+                  <p className="text-sm text-ink-muted">Selecione os opcionais que desejar</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {produtoSelecionado.gruposOpcionais?.flatMap((group) => group.opcoes).map((option) => (
+                  <label
+                    key={option.id}
+                    className="flex min-h-16 cursor-pointer items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10"
+                  >
+                    <span className="flex items-center gap-3">
+                      <input
+                        className="h-5 w-5 accent-brand-500"
+                        type="checkbox"
+                        checked={Boolean(opcionais[option.id])}
+                        onChange={() => setOpcionais((current) => (
+                          current[option.id]
+                            ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== option.id))
+                            : { ...current, [option.id]: 1 }
+                        ))}
+                      />
+                      <span className="font-semibold">{option.nome}</span>
+                    </span>
+                    <span className="text-sm text-ink-muted">
+                      {option.precoAdicional > 0 ? `+${formatCurrency(option.precoAdicional)}` : 'Grátis'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <section className="flex items-center justify-between gap-4 border-b border-line pb-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
+                  <IconPackage className="h-6 w-6" />
+                </span>
+                <div>
+                  <h3 className="text-lg font-bold">Quantidade</h3>
+                  <p className="text-sm text-ink-muted">Escolha a quantidade deste item</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface px-3 py-2">
+                <button
+                  type="button"
+                  aria-label="Diminuir quantidade"
+                  className="min-h-10 min-w-10 rounded-xl bg-surface-lighter text-xl font-bold"
+                  onClick={() => setQuantidadeItem((value) => Math.max(1, value - 1))}
+                >
+                  −
+                </button>
+                <span className="min-w-8 text-center text-2xl font-bold">{quantidadeItem}</span>
+                <button
+                  type="button"
+                  aria-label="Aumentar quantidade"
+                  className="min-h-10 min-w-10 rounded-xl bg-brand-600 text-xl font-bold text-white"
+                  onClick={() => setQuantidadeItem((value) => value + 1)}
+                >
+                  <IconPlus className="mx-auto h-5 w-5" />
+                </button>
+              </div>
+            </section>
+
+            <section>
+              <div className="mb-3 flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
+                  <IconChefHat className="h-6 w-6" />
+                </span>
+                <div>
+                  <h3 className="text-lg font-bold">Para viagem</h3>
+                  <p className="text-sm text-ink-muted">A cozinha deve embalar este item</p>
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-4 py-3">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-brand-500"
+                  checked={paraViagem}
+                  onChange={(event) => setParaViagem(event.target.checked)}
+                />
+                <span className="font-semibold">Marcar item para viagem</span>
+              </label>
+            </section>
+
+            <section>
+              <div className="mb-3 flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
+                  <IconClipboard className="h-6 w-6" />
+                </span>
+                <div>
+                  <h3 className="text-lg font-bold">Observação do item</h3>
+                  <p className="text-sm text-ink-muted">Adicione alguma observação, se necessário</p>
+                </div>
+              </div>
+              <textarea
+                value={observacao}
+                onChange={(event) => setObservacao(event.target.value)}
+                maxLength={280}
+                rows={2}
+                placeholder="Ex.: sem cebola"
+                className="w-full rounded-2xl border border-line bg-surface px-4 py-3"
+              />
+            </section>
+          </div>
+        )}
       </Modal>
     </main>
   );
