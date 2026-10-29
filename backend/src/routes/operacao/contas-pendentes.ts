@@ -31,6 +31,7 @@ function resumoConta(conta: {
     identificador: string | null;
     tipo: string;
     fechadaEm: Date | null;
+    diaOperacional: Date | null;
     pontoVenda: { id: string; nome: string } | null;
     itens: Array<{ nome: string | null; quantidade: number }>;
   };
@@ -82,6 +83,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
             identificador: true,
             tipo: true,
             fechadaEm: true,
+            diaOperacional: true,
             pontoVenda: { select: { id: true, nome: true } },
             itens: { select: { nome: true, quantidade: true, observacao: true }, orderBy: { createdAt: 'asc' } },
           },

@@ -291,6 +291,7 @@ export interface ContaPendenteOperacao {
     identificador: string | null;
     tipo: string;
     fechadaEm: string | null;
+    diaOperacional?: string | null;
     pontoVenda: { id: string; nome: string } | null;
     itens: Array<{ nome: string | null; quantidade: number; observacao?: string | null }>;
   };
