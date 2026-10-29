@@ -30,21 +30,14 @@ function scoreLanCandidate(name: string, address: string) {
   return score;
 }
 
-/** URL do frontend dev acessível na LAN (celular na mesma Wi-Fi) ou via túnel público. */
-export function getDevFrontendOrigin(): string | null {
-  const appUrl = process.env.APP_URL?.trim();
-  if (appUrl) {
-    try {
-      const hostname = new URL(appUrl).hostname;
-      if (hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '[::1]') {
-        return appUrl.replace(/\/$/, '');
-      }
-    } catch {
-      // ignore URL inválida
-    }
-  }
+/** Hostnames legados (tunnel/DNS externo de DEV) — não usar em QR/links locais. */
+const LEGACY_DEV_PUBLIC_HOST_RE = /(^|\.)tapdev\.quivercloud\.com\.br$/i;
 
-  const port = process.env.DEV_FRONTEND_PORT ?? '5202';
+function isLoopbackHostname(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+function resolveLanFrontendOrigin(port: string): string | null {
   const nets = os.networkInterfaces();
   const candidates: Array<{ name: string; address: string; score: number }> = [];
 
@@ -65,4 +58,28 @@ export function getDevFrontendOrigin(): string | null {
 
   candidates.sort((a, b) => b.score - a.score || a.address.localeCompare(b.address));
   return `http://${candidates[0].address}:${port}`;
+}
+
+/**
+ * URL do frontend DEV acessível na LAN (celular na mesma Wi-Fi).
+ * Prefere IP privado:5202. Ignora APP_URL apontando para tapdev/tunnel legado.
+ */
+export function getDevFrontendOrigin(): string | null {
+  const port = process.env.DEV_FRONTEND_PORT ?? '5202';
+  const appUrl = process.env.APP_URL?.trim();
+  if (appUrl) {
+    try {
+      const hostname = new URL(appUrl).hostname;
+      if (
+        !isLoopbackHostname(hostname) &&
+        !LEGACY_DEV_PUBLIC_HOST_RE.test(hostname)
+      ) {
+        return appUrl.replace(/\/$/, '');
+      }
+    } catch {
+      // ignore URL inválida
+    }
+  }
+
+  return resolveLanFrontendOrigin(port);
 }
