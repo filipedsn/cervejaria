@@ -576,7 +576,14 @@ export interface RankingPeriodoResponse {
 }
 
 export interface CervejariaDashboard {
-  periodo: { ano: number; mes: number; label: string };
+  periodo: {
+    tipo?: 'mes' | 'periodo';
+    ano: number;
+    mes: number;
+    label: string;
+    de?: string;
+    ate?: string;
+  };
   resumo: {
     receitaTotal: number;
     totalRecebido: number;

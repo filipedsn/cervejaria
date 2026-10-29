@@ -674,16 +674,41 @@ async function buildComparativoAgendas(
     .sort((a, b) => b.mediaPorSessao - a.mediaPorSessao);
 }
 
+function dailyEvolution(comandas: ClosedComanda[], inicio: Date, fim: Date) {
+  const dias: Array<{ dia: number; label: string; receita: number; comandas: number }> = [];
+  const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate());
+  const fimDia = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
+  let i = 0;
+  while (cursor.getTime() <= fimDia.getTime() && i < 400) {
+    const label = `${String(cursor.getDate()).padStart(2, '0')}/${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    dias.push({ dia: i + 1, label, receita: 0, comandas: 0 });
+    cursor.setDate(cursor.getDate() + 1);
+    i += 1;
+  }
+  const inicioMs = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate()).getTime();
+  for (const comanda of comandas) {
+    const when = comanda.fechadaEm ?? comanda.updatedAt;
+    const dayStart = new Date(when.getFullYear(), when.getMonth(), when.getDate()).getTime();
+    const idx = Math.floor((dayStart - inicioMs) / 86_400_000);
+    if (idx < 0 || idx >= dias.length) continue;
+    dias[idx].receita += toNumber(comanda.total);
+    dias[idx].comandas += 1;
+  }
+  return dias.map((d) => ({
+    ...d,
+    receita: Math.round(d.receita * 100) / 100,
+  }));
+}
+
 export async function buildCervejariaDashboard(
   cervejariaId: string,
-  ano: number,
-  mes: number,
+  periodo: import('./cervejaria-dashboard-periodo.js').DashboardPeriodoResolvido,
   trailerId?: string,
   tipo: EventoTipoFiltro = 'todos',
 ) {
   const now = new Date();
   const anoVigente = now.getFullYear();
-  const { inicio, fim } = monthBounds(ano, mes);
+  const { inicio, fim } = periodo;
 
   const fechadoPorCtx = await getReportFechadoPorContext(cervejariaId);
 
@@ -697,7 +722,14 @@ export async function buildCervejariaDashboard(
   ]);
 
   const resumo = aggregateComandas(comandasMes, fechadoPorCtx);
-  const evolucaoSemanal = weeklyEvolution(comandasMes, ano, mes);
+  const evolucaoSemanal = periodo.tipo === 'mes'
+    ? weeklyEvolution(comandasMes, periodo.ano, periodo.mes)
+    : dailyEvolution(comandasMes, inicio, fim).map((d) => ({
+        semana: d.dia,
+        label: d.label,
+        receita: d.receita,
+        comandas: d.comandas,
+      }));
 
   const receitaAnual = MESES.map((label, i) => ({
     mes: i + 1,
@@ -712,22 +744,22 @@ export async function buildCervejariaDashboard(
     receitaAnual[m].comandas += 1;
   }
 
-  const mesAnterior = mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
-  const boundsAnterior = monthBounds(mesAnterior.ano, mesAnterior.mes);
-  const comandasMesAnterior = await fetchClosedDashboardComandas(cervejariaId, boundsAnterior.inicio, boundsAnterior.fim, trailerId, tipo);
-  const resumoAnterior = aggregateComandas(comandasMesAnterior, fechadoPorCtx);
-
-  const variacaoReceita =
-    resumoAnterior.receitaTotal > 0
-      ? Math.round(((resumo.receitaTotal - resumoAnterior.receitaTotal) / resumoAnterior.receitaTotal) * 100)
-      : null;
+  let variacaoReceita: number | null = null;
+  if (periodo.tipo === 'mes') {
+    const mesAnterior = periodo.mes === 1 ? { ano: periodo.ano - 1, mes: 12 } : { ano: periodo.ano, mes: periodo.mes - 1 };
+    const boundsAnterior = monthBounds(mesAnterior.ano, mesAnterior.mes);
+    const comandasMesAnterior = await fetchClosedDashboardComandas(cervejariaId, boundsAnterior.inicio, boundsAnterior.fim, trailerId, tipo);
+    const resumoAnterior = aggregateComandas(comandasMesAnterior, fechadoPorCtx);
+    variacaoReceita =
+      resumoAnterior.receitaTotal > 0
+        ? Math.round(((resumo.receitaTotal - resumoAnterior.receitaTotal) / resumoAnterior.receitaTotal) * 100)
+        : null;
+  }
 
   return {
-    periodo: {
-      ano,
-      mes,
-      label: `${MESES[mes - 1]} ${ano}`,
-    },
+    periodo: periodo.tipo === 'mes'
+      ? { tipo: 'mes' as const, ano: periodo.ano, mes: periodo.mes, label: periodo.label }
+      : { tipo: 'periodo' as const, de: periodo.de, ate: periodo.ate, label: periodo.label, ano: inicio.getFullYear(), mes: inicio.getMonth() + 1 },
     resumo: {
       receitaTotal: resumo.receitaTotal,
       totalRecebido: financeiro.totalRecebido,
@@ -746,10 +778,12 @@ export async function buildCervejariaDashboard(
     eventosRecentes,
     turnosCaixaRecentes,
     comparativoAgendas,
-    receitaAnual: receitaAnual.map((m) => ({
-      ...m,
-      receita: Math.round(m.receita * 100) / 100,
-    })),
+    receitaAnual: periodo.tipo === 'mes'
+      ? receitaAnual.map((m) => ({
+          ...m,
+          receita: Math.round(m.receita * 100) / 100,
+        }))
+      : [],
     anoVigente,
   };
 }
