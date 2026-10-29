@@ -29,6 +29,7 @@ import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
 import type { Trailer } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { cashOccurrenceQueryUrl, cashOccurrenceSelectionIsEligible, eligibleCashOccurrences, type CashOccurrenceOption } from '../../lib/cash-occurrences';
+import { datetimeLocalSaoPauloToIso, formatDateTimeSaoPaulo, toDatetimeLocalSaoPaulo } from '../../lib/datetime-sp';
 
 type Dialogo = 'nenhum' | 'abrir' | 'movimento' | 'correcao' | 'fechar' | 'cardapio' | 'encerrar-admin';
 function dataCalendarioPt(data: string) {
@@ -95,6 +96,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [historicoAberto, setHistoricoAberto] = useState<string | null>(null);
   const [contado, setContado] = useState<Record<string, string>>({});
   const [obsFechamento, setObsFechamento] = useState('');
+  const [fechadoEmLocal, setFechadoEmLocal] = useState('');
   const [motivoEncerramentoAdministrativo, setMotivoEncerramentoAdministrativo] = useState('');
   const [erro, setErro] = useState('');
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
@@ -280,6 +282,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         contadoCartaoDebito: parseCurrencyInput(contado.debito ?? '0'),
         contadoCartaoCredito: parseCurrencyInput(contado.credito ?? '0'),
         observacaoFechamento: obsFechamento.trim() || undefined,
+        fechadoEm: fechadoEmLocal ? datetimeLocalSaoPauloToIso(fechadoEmLocal) : undefined,
       }),
     onSuccess: () => {
       invalidar();
@@ -337,6 +340,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     // values can silently conceal a cash/card reconciliation discrepancy.
     setContado({ dinheiro: '', pix: '', debito: '', credito: '' });
     setObsFechamento('');
+    setFechadoEmLocal(toDatetimeLocalSaoPaulo());
     setErro('');
     setDialogo('fechar');
   };
@@ -717,6 +721,12 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         <div className="card space-y-3">
           <div>
             <h2 className="text-base font-semibold">Turno encerrado</h2>
+            {sessao.fechadoEm && (
+              <p className="mt-1 text-sm text-ink-muted">
+                Encerrado em {formatDateTimeSaoPaulo(sessao.fechadoEm)}
+                {sessao.abertoEm ? ` · aberto em ${formatDateTimeSaoPaulo(sessao.abertoEm)}` : ''}
+              </p>
+            )}
             {sessao.tipoEncerramento === 'ADMINISTRATIVO' ? (
               <p className="text-sm font-semibold text-amber-700">Encerramento administrativo · conferência financeira pendente; contagens desconhecidas.</p>
             ) : sessao.tipoEncerramento === 'FINANCEIRO' ? (
@@ -1013,6 +1023,18 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
                 <p className="mt-1 text-sm text-ink-muted">Contas ainda não recebidas; não entram na conferência dos valores pagos.</p>
               </div>
               <strong className="shrink-0 text-xl font-bold tabular-nums text-amber-400">{formatCurrency(sessao?.pendente ?? 0)}</strong>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-3 block text-lg font-semibold text-ink sm:text-2xl" htmlFor="fechado-em-caixa">Data e hora do encerramento</label>
+              <p className="mb-2 text-sm text-ink-muted">Use o horário em que a operação realmente acabou (ex.: após a última venda), mesmo que você só consiga fechar o caixa no dia seguinte. Deve ser depois da última comanda do turno.</p>
+              <input
+                id="fechado-em-caixa"
+                type="datetime-local"
+                className="input min-h-16 text-lg sm:min-h-20 sm:text-xl"
+                value={fechadoEmLocal}
+                onChange={(e) => setFechadoEmLocal(e.target.value)}
+                required
+              />
             </div>
             <div className="sm:col-span-2"><label className="mb-3 block text-lg font-semibold text-ink sm:text-2xl">Observação (opcional)</label><div className="relative"><span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-ink-muted sm:w-24"><IconeFechamento tipo="OBS" /></span><input className="input min-h-16 text-lg sm:min-h-24 sm:text-2xl" style={{ paddingLeft: '6.25rem' }} value={obsFechamento} onChange={(e) => setObsFechamento(e.target.value)} placeholder="Adicione uma observação, se necessário..." /></div></div>
           </div>
