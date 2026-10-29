@@ -155,7 +155,7 @@ for (const shape of shapes) for (const viewport of viewports) {
     state.setAvailable(false);
     await page.goto('/c/synthetic/t/synthetic');
     await expect(page).toHaveURL(/\/c\/synthetic\/p\/synthetic/);
-    await expect(page.getByText('Caixa indisponível', { exact: true })).toBeVisible();
+    await expect(page.getByText('No momento não estamos aberto', { exact: true })).toBeVisible();
     await checkFraming(page, shape);
     state.setAvailable(true);
     await page.reload();

@@ -62,6 +62,29 @@ function PhoneIcon() {
   return <svg aria-hidden="true" viewBox="0 0 32 32" className="portal-login-field-icon"><path d="M9 5.5 13 4l3 7-3 2c1.3 3 3 4.7 6 6l2-3 7 3-1.5 4c-.5 1.4-2 2.2-3.4 1.8C14 22.6 8.4 17 6.2 7.9 5.8 6.5 7.6 6 9 5.5Z" /></svg>;
 }
 
+function isPortalCaixaFechadoError(error: unknown) {
+  if (!(error instanceof ApiError)) return false;
+  if (error.body?.code === 'PORTAL_CAIXA_FECHADO') return true;
+  return /não estamos aberto|abra o caixa|caixa não habilitado/i.test(error.message);
+}
+
+function PortalFechadoCard({ nomeEstabelecimento }: { nomeEstabelecimento: string }) {
+  return (
+    <div className="portal-login-card portal-login-card--closed text-center space-y-3" role="status">
+      <div className="portal-login-heading justify-center">
+        <ReceiptIcon />
+        <div>
+          <h1>No momento não estamos aberto</h1>
+          <p>O atendimento neste caixa está encerrado agora.</p>
+        </div>
+      </div>
+      <p className="text-sm text-ink-muted leading-relaxed">
+        Volte mais tarde ou fale com a equipe de {nomeEstabelecimento}.
+      </p>
+    </div>
+  );
+}
+
 export function PortalPdvPage() {
   const { slug, pontoVendaId } = useParams<{ slug: string; pontoVendaId: string }>();
   const [nome, setNome] = useState('');
@@ -73,6 +96,7 @@ export function PortalPdvPage() {
   const [paraViagem, setParaViagem] = useState(false);
   const [observacao, setObservacao] = useState('');
   const [opcionais, setOpcionais] = useState<Record<string, number>>({});
+  const [forceClosed, setForceClosed] = useState(false);
   const pedidoKey = useRef<string | null>(null);
   const lastLookupPhone = useRef('');
 
@@ -80,6 +104,8 @@ export function PortalPdvPage() {
     queryKey: ['portal-pdv-info', slug, pontoVendaId],
     queryFn: () => api.get<Info>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/info`),
     enabled: Boolean(slug && pontoVendaId),
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => (query.state.data?.disponivel ? false : 15_000),
   });
 
   // O cookie mantém a sessão do cliente mesmo se o navegador suspender ou
@@ -108,7 +134,15 @@ export function PortalPdvPage() {
         pontoVenda: { nome: string };
       }>(`/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comandas`, { nome, telefone }),
     onSuccess: (data) => setResult({ numero: data.comanda.numero, reused: data.reused, comanda: data.comanda }),
+    onError: (error) => {
+      if (isPortalCaixaFechadoError(error)) {
+        setForceClosed(true);
+        void info.refetch();
+      }
+    },
   });
+
+  const caixaFechado = forceClosed || info.data?.disponivel === false;
 
   const cardapio = useQuery({
     queryKey: ['portal-pdv-cardapio', result?.comanda.id],
@@ -232,13 +266,8 @@ export function PortalPdvPage() {
           )}
         </div>
 
-        {!info.data.disponivel ? (
-          <div className="card text-center space-y-2">
-            <h2 className="font-bold">Caixa indisponível</h2>
-            <p className="text-sm text-ink-muted">
-              Este ponto de venda não está atendendo agora. Procure a equipe.
-            </p>
-          </div>
+        {caixaFechado ? (
+          <PortalFechadoCard nomeEstabelecimento={info.data.cervejaria.nome} />
         ) : result ? (
           <section className="portal-pdv-workspace">
             <div className="portal-pdv-account">
@@ -341,11 +370,11 @@ export function PortalPdvPage() {
                 <p>Informe seus dados para abrir sua comanda neste caixa.</p>
               </div>
             </div>
-            {abrir.error && (
-              <div className="alert-error">
-                {abrir.error instanceof ApiError
+            {abrir.error && !isPortalCaixaFechadoError(abrir.error) && (
+              <div className="alert-error" role="alert">
+                {abrir.error instanceof ApiError && !/abra o caixa|caixa não habilitado/i.test(abrir.error.message)
                   ? abrir.error.message
-                  : 'Não foi possível abrir a comanda'}
+                  : 'Não foi possível abrir a comanda. Tente de novo ou fale com a equipe.'}
               </div>
             )}
             <label htmlFor="portal-pdv-telefone" className="portal-login-field">
