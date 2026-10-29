@@ -89,9 +89,9 @@ As nove combinações de empresa (cervejaria; quiosque com/sem estoque/cozinha; 
 | RF-04 | Comandas | Lançar/remover item e recalcular total com proteção concorrente. | Atendente | IMPLEMENTED | `comanda-service.ts`, CONC-* | HIGH |
 | RF-05 | Pagamentos | Fechar comanda e distribuir pagamentos com total exato. | Atendente | IMPLEMENTED | `pagamentos.ts`, `PaymentFormModal.tsx`, PAG-* | HIGH |
 | RF-06 | Comandas | Corrigir uma venda já fechada com trilha de auditoria. | Dono | MISSING | fechada é somente leitura; sem rota/UI de estorno | HIGH |
-| RF-07 | Portal | Cliente abre/consulta própria comanda por QR. | Cliente | IMPLEMENTED | `public.ts`, `PortalClientePage.tsx`, PORTAL-* | HIGH |
-| RF-08 | Portal | Pedido chega ao staff, que confirma ou recusa com motivo. | Cliente/atendente | IMPLEMENTED | `pedidos.ts`, `FilaPedidosPanel.tsx`, E2E portal | HIGH |
-| RF-09 | Portal | Cliente acompanha preparo/entrega ou previsão. | Cliente | MISSING | portal só mostra pendente/confirmado/recusado | MEDIUM |
+| RF-07 | Portal | Cliente abre/consulta própria comanda por QR (PDV `/c/.../p/...`). | Cliente | IMPLEMENTED | `public.ts`, `PortalPdvPage.tsx`, POR-* | HIGH |
+| RF-08 | Portal | Pedido chega ao staff, que confirma ou recusa com motivo. | Cliente/atendente | DEPRECATED | portal de evento `/t/` descontinuado (TAP-141); fluxo assistido legado | HIGH |
+| RF-09 | Portal | Cliente acompanha preparo/entrega ou previsão. | Cliente | MISSING | portal PDV ainda sem status rico de preparo | MEDIUM |
 | RF-10 | Clientes | Consultar histórico e reconhecer recorrência simples. | Dono/atendente | IMPLEMENTED | `clientes.ts`, `ClienteDetailPage.tsx`, CRM-* | MEDIUM |
 | RF-11 | Taps | Posicionar/trocar chope por evento e preservar histórico. | Dono/atendente | IMPLEMENTED | `eventos.ts`, `TapMontagem`, TAP-M-* | HIGH |
 | RF-12 | Quiosque | Abrir comanda por apelido, mesa ou ficha com prevenção de duplicata. | Atendente | IMPLEMENTED | `quiosque/comandas.ts`, QCM-* | HIGH |
@@ -136,9 +136,9 @@ O dono consegue: configurar catálogo, equipe, trailer/taps ou ponto; abrir/conf
 
 ## 9. Customer Journey
 
-O QR abre o portal do trailer. O cliente informa telefone; se existe, confirma identidade, senão cadastra nome; então vê sua comanda, consumo e cardápio, monta pedido e o envia. Pode cancelar enquanto pendente e recebe confirmação/recusa com motivo. É compreensível para quem já está no local, mas ainda não é autoatendimento completo: o cliente não escolhe pagamento, não acompanha cozinha/entrega e depende de staff para efetivar pedido.
+O QR abre o **portal PDV** (`/c/:slug/p/:pontoVendaId`) enquanto o caixa do ponto estiver aberto. O cliente informa telefone; se existe, confirma identidade, senão cadastra nome; então vê a comanda, monta pedido operacional e pode solicitar pagamento (a equipe fecha no caixa). O portal de evento/trailer (`/c/.../t/...`) foi **descontinuado** (TAP-141): links antigos redirecionam para `/p/` quando o ponto existe (cutover) ou mostram página de descontinuado.
 
-Isso é uma boa fronteira inicial de segurança/controle. A maior fricção é a espera invisível após confirmar um pedido; a melhoria correta é status operacional claro, não gateway de pagamento por padrão.
+Não é checkout com PIX do cliente — fronteira de produto mantida. Gaps: status de preparo/cozinha ainda fraco no portal PDV.
 
 ## 10. Brewery Journey
 
@@ -254,9 +254,9 @@ Gaps de maior valor: acelerar a entrada/localização e criar exceção financei
 
 ## 23. Portal
 
-O portal é um diferencial relevante, mas é **portal de pedido assistido**, não checkout. O QR é contextual ao trailer/evento; o cliente autentica de forma leve por telefone/nome, vê apenas seus dados, envia pedido e recebe resposta do staff. O modelo evita lançamento automático indevido e é apropriado no MVP.
+O portal canônico é o **PDV** (`/c/:slug/p/:pontoVendaId`): QR contextual ao ponto/caixa; autenticação leve por telefone/nome; pedido operacional; solicitar pagamento (equipe fecha no caixa). Não é checkout com PIX do cliente. O portal de evento/trailer (`/t/`) foi descontinuado (TAP-141).
 
-Prioridade: esclarecer estados e próxima ação. Não priorizar pagamento integrado, cadastro social, CRM de marketing ou app separado sem evidência real.
+Prioridade: esclarecer estados de preparo no PDV. Não priorizar pagamento integrado, cadastro social, CRM de marketing ou app separado sem evidência real.
 
 ## 24. Realtime
 

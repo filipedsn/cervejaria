@@ -43,14 +43,14 @@ export function CadastroLinkDescontinuadoPage() {
           <p className="text-sm text-ink-muted mt-1">Abrir comanda</p>
         </div>
         <div className="card space-y-3 text-left">
-          <p className="font-semibold">Use o QR Code do trailer</p>
+          <p className="font-semibold">Use o QR Code do ponto de venda</p>
           <p className="text-sm text-ink-muted">
-            Este link de cadastro não abre comanda. Escaneie o <strong>QR do trailer</strong> onde
-            você está — informe nome e telefone e sua comanda será aberta na hora.
+            Este link de cadastro não abre comanda. Escaneie o <strong>QR do caixa</strong> onde você
+            está — informe nome e telefone e sua comanda será aberta na hora.
           </p>
           {!isError && info && (
             <p className="text-sm text-ink-muted">
-              Se você é da equipe, configure os QRs em Configurações → Trailers.
+              Se você é da equipe, configure o QR em Operação → Configurações → PDV.
             </p>
           )}
         </div>

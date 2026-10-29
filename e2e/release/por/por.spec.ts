@@ -312,12 +312,13 @@ test('POR-X03 sessão ausente, adulterada ou de comanda encerrada é recusada @a
   await evidence.assertNoDbChange();
 });
 
-test('POR-X04 link de trailer em empresa canônica não abre portal', async ({ ops, page, evidence }) => {
+test('POR-X04 link de trailer descontinuado não abre portal de evento', async ({ ops, page, evidence }) => {
   const tenant = await portalAberto(ops);
   await evidence.checkpoint();
   await page.goto(`/c/${tenant.slug}/t/trailer-inexistente`, { waitUntil: 'networkidle' });
-  await expect(page.getByText('Link inválido').first()).toBeVisible();
+  await expect(page.getByText(/Portal de evento descontinuado|Link inválido/).first()).toBeVisible();
   await expect(page.locator('#portal-pdv-telefone')).toHaveCount(0);
+  await expect(page.locator('#portal-telefone')).toHaveCount(0);
   await evidence.screenshot('trailer');
   await evidence.assertNoDbChange();
 });
@@ -327,8 +328,8 @@ test('POR-X05 link de cadastro mostra a página de link descontinuado', async ({
   await evidence.checkpoint();
   await page.goto(`/c/${tenant.slug}/cadastro`, { waitUntil: 'networkidle' });
   await expect(page.getByText(/Este link de cadastro não abre comanda\./)).toBeVisible();
+  await expect(page.getByText(/QR do caixa|ponto de venda/i).first()).toBeVisible();
   await expect(page.getByRole('link', { name: 'Acesso da equipe' })).toBeVisible();
-  test.info().annotations.push({ type: 'observed', description: 'A página orienta escanear o QR do "trailer"; no modelo canônico o QR é do ponto de venda.' });
   await evidence.screenshot('cadastro');
   await evidence.assertNoDbChange();
 });

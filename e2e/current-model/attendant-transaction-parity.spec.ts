@@ -408,41 +408,14 @@ test.describe('Current operating model — attendant sales parity', () => {
             await required('PUT', `/api/eventos/${event.id}/taps/${tenant.tapId}/chope`, tenant.ownerCookie, { produtoId: tenant.beerId });
           }
 
-          const sessionResponse = await publicPost(
+          // Portal de evento (/t/) descontinuado — sessão pública do trailer responde 410.
+          const discontinued = await publicPost(
             `/api/public/cervejarias/${tenant.slug}/trailers/${tenant.trailerId}/sessao`,
             { nome: 'Cliente portal E2E', telefone: '11987654323' },
-            201,
+            410,
           );
-          expect(sessionResponse.cookie).toMatch(/^cliente_token=/);
-          const portalMenuResponse = await fetch(`${API_BASE}/api/public/cliente/cardapio`, {
-            headers: { Cookie: sessionResponse.cookie, Accept: 'application/json' },
-          });
-          expect(portalMenuResponse.status).toBe(200);
-          const portalMenu = await portalMenuResponse.json() as Json;
-          const availableTap = portalMenu.chopes.find((row: Json) => row.tapId === tenant.tapId);
-          expect(availableTap?.produto?.precos).toEqual(expect.arrayContaining([
-            expect.objectContaining({ volumeMl: 300, preco: 15 }),
-            expect.objectContaining({ volumeMl: 500, preco: 20 }),
-            expect.objectContaining({ volumeMl: 700, preco: 26 }),
-          ]));
-          const portalOrder = await publicPost('/api/public/cliente/pedidos', {
-            observacao: 'Pedido criado pelo portal E2E',
-            itens: [{ produtoId: tenant.beerId, volumeMl: 500, quantidade: 1, tapId: tenant.tapId }],
-          }, 201, sessionResponse.cookie);
-          expect(portalOrder.data.status).toBe('PENDENTE');
-          expect(portalOrder.data.totalEstimado).toBe(20);
+          expect(discontinued.data.code).toBe('PORTAL_EVENTO_DESCONTINUADO');
           expect((await stock(tenant.ownerCookie, tenant.posId, tenant.beerId)).quantidade).toBe(12);
-          const eventPending = await required<any[]>('GET', `/api/pedidos/eventos/${event.id}/pedidos?status=PENDENTE`, tenant.ownerCookie);
-          expect(eventPending.some((row) => row.id === portalOrder.data.id)).toBe(true);
-          const confirmed = await required<Json>('POST', `/api/pedidos/${portalOrder.data.id}/confirmar`, tenant.ownerCookie, {}, 200);
-          expect(confirmed.pedido.status).toBe('CONFIRMADO');
-          const portalComandaId = sessionResponse.data.comanda.id as string;
-          expect((await stock(tenant.ownerCookie, tenant.posId, tenant.beerId)).quantidade).toBeCloseTo(11.5, 6);
-          const portalComandaPaid = await required('POST', `/api/pagamentos/comandas/${portalComandaId}/fechar`, tenant.ownerCookie, {
-            pagamentos: [{ forma: 'CARTAO_CREDITO', valor: 20 }],
-          }, 200);
-          expect(portalComandaPaid.status).toBe('FECHADA');
-          expect(Number(portalComandaPaid.total)).toBe(20);
 
           const comanda = await required('POST', '/api/comandas', tenant.ownerCookie, {
             eventoId: event.id, clienteNome: 'Cliente E2E', clienteTelefone: '11987654321',
@@ -467,7 +440,7 @@ test.describe('Current operating model — attendant sales parity', () => {
           const detail = await required<Json>('GET', `/api/comandas/${comandaId}`, tenant.ownerCookie);
           expect(Number(detail.total)).toBe(15);
           expect((await stock(tenant.ownerCookie, tenant.posId, tenant.foodId)).quantidade).toBe(9);
-          expect((await stock(tenant.ownerCookie, tenant.posId, tenant.beerId)).quantidade).toBeCloseTo(11.2, 6);
+          expect((await stock(tenant.ownerCookie, tenant.posId, tenant.beerId)).quantidade).toBeCloseTo(11.7, 6);
           orderId = foodItem.itens?.find((item: Json) => item.produtoId === tenant.foodId)?.pedidoCozinhaId
             ?? foodItem.itens?.find((item: Json) => item.produtoId === tenant.foodId)?.pedidoCozinha?.id;
           expect(orderId, 'pedido preparado deve gerar ordem de cozinha também em EVENTO').toBeTruthy();
@@ -486,12 +459,13 @@ test.describe('Current operating model — attendant sales parity', () => {
           expect((paid.pagamentos ?? []).reduce((sum: number, item: Json) => sum + Number(item.valor), 0)).toBe(38);
           await required('PATCH', `/api/eventos/${event.id}/fechar`, tenant.ownerCookie, {}, 200);
           const summary = await required<Json>('GET', `/api/eventos/${event.id}/resumo-executivo`, tenant.adminOwnerCookie);
-          expect(Number(summary.resumo.receitaTotal)).toBe(58);
-          expect(summary.porPagamento.reduce((sum: number, item: Json) => sum + Number(item.valor), 0)).toBe(58);
+          expect(Number(summary.resumo.receitaTotal)).toBe(38);
+          expect(summary.porPagamento.reduce((sum: number, item: Json) => sum + Number(item.valor), 0)).toBe(38);
           const transactions = await required<any[]>('GET', `/api/eventos/${event.id}/transacoes`, tenant.adminOwnerCookie);
-          for (const type of ['EVENTO_CRIADO', 'PORTAL_PEDIDO_CRIADO', 'COMANDA_ITEM_ADICIONADO', 'COMANDA_FECHADA', 'EVENTO_FECHADO']) {
+          for (const type of ['EVENTO_CRIADO', 'COMANDA_ITEM_ADICIONADO', 'COMANDA_FECHADA', 'EVENTO_FECHADO']) {
             expect(transactions.some((transaction) => transaction.tipo === type), `transação observável ${type}`).toBe(true);
           }
+          expect(transactions.some((transaction) => transaction.tipo === 'PORTAL_PEDIDO_CRIADO')).toBe(false);
 
           // Mudança de modo durante o mesmo mês: somar o evento encerrado e as vendas posteriores no CAIXA.
           await required('PATCH', `/api/admin/cervejarias/${tenant.companyId}/configuracao-operacional`, adminCookie, {
@@ -518,7 +492,7 @@ test.describe('Current operating model — attendant sales parity', () => {
           const dashboardPeriodo = new Date();
           const dashboardParams = `ano=${dashboardPeriodo.getFullYear()}&mes=${dashboardPeriodo.getMonth() + 1}`;
           const dashboardUnificado = await required<Json>('GET', `/api/cervejaria/dashboard?${dashboardParams}`, tenant.adminOwnerCookie);
-          expect(dashboardUnificado.resumo).toMatchObject({ receitaTotal: 73, comandasAtendidas: 3, chopeMl: 1100 });
+          expect(dashboardUnificado.resumo).toMatchObject({ receitaTotal: 53, comandasAtendidas: 2, chopeMl: 600 });
           expect(dashboardUnificado.turnosCaixaRecentes).toEqual(expect.arrayContaining([
             expect.objectContaining({ sessaoId: postSwitchSession.id, status: 'ABERTO', receitaTotal: 15, comandasAtendidas: 1 }),
           ]));
@@ -543,7 +517,7 @@ test.describe('Current operating model — attendant sales parity', () => {
         const afterFood = await stock(tenant.ownerCookie, tenant.posId, tenant.foodId);
         const afterBeer = await stock(tenant.ownerCookie, tenant.posId, tenant.beerId);
         expect(afterFood).toMatchObject({ quantidade: 9, unidadeEstoque: 'un' });
-        expect(afterBeer.quantidade).toBeCloseTo(mode === 'CAIXA' ? 10.4 : 10.9, 6);
+        expect(afterBeer.quantidade).toBeCloseTo(mode === 'CAIXA' ? 10.4 : 11.4, 6);
         await expect(page.getByRole('link', { name: 'Estoque', exact: true })).toBeVisible();
       } finally {
         await cleanup(tenant.companyId);
