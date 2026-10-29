@@ -9,6 +9,7 @@ import {
   CaixaInvalidoError,
   corrigirMovimento,
   contarComandasAbertas,
+  assertSemPedidosCozinhaPendentes,
   fecharCaixa,
   montarResumoCaixa,
   registrarMovimento,
@@ -152,6 +153,15 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
           return { sessaoId, idempotente: true };
         }
         return { erro: 'A sessão já foi encerrada financeiramente ou não possui classificação administrativa', status: 409 as const };
+      }
+
+      try {
+        await assertSemPedidosCozinhaPendentes(cervejariaId, sessao.pontoVendaId, tx);
+      } catch (err) {
+        if (err instanceof CaixaInvalidoError) {
+          return { erro: err.message, status: (err.statusCode ?? 409) as 409 };
+        }
+        throw err;
       }
 
       const fechadoEm = new Date();
