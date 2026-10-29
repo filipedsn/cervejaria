@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, assetUrl, formatCurrency } from '../lib/api';
 import { formatPhone } from '../lib/phone';
+import { formatPersonNameInput } from '../lib/person-name';
 import type {
   PortalTrailerInfo,
   PortalCardapio,
@@ -402,7 +403,7 @@ export function PortalClientePage() {
                   ref={nomeInputRef}
                   className="portal-login-input"
                   value={nome}
-                  onChange={(e) => setNome(e.target.value)}
+                  onChange={(e) => setNome(formatPersonNameInput(e.target.value))}
                   placeholder="Digite seu nome"
                   required
                   autoComplete="name"
@@ -480,7 +481,7 @@ export function PortalClientePage() {
                   ref={nomeInputRef}
                   className="input"
                   value={nome}
-                  onChange={(e) => setNome(e.target.value)}
+                  onChange={(e) => setNome(formatPersonNameInput(e.target.value))}
                   placeholder="Seu nome"
                   required
                   autoComplete="name"

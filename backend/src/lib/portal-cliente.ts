@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { registerOrUpdateCliente } from './cliente-resolver.js';
+import { formatPersonName } from './person-name.js';
 import { normalizePhone } from './phone.js';
 import { proximoNumeroComandaEvento } from './comanda-numero.js';
 
@@ -33,16 +34,18 @@ export async function registerClientePortalPdv(
   const existing = locked[0];
   if (existing && !existing.ativo) throw new ClientePortalInativoError();
 
+  const nome = formatPersonName(params.nome);
+
   if (existing) {
     return tx.cliente.update({
       where: { id: existing.id },
-      data: { nome: params.nome.trim(), optInMarketing: false },
+      data: { nome, optInMarketing: false },
     });
   }
 
   return tx.cliente.create({
     data: {
-      nome: params.nome.trim(),
+      nome,
       telefone: params.telefone,
       optInMarketing: false,
       cadastradoVia: 'AUTO_ATENDIMENTO',

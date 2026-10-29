@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, ApiError, assetUrl, formatCurrency } from '../lib/api';
 import { createCorrelationId } from '../lib/correlation-id';
 import { formatPhone } from '../lib/phone';
+import { formatPersonNameInput } from '../lib/person-name';
 import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { Modal } from '../components/Modal';
@@ -485,7 +486,7 @@ export function PortalPdvPage() {
                 className="portal-login-input"
                 placeholder={buscarCliente.isPending ? 'Buscando cliente...' : 'Digite seu nome'}
                 value={nome}
-                onChange={(e) => setNome(e.target.value)}
+                onChange={(e) => setNome(formatPersonNameInput(e.target.value))}
                 required
                 autoComplete="name"
               />

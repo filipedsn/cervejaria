@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../lib/api';
+import { formatPersonNameInput } from '../lib/person-name';
 import type { Comanda, EventoCardapio, TapComChope } from '../types';
 import {
   descontoComandaCervejaria,
@@ -277,7 +278,7 @@ export function VendaAvulsaPage() {
       <div>
         <label className="label" htmlFor="nome-cliente-venda-avulsa-evento">Nome do cliente (cozinha)</label>
         <input id="nome-cliente-venda-avulsa-evento" className="input" type="text" maxLength={120}
-          value={nomeCliente} onChange={(event) => setNomeCliente(event.target.value)}
+          value={nomeCliente} onChange={(event) => setNomeCliente(formatPersonNameInput(event.target.value))}
           placeholder="Ex.: Filipe" autoComplete="off" />
       </div>
 

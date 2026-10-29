@@ -1,5 +1,6 @@
 import type { CadastroOrigem } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { formatPersonName } from './person-name.js';
 import { normalizePhone } from './phone.js';
 
 function namesMatch(a: string, b: string) {
@@ -121,7 +122,7 @@ async function resolveByNomeLegado(
 
 /** Resolve ou cria cliente para nova comanda. */
 export async function resolveClienteParaComanda(params: ResolveClienteParams) {
-  const nome = params.nome.trim();
+  const nome = formatPersonName(params.nome);
   if (!nome) throw new Error('Nome do cliente é obrigatório');
 
   const cadastradoVia = params.cadastradoVia ?? 'COMANDA';
@@ -171,7 +172,7 @@ export type RegisterClientePublicParams = {
 
 /** Cadastro público ou staff — telefone obrigatório. */
 export async function registerOrUpdateCliente(params: RegisterClientePublicParams & { cadastradoVia: CadastroOrigem }) {
-  const nome = params.nome.trim();
+  const nome = formatPersonName(params.nome);
   const telefone = normalizePhone(params.telefone);
   if (!telefone) {
     throw new Error('Telefone inválido');
