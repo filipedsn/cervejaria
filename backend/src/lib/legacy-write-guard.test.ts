@@ -60,5 +60,7 @@ test('every legacy write route module registers the guard after authentication',
     assert.ok(auth >= 0 && guard > auth, `${file}.ts must register the legacy write guard after authentication`);
   }
   const publicRoutes = await readFile(new URL('../routes/public.ts', import.meta.url), 'utf8');
-  assert.match(publicRoutes, /trailers\/:trailerId\/sessao[\s\S]{0,400}assertLegacyWriteAllowed\(request\.method, ctx\.cervejaria\.id\)/);
+  // Portal de evento descontinuado (TAP-141): sessão do trailer responde 410 — não há mais write legado a guardar.
+  assert.match(publicRoutes, /trailers\/:trailerId\/sessao[\s\S]{0,400}PORTAL_EVENTO_DESCONTINUADO/);
+  assert.doesNotMatch(publicRoutes, /assertLegacyWriteAllowed\(request\.method, ctx\.cervejaria\.id\)/);
 });
