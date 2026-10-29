@@ -21,7 +21,11 @@ import { INCLUDE_COMANDA_OPERACAO, recalcComandaTotalOperacao, whereComandaOpera
 import { listProdutosOperacionaisTurno } from '../lib/operacao/sessao-cardapio.js';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizarOrdemCategoriasProduto } from '../lib/operacao/categorias.js';
 import { catalogoCategoriasCanonicoAtivo } from '../lib/operacao/catalogo-categorias.js';
-import { notificarComandaOperacaoAtualizada, notificarPedidoNovo } from '../lib/operacao/cozinha.js';
+import {
+  notificarAtendimentoBalcaoPortal,
+  notificarComandaOperacaoAtualizada,
+  notificarPedidoNovo,
+} from '../lib/operacao/cozinha.js';
 import { inventoryService } from '../services/inventory-service.js';
 import { lockComandaItemsInTx } from '../lib/comanda-service.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
@@ -522,6 +526,13 @@ export async function publicRoutes(app: FastifyInstance) {
     // habilitada para o perfil operacional.
     notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);
     if (temCozinha) for (const pedido of resultado.pedidos) await notificarPedidoNovo(app, session.cervejariaId, pedido);
+    // Chope/itens sem preparo não entram na cozinha — avisa o balcão quem servir.
+    await notificarAtendimentoBalcaoPortal(
+      app,
+      session.cervejariaId,
+      session.comandaId,
+      resultado.pedidos.map((pedido) => pedido.id),
+    );
     return reply.status(201).send(resumoComanda(resultado.comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch));
   });
 

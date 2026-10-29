@@ -247,6 +247,94 @@ export function notificarComandaOperacaoAtualizada(
   });
 }
 
+export type AtendimentoBalcaoPayload = {
+  comandaId: string;
+  pedidoIds: string[];
+  clienteNome: string | null;
+  comandaNumero: number | null;
+  comandaIdentificador: string | null;
+  itens: Array<{
+    nome: string;
+    quantidade: number;
+    volumeMl: number | null;
+  }>;
+};
+
+/** Itens de balcão: sem preparo e não cancelados (chope, bebida pronta, etc.). */
+export function filtrarItensAtendimentoBalcao(
+  itens: Array<{
+    nome: string | null;
+    quantidade: number;
+    volumeMl: number | null;
+    exigePreparo: boolean;
+    canceladoEm: Date | null;
+  }>,
+): AtendimentoBalcaoPayload['itens'] {
+  return itens
+    .filter((item) => !item.exigePreparo && !item.canceladoEm)
+    .map((item) => ({
+      nome: item.nome ?? 'Item',
+      quantidade: item.quantidade,
+      volumeMl: item.volumeMl,
+    }));
+}
+
+/**
+ * Avisa o balcão quando o portal lança itens sem preparo (ex.: chope).
+ * Não substitui a fila da cozinha: itens com exigePreparo seguem pelo
+ * operacao:pedido-novo.
+ */
+export async function notificarAtendimentoBalcaoPortal(
+  app: FastifyInstance,
+  cervejariaId: string,
+  comandaId: string,
+  pedidoIds: string[],
+): Promise<AtendimentoBalcaoPayload | null> {
+  if (pedidoIds.length === 0) return null;
+
+  const pedidos = await prisma.pedidoOperacao.findMany({
+    where: { id: { in: pedidoIds }, cervejariaId, comandaId },
+    include: {
+      itensComanda: {
+        select: {
+          nome: true,
+          quantidade: true,
+          volumeMl: true,
+          exigePreparo: true,
+          canceladoEm: true,
+        },
+      },
+      comanda: {
+        select: {
+          id: true,
+          numero: true,
+          identificador: true,
+          cliente: { select: { nome: true } },
+        },
+      },
+    },
+  });
+
+  const itens = filtrarItensAtendimentoBalcao(pedidos.flatMap((pedido) => pedido.itensComanda));
+  if (itens.length === 0) return null;
+
+  const comanda = pedidos[0]?.comanda;
+  const payload: AtendimentoBalcaoPayload = {
+    comandaId,
+    pedidoIds: pedidos.map((pedido) => pedido.id),
+    clienteNome: comanda?.cliente?.nome ?? null,
+    comandaNumero: comanda?.numero ?? null,
+    comandaIdentificador: comanda?.identificador ?? null,
+    itens,
+  };
+
+  emitToCervejaria(app.io, cervejariaId, {
+    type: 'operacao:atendimento-pedido',
+    data: payload,
+  });
+  return payload;
+}
+
 /**
  * Avisa as telas de cozinha da empresa. Usa a sala da cervejaria porque o
  * operacao nao tem evento, que e o recorte de sala do modulo de cervejaria.

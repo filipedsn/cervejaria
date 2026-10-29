@@ -4,6 +4,7 @@ import {
   StatusPedidoCozinhaDesatualizadoError,
   TRANSICOES,
   aplicarStatusPedidoCozinha,
+  filtrarItensAtendimentoBalcao,
   filtroListaPedidosCozinha,
   resumoPedidoCozinha,
 } from './cozinha.js';
@@ -108,6 +109,19 @@ describe('filtroListaPedidosCozinha', () => {
         { status: 'ENTREGUE', diaOperacional: hoje },
       ],
     });
+  });
+});
+
+describe('filtrarItensAtendimentoBalcao', () => {
+  it('mantém chope/itens sem preparo e exclui cozinha e cancelados', () => {
+    assert.deepEqual(
+      filtrarItensAtendimentoBalcao([
+        { nome: 'IPA', quantidade: 1, volumeMl: 500, exigePreparo: false, canceladoEm: null },
+        { nome: 'Porção', quantidade: 1, volumeMl: 1, exigePreparo: true, canceladoEm: null },
+        { nome: 'Pilsen', quantidade: 2, volumeMl: 300, exigePreparo: false, canceladoEm: new Date() },
+      ]),
+      [{ nome: 'IPA', quantidade: 1, volumeMl: 500 }],
+    );
   });
 });
 
