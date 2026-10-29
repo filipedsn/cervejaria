@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency } from '../lib/api';
 import { formatPhone } from '../lib/phone';
+import { formatPersonName, formatPersonNameInput } from '../lib/person-name';
 import type { Cliente, ClienteListResponse } from '../types';
 import { useEvento } from '../contexts/EventoContext';
 import { PageHeader } from '../components/PageHeader';
@@ -200,11 +201,12 @@ export function NovaComandaPage() {
   };
 
   const handleNomeChange = (value: string) => {
-    setNome(value);
-    setNameSearch(value);
+    const formatted = formatPersonNameInput(value);
+    setNome(formatted);
+    setNameSearch(formatted);
     setShowNameSuggestions(true);
     setNomeEditadoManualmente(true);
-    if (selectedCliente && value.trim() !== selectedCliente.nome.trim()) {
+    if (selectedCliente && formatPersonName(formatted) !== formatPersonName(selectedCliente.nome)) {
       setSelectedCliente(null);
     }
   };

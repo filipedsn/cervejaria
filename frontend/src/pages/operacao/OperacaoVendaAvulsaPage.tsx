@@ -18,6 +18,7 @@ import { AdicionarItensOperacaoModal } from '../../components/operacao/Adicionar
 import { CheckoutItemsCard } from '../../components/checkout/CheckoutItemsCard';
 import { PaymentDiscountFields } from '../../components/checkout/PaymentDiscountFields';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
+import { formatPersonNameInput } from '../../lib/person-name';
 import { PAYMENT_LABELS } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
@@ -285,7 +286,7 @@ export function OperacaoVendaAvulsaPage() {
       <div>
         <label className="label" htmlFor="nome-cliente-venda-avulsa-caixa">Nome do cliente (cozinha)</label>
         <input id="nome-cliente-venda-avulsa-caixa" className="input" type="text" maxLength={120}
-          value={nomeCliente} onChange={(event) => setNomeCliente(event.target.value)}
+          value={nomeCliente} onChange={(event) => setNomeCliente(formatPersonNameInput(event.target.value))}
           placeholder="Ex.: Filipe" autoComplete="off" />
       </div>
 

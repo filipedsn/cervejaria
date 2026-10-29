@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency, formatMl } from '../lib/api';
 import { formatPhone } from '../lib/phone';
+import { formatPersonName, formatPersonNameInput } from '../lib/person-name';
 import type { Cliente, ClienteHistoricoResponse, UnirClientesResponse } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/PageHeader';
@@ -147,7 +148,7 @@ export function ClienteDetailPage() {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     saveMutation.mutate({
-      nome: nome.trim(),
+      nome: formatPersonName(nome),
       telefone: telefone ? formatPhone(telefone) : null,
       ...(isDono
         ? {
@@ -237,7 +238,7 @@ export function ClienteDetailPage() {
             {error && <div className="alert-error">{error}</div>}
             <div>
               <label className="label">Nome</label>
-              <input className="input" value={nome} onChange={(e) => setNome(e.target.value)} required />
+              <input className="input" value={nome} onChange={(e) => setNome(formatPersonNameInput(e.target.value))} required />
             </div>
             <div>
               <label className="label">Telefone</label>

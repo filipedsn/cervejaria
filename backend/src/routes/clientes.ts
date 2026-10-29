@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { getTenantUser } from '../types/auth.js';
 import { resolveClienteParaComanda } from '../lib/cliente-resolver.js';
+import { formatPersonName } from '../lib/person-name.js';
 import { normalizePhone, formatPhoneBr } from '../lib/phone.js';
 import { toNumber } from '../lib/utils.js';
 import { calcularEstatisticasCliente } from '../lib/cliente-stats.js';
@@ -284,7 +285,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     const now = new Date();
     const cliente = await prisma.cliente.create({
       data: {
-        nome: body.nome.trim(),
+        nome: formatPersonName(body.nome),
         telefone,
         email: body.email?.trim() || null,
         dataNascimento: body.dataNascimento ? new Date(body.dataNascimento) : null,
@@ -335,7 +336,7 @@ export async function clientesRoutes(app: FastifyInstance) {
     const now = new Date();
     const optInMarketing = body.optInMarketing ?? existing.optInMarketing;
 
-    const nomeNovo = body.nome?.trim();
+    const nomeNovo = body.nome !== undefined ? formatPersonName(body.nome) : undefined;
     const { cliente, comandasAtualizadas } = await prisma.$transaction(async (tx) => {
       // A comanda criada pela tela "Nova comanda" usa o nome do cliente como
       // identificador. Igualdade com o nome anterior distingue esse rótulo de
@@ -357,7 +358,7 @@ export async function clientesRoutes(app: FastifyInstance) {
       const clienteAtualizado = await tx.cliente.update({
         where: { id },
         data: {
-          ...(body.nome !== undefined ? { nome: body.nome.trim() } : {}),
+          ...(nomeNovo !== undefined ? { nome: nomeNovo } : {}),
           ...(body.telefone !== undefined ? { telefone } : {}),
           ...(isDono && body.email !== undefined ? { email: body.email?.trim() || null } : {}),
           ...(isDono && body.dataNascimento !== undefined
