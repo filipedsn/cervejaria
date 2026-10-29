@@ -95,13 +95,26 @@ foreach ($dir in @('backend', 'frontend')) {
     }
   }
 }
+# Prisma no Windows falha com EPERM se algum node do backend ainda segura query_engine-windows.dll.node.
+$prismaLog = Join-Path $paths.LogDir 'switch-dev-prisma.log'
+$prismaOk = $false
 Push-Location $paths.BackendDir
 try {
-  & $paths.NpmCmd exec prisma generate *> (Join-Path $paths.LogDir 'switch-dev-prisma.log')
-  if ($LASTEXITCODE -ne 0) { Fail 'Falha ao preparar o acesso ao banco (veja deploy/logs/switch-dev-prisma.log).' }
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
+      $cmd = $_.CommandLine
+      if ($cmd -and $cmd -like "*$root*" -and $cmd -like '*\backend\*' -and $cmd -notlike '*ops-panel*') {
+        & taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null
+      }
+    }
+    Start-Sleep -Seconds $(if ($attempt -eq 1) { 1 } else { 2 })
+    & $paths.NpmCmd exec prisma generate *> $prismaLog
+    if ($LASTEXITCODE -eq 0) { $prismaOk = $true; break }
+  }
 } finally {
   Pop-Location
 }
+if (-not $prismaOk) { Fail 'Falha ao preparar o acesso ao banco (veja deploy/logs/switch-dev-prisma.log).' }
 
 $marker = [ordered]@{ sha = $Sha; kind = $Kind; pr = $(if ($Kind -eq 'pr') { $Pr } else { $null }); from = $beforeRef; at = (Get-Date).ToUniversalTime().ToString('o') }
 [IO.File]::WriteAllText((Join-Path $paths.RuntimeDir 'dev-code.json'), ($marker | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))

@@ -15,6 +15,19 @@ $root = $paths.ProjectRoot
 $nodes = @{}
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | ForEach-Object { $nodes[[int]$_.ProcessId] = $_ }
 
+function Stop-DevRepoNodeTree([int]$ProcessId, [string]$Reason) {
+  $proc = $nodes[$ProcessId]
+  if (-not $proc -or $proc.CommandLine -notlike "*$root*") { return }
+  if ($proc.CommandLine -like '*ops-panel*') { return }
+  while ($nodes[[int]$proc.ParentProcessId] -and
+         $nodes[[int]$proc.ParentProcessId].CommandLine -like "*$root*" -and
+         $nodes[[int]$proc.ParentProcessId].CommandLine -notlike '*ops-panel*') {
+    $proc = $nodes[[int]$proc.ParentProcessId]
+  }
+  & taskkill.exe /PID $proc.ProcessId /T /F 2>$null | Out-Null
+  Write-Host "${Reason}: encerrado PID $($proc.ProcessId)." -ForegroundColor DarkGray
+}
+
 foreach ($port in @($paths.BackendPort, $paths.FrontendPort)) {
   # Sem listener a porta livre não é erro — Get-NetTCPConnection sem match vira CIM terminating
   # no wrapper do Ops Panel (try/catch) e aborta "Testar o PR" / stop-dev.
@@ -26,11 +39,16 @@ foreach ($port in @($paths.BackendPort, $paths.FrontendPort)) {
       Write-Host "Porta ${port}: PID $owner nao e um node deste repositorio; nao encerrado." -ForegroundColor Yellow
       continue
     }
-    while ($nodes[[int]$proc.ParentProcessId] -and $nodes[[int]$proc.ParentProcessId].CommandLine -like "*$root*") {
-      $proc = $nodes[[int]$proc.ParentProcessId]
-    }
-    & taskkill.exe /PID $proc.ProcessId /T /F | Out-Null
-    Write-Host "Porta ${port}: encerrado PID $($proc.ProcessId) (fora do pid file)." -ForegroundColor DarkGray
+    Stop-DevRepoNodeTree -ProcessId ([int]$owner) -Reason "Porta ${port}"
+  }
+}
+
+# tsx watch / vite podem existir sem porta (reinício) e travam prisma generate (EPERM no query engine).
+foreach ($proc in @($nodes.Values)) {
+  $cmd = $proc.CommandLine
+  if (-not $cmd -or $cmd -notlike "*$root*" -or $cmd -like '*ops-panel*') { continue }
+  if ($cmd -like '*\backend\*' -or $cmd -like '*vite*' -or $cmd -like '*frontend*node_modules*') {
+    Stop-DevRepoNodeTree -ProcessId ([int]$proc.ProcessId) -Reason 'Node DEV residual'
   }
 }
 
