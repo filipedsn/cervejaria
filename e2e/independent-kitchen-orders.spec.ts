@@ -129,7 +129,7 @@ test('edita produto marcado e mantém pedidos irmãos visíveis após entregar a
   const deliveredOrder = page.locator('section.card').filter({ hasText: 'Senha 41' });
   const pendingOrder = page.locator('section.card').filter({ hasText: 'Senha 42' });
   await expect(deliveredOrder).toContainText('Entregue');
-  await expect(pendingOrder).toContainText(/Recebido|Na cozinha|Pendente/);
+  await expect(pendingOrder).toContainText(/Recebido|Na fila|Na cozinha|Pendente/);
   await expect(deliveredOrder.getByText(product.nome, { exact: true })).toBeVisible();
   await expect(pendingOrder.getByText('Batata UI', { exact: true })).toBeVisible();
   expect(unexpected).toEqual([]);

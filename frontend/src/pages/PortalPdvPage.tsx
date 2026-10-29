@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, ApiError, assetUrl, formatCurrency } from '../lib/api';
+import { createCorrelationId } from '../lib/correlation-id';
 import { formatPhone } from '../lib/phone';
 import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { Modal } from '../components/Modal';
 import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../components/NavIcons';
-import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto } from '../lib/operacao';
+import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto, rotuloStatusPedido, type StatusPedido } from '../lib/operacao';
 
 type Info = {
   cervejaria: { nome: string; logoUrl?: string | null; portalBackgroundUrl?: string | null };
@@ -42,8 +43,22 @@ type PdvComanda = {
   desconto: number;
   valorEmAberto: number;
   solicitacaoPagamentoEm?: string | null;
-  pedidos: Array<{ id: string; numero: number; status: string; itens: Array<{ nome: string; quantidade: number; subtotal: number; cancelamentoPendenteEm?: string | null; canceladoEm?: string | null }> }>;
+  pedidos: Array<{ id: string; numero: number; status: StatusPedido | string; itens: Array<{ nome: string; quantidade: number; subtotal: number; cancelamentoPendenteEm?: string | null; canceladoEm?: string | null }> }>;
 };
+
+function rotuloStatusPortal(status: string): string {
+  switch (status) {
+    case 'RECEBIDO':
+    case 'EM_PREPARO':
+    case 'PRONTO':
+    case 'ENTREGUE':
+    case 'CANCELAMENTO_PENDENTE':
+    case 'CANCELADO':
+      return rotuloStatusPedido(status);
+    default:
+      return status;
+  }
+}
 
 type PdvCartItem = { chave: string; produtoId: string; volumeMl?: number; nome: string; quantidade: number; preco: number; paraViagem: boolean; observacao?: string; opcionais: Array<{ opcionalId: string; quantidade: number; nome: string; precoAdicional: number }> };
 
@@ -170,7 +185,18 @@ export function PortalPdvPage() {
   const enviarPedido = useMutation({
     mutationFn: (itens: PdvCartItem[]) => api.post<PdvComanda>(
       `/api/public/cervejarias/${slug}/pontos-venda/${pontoVendaId}/comanda/pedidos`,
-      { idempotencyKey: pedidoKey.current ?? (pedidoKey.current = crypto.randomUUID()), itens: itens.map((item) => ({ produtoId: item.produtoId, quantidade: item.quantidade, ...(item.volumeMl ? { volumeMl: item.volumeMl } : {}), paraViagem: item.paraViagem, observacao: item.observacao, opcionais: item.opcionais.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })) },
+      {
+        // createCorrelationId funciona em HTTP por IP LAN; crypto.randomUUID não.
+        idempotencyKey: pedidoKey.current ?? (pedidoKey.current = createCorrelationId()),
+        itens: itens.map((item) => ({
+          produtoId: item.produtoId,
+          quantidade: item.quantidade,
+          ...(item.volumeMl ? { volumeMl: item.volumeMl } : {}),
+          paraViagem: item.paraViagem,
+          observacao: item.observacao,
+          opcionais: item.opcionais.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
+        })),
+      },
     ),
     onSuccess: (data) => {
       setCart([]);
@@ -321,16 +347,22 @@ export function PortalPdvPage() {
                       <strong>Novo pedido</strong>
                       <span>R$ {cartTotal.toFixed(2).replace('.', ',')}</span>
                     </div>
-                    {cart.map((item) => (
-                      <div className="portal-pdv-cart-item" key={item.chave}>
-                        <span>{item.nome}<small>{[...item.opcionais.map((option) => option.nome), item.paraViagem ? 'Para levar' : '', item.observacao].filter(Boolean).join(' · ')}</small></span>
-                        <div className="portal-pdv-quantity" aria-label={`Quantidade de ${item.nome}`}>
-                          <button type="button" aria-label={`Diminuir ${item.nome}`} onClick={() => changeQuantity(item.chave, -1)}>−</button>
-                          <strong>{item.quantidade}</strong>
-                          <button type="button" aria-label={`Aumentar ${item.nome}`} onClick={() => changeQuantity(item.chave, 1)}>+</button>
+                    {cart.map((item) => {
+                      const detalhes = [...item.opcionais.map((option) => option.nome), item.paraViagem ? 'Para levar' : '', item.observacao].filter(Boolean).join(' · ');
+                      return (
+                        <div className="portal-pdv-cart-item" key={item.chave}>
+                          <span className="portal-pdv-cart-item-copy">
+                            <strong>{item.nome}</strong>
+                            {detalhes ? <small>{detalhes}</small> : null}
+                          </span>
+                          <div className="portal-pdv-quantity" aria-label={`Quantidade de ${item.nome}`}>
+                            <button type="button" aria-label={`Diminuir ${item.nome}`} onClick={() => changeQuantity(item.chave, -1)}>−</button>
+                            <strong>{item.quantidade}</strong>
+                            <button type="button" aria-label={`Aumentar ${item.nome}`} onClick={() => changeQuantity(item.chave, 1)}>+</button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div className="portal-pdv-cart-actions">
                       <button type="button" className="portal-pdv-cart-cancel" onClick={() => setCart([])} disabled={enviarPedido.isPending}>
                         Cancelar
@@ -343,7 +375,7 @@ export function PortalPdvPage() {
                       <div role="alert" className="alert-error">
                         {enviarPedido.error instanceof ApiError
                           ? enviarPedido.error.message
-                          : 'Não foi possível enviar o pedido. Procure a equipe do ponto de venda.'}
+                          : 'Não foi possível enviar o pedido. Atualize a página e tente de novo; se continuar, fale com a equipe do caixa.'}
                       </div>
                     )}
                   </div>
@@ -374,11 +406,26 @@ export function PortalPdvPage() {
                   <div><span>Valor em aberto</span><strong>R$ {valorEmAberto.toFixed(2).replace('.', ',')}</strong></div>
                 </div>
                 {displayedComanda?.pedidos?.length ? displayedComanda.pedidos.map((pedido) => (
-                  <article key={pedido.id}><strong>Pedido #{pedido.numero}</strong><span>{pedido.status}</span>{itensValidos(pedido.itens).map((item, index) => <p key={`${item.nome}-${index}`}>{item.quantidade}x {item.nome}<small>R$ {item.subtotal.toFixed(2).replace('.', ',')}</small></p>)}</article>
+                  <article key={pedido.id}>
+                    <strong>Pedido #{pedido.numero}</strong>
+                    <span>{rotuloStatusPortal(pedido.status)}</span>
+                    {itensValidos(pedido.itens).map((item, index) => (
+                      <p key={`${item.nome}-${index}`}>{item.quantidade}x {item.nome}<small>R$ {item.subtotal.toFixed(2).replace('.', ',')}</small></p>
+                    ))}
+                  </article>
                 )) : <p>Nenhum pedido enviado ainda.</p>}
                 <p className="portal-pdv-no-close">O fechamento e o pagamento são feitos pela equipe do caixa.</p>
-                <button type="button" className="portal-pdv-payment-request" disabled={Boolean(displayedComanda?.solicitacaoPagamentoEm) || solicitarPagamento.isPending} onClick={() => solicitarPagamento.mutate()}>
-                  {displayedComanda?.solicitacaoPagamentoEm ? 'Pagamento solicitado · aguarde a equipe' : solicitarPagamento.isPending ? 'Solicitando...' : 'Solicitar pagamento'}
+                <button
+                  type="button"
+                  className="portal-pdv-payment-request"
+                  disabled={Boolean(displayedComanda?.solicitacaoPagamentoEm) || solicitarPagamento.isPending}
+                  onClick={() => solicitarPagamento.mutate()}
+                >
+                  {displayedComanda?.solicitacaoPagamentoEm
+                    ? 'Pagamento solicitado · aguarde a equipe'
+                    : solicitarPagamento.isPending
+                      ? 'Solicitando...'
+                      : 'Solicitar pagamento'}
                 </button>
                 {solicitarPagamento.error && <div role="alert" className="alert-error">Não foi possível solicitar atendimento.</div>}
               </div>
