@@ -260,7 +260,14 @@ export type AtendimentoBalcaoPayload = {
   }>;
 };
 
-/** Itens de balcão: sem preparo e não cancelados (chope, bebida pronta, etc.). */
+function categoriaItemBalcao(categoria: string | null | undefined): string {
+  return categoria?.trim() || 'Outros';
+}
+
+/**
+ * Itens de balcão: sem preparo, não cancelados e cuja categoria está na lista
+ * configurada. `categoriasAlerta` null/vazia = feature desligada (não alerta).
+ */
 export function filtrarItensAtendimentoBalcao(
   itens: Array<{
     nome: string | null;
@@ -268,10 +275,16 @@ export function filtrarItensAtendimentoBalcao(
     volumeMl: number | null;
     exigePreparo: boolean;
     canceladoEm: Date | null;
+    categoria?: string | null;
   }>,
+  categoriasAlerta: string[] | null,
 ): AtendimentoBalcaoPayload['itens'] {
+  if (!Array.isArray(categoriasAlerta) || categoriasAlerta.length === 0) return [];
+  const allowed = new Set(categoriasAlerta.map((name) => name.trim()).filter(Boolean));
+  if (allowed.size === 0) return [];
+
   return itens
-    .filter((item) => !item.exigePreparo && !item.canceladoEm)
+    .filter((item) => !item.exigePreparo && !item.canceladoEm && allowed.has(categoriaItemBalcao(item.categoria)))
     .map((item) => ({
       nome: item.nome ?? 'Item',
       quantidade: item.quantidade,
@@ -280,9 +293,8 @@ export function filtrarItensAtendimentoBalcao(
 }
 
 /**
- * Avisa o balcão quando o portal lança itens sem preparo (ex.: chope).
- * Não substitui a fila da cozinha: itens com exigePreparo seguem pelo
- * operacao:pedido-novo.
+ * Avisa o balcão quando o portal lança itens sem preparo nas categorias
+ * configuradas. Não substitui a fila da cozinha.
  */
 export async function notificarAtendimentoBalcaoPortal(
   app: FastifyInstance,
@@ -291,6 +303,14 @@ export async function notificarAtendimentoBalcaoPortal(
   pedidoIds: string[],
 ): Promise<AtendimentoBalcaoPayload | null> {
   if (pedidoIds.length === 0) return null;
+
+  const brewery = await prisma.cervejaria.findUnique({
+    where: { id: cervejariaId },
+    select: { portalAlertaBalcaoCategorias: true },
+  });
+  const categoriasAlerta = Array.isArray(brewery?.portalAlertaBalcaoCategorias)
+    ? brewery.portalAlertaBalcaoCategorias.filter((value): value is string => typeof value === 'string')
+    : null;
 
   const pedidos = await prisma.pedidoOperacao.findMany({
     where: { id: { in: pedidoIds }, cervejariaId, comandaId },
@@ -302,6 +322,7 @@ export async function notificarAtendimentoBalcaoPortal(
           volumeMl: true,
           exigePreparo: true,
           canceladoEm: true,
+          produto: { select: { categoria: true } },
         },
       },
       comanda: {
@@ -315,7 +336,15 @@ export async function notificarAtendimentoBalcaoPortal(
     },
   });
 
-  const itens = filtrarItensAtendimentoBalcao(pedidos.flatMap((pedido) => pedido.itensComanda));
+  const itens = filtrarItensAtendimentoBalcao(
+    pedidos.flatMap((pedido) =>
+      pedido.itensComanda.map((item) => ({
+        ...item,
+        categoria: item.produto?.categoria ?? null,
+      })),
+    ),
+    categoriasAlerta,
+  );
   if (itens.length === 0) return null;
 
   const comanda = pedidos[0]?.comanda;

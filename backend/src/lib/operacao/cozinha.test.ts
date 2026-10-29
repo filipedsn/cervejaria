@@ -113,15 +113,22 @@ describe('filtroListaPedidosCozinha', () => {
 });
 
 describe('filtrarItensAtendimentoBalcao', () => {
-  it('mantém chope/itens sem preparo e exclui cozinha e cancelados', () => {
-    assert.deepEqual(
-      filtrarItensAtendimentoBalcao([
-        { nome: 'IPA', quantidade: 1, volumeMl: 500, exigePreparo: false, canceladoEm: null },
-        { nome: 'Porção', quantidade: 1, volumeMl: 1, exigePreparo: true, canceladoEm: null },
-        { nome: 'Pilsen', quantidade: 2, volumeMl: 300, exigePreparo: false, canceladoEm: new Date() },
-      ]),
-      [{ nome: 'IPA', quantidade: 1, volumeMl: 500 }],
-    );
+  const linhas = [
+    { nome: 'IPA', quantidade: 1, volumeMl: 500, exigePreparo: false, canceladoEm: null, categoria: 'Chope' },
+    { nome: 'Porção', quantidade: 1, volumeMl: 1, exigePreparo: true, canceladoEm: null, categoria: 'Porções' },
+    { nome: 'Pilsen', quantidade: 2, volumeMl: 300, exigePreparo: false, canceladoEm: new Date(), categoria: 'Chope' },
+    { nome: 'Água', quantidade: 1, volumeMl: 1, exigePreparo: false, canceladoEm: null, categoria: 'Bebidas' },
+  ];
+
+  it('não alerta quando a lista de categorias está desligada', () => {
+    assert.deepEqual(filtrarItensAtendimentoBalcao(linhas, null), []);
+    assert.deepEqual(filtrarItensAtendimentoBalcao(linhas, []), []);
+  });
+
+  it('mantém só itens sem preparo das categorias configuradas', () => {
+    assert.deepEqual(filtrarItensAtendimentoBalcao(linhas, ['Chope']), [
+      { nome: 'IPA', quantidade: 1, volumeMl: 500 },
+    ]);
   });
 });
 
