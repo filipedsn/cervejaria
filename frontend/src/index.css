@@ -3181,6 +3181,9 @@ button[title="Excluir"].icon-btn-danger {
 .portal-pdv-cart > div span { color: #b9e8ff; font-weight: 700; }
 .portal-pdv-cart p { margin: .45rem 0 0; color: #b8c9d7; }
 .portal-pdv-cart-item { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: .65rem; color: #b8c9d7; }
+.portal-pdv-cart-item-copy { display: grid; gap: .15rem; min-width: 0; }
+.portal-pdv-cart-item-copy strong { color: #e2e8f0; font-weight: 700; }
+.portal-pdv-cart-item-copy small { color: #8ca5ba; }
 .portal-pdv-cart-actions { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: .65rem; margin-top: .85rem; }
 .portal-pdv-cart-actions button { margin-top: 0; }
 .portal-pdv-cart-actions .portal-pdv-cart-cancel { border: 1px solid rgba(248, 113, 113, .7); background: rgba(127, 29, 29, .35); color: #fecaca; }
@@ -3201,6 +3204,30 @@ button[title="Excluir"].icon-btn-danger {
 .portal-pdv-account-totals span { color: #9db3c7; }
 .portal-pdv-account-totals strong { color: #b9e8ff; white-space: nowrap; }
 .portal-pdv-no-close { margin-top: 1rem; color: #8ca5ba; font-size: .9rem; text-align: center; }
+.portal-pdv-payment-request {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3rem;
+  margin-top: .85rem;
+  border: 0;
+  border-radius: .7rem;
+  background: #0ea5e9;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  transition: filter 160ms ease, transform 160ms ease, opacity 160ms ease;
+}
+.portal-pdv-payment-request:hover:not(:disabled) { filter: brightness(1.08); }
+.portal-pdv-payment-request:active:not(:disabled) { transform: scale(0.985); }
+.portal-pdv-payment-request:disabled {
+  cursor: default;
+  opacity: 1;
+  border: 1px solid rgba(125, 211, 252, .35);
+  background: rgba(14, 141, 204, .22);
+  color: #b9e8ff;
+}
 
 @container (max-width: 285px) {
   .comanda-card-duas-colunas {

@@ -15,6 +15,28 @@ test('gera UUID de correlação para uma requisição sem ID existente', () => {
   assert.match(correlationId, UUID_PATTERN);
 });
 
+test('gera UUID mesmo quando randomUUID lança (HTTP por IP LAN)', () => {
+  const original = globalThis.crypto;
+  const bytes = new Uint8Array(16);
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: {
+      randomUUID() {
+        throw new Error('Secure context required');
+      },
+      getRandomValues(target: Uint8Array) {
+        target.set(bytes);
+        return target;
+      },
+    },
+  });
+  try {
+    assert.match(createCorrelationId(), UUID_PATTERN);
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: original });
+  }
+});
+
 test('wrapper HTTP envia o ID de correlação gerado no header', () => {
   const headers = buildRequestHeaders({ method: 'POST', body: JSON.stringify({ ok: true }) });
   assert.match(headers[CORRELATION_ID_HEADER]!, UUID_PATTERN);

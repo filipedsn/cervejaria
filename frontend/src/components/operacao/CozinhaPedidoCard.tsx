@@ -153,7 +153,7 @@ export function CozinhaPedidoCard({
                   </button>
                 )}
               </div>
-                {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Opcionais:</strong><span>{item.opcionais.map((o) => (o.quantidade > 1 ? o.quantidade + '× ' : '') + o.nome).join(', ')}</span></small> : null}
+                {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Opcionais:</strong> <span>{item.opcionais.map((o) => (o.quantidade > 1 ? o.quantidade + '× ' : '') + o.nome).join(', ')}</span></small> : null}
                 {item.observacao ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-observation"><strong>Observação:</strong><span>{item.observacao}</span></small> : null}
             </li>
           ))}

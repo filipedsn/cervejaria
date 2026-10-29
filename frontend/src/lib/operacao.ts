@@ -466,8 +466,9 @@ export function temPedidoCozinhaPendente(comanda: Pick<ComandaOperacao, 'pedidos
 
 export function rotuloStatusPedido(status: StatusPedido): string {
   switch (status) {
+    // RECEBIDO = pedido na fila da cozinha; preparo só começa em EM_PREPARO ("Iniciar").
     case 'RECEBIDO':
-      return 'Na cozinha';
+      return 'Na fila';
     case 'EM_PREPARO':
       return 'Preparando';
     case 'PRONTO':

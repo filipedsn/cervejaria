@@ -7,8 +7,14 @@ export function isCorrelationId(value: unknown): value is string {
 }
 
 export function createCorrelationId(): string {
+  // randomUUID exige contexto seguro (HTTPS/localhost). Em DEV via IP LAN
+  // (ex.: http://100.x.x.x:5202) a função pode estar ausente ou lançar.
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // fall through to getRandomValues / Math.random
+    }
   }
 
   const bytes = new Uint8Array(16);

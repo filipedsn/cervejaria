@@ -61,12 +61,15 @@ export default defineConfig({  plugins: [
     }),
   ],
   server: {
+    // 0.0.0.0 — celular na mesma LAN acessa via IP:5202 (tapdev/DNS externo não é mais o caminho DEV).
     host: true,
     port: frontendPort,
-    allowedHosts: ['.quivercloud.com.br'],
+    // Em DEV liberar qualquer Host (IP LAN / Tailscale). Em serve de produção mantém o domínio.
+    allowedHosts: isProdServe ? ['.quivercloud.com.br'] : true,
     proxy: {
       '/api': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
       '/uploads': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true },
       '/socket.io': { target: `http://127.0.0.1:${apiPort}`, ws: true },
     },
-  },});
+  },
+});

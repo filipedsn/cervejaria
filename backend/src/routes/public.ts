@@ -612,6 +612,15 @@ export async function publicRoutes(app: FastifyInstance) {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível abrir a comanda';
+      // Mensagens de caixa são jargão da equipe — no portal do cliente usamos copy amigável.
+      if (
+        /Abra o caixa|Caixa não habilitado|Ponto de venda não encontrado/i.test(message)
+      ) {
+        return reply.status(503).send({
+          error: 'No momento não estamos aberto. Volte mais tarde.',
+          code: 'PORTAL_CAIXA_FECHADO',
+        });
+      }
       return reply.status(409).send({ error: message });
     }
   });
