@@ -79,16 +79,25 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
   const cards = page.locator('.cozinha-tv-grid article');
   await expect(cards).toHaveCount(4);
 
-  for (const { width, columns } of [
-    { width: 900, columns: 3 },
-    { width: 1024, columns: 3 },
-    { width: 1100, columns: 4 },
-    { width: 1280, columns: 4 },
-    { width: 1366, columns: 4 },
-  ]) {
+  const expectedColumns = async (grid = page.locator('.cozinha-tv-grid')) =>
+    grid.evaluate((el) => {
+      const styles = window.getComputedStyle(el);
+      const minCardLength = styles.getPropertyValue('--cozinha-card-min').trim();
+      const minCardValue = Number.parseFloat(minCardLength);
+      const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+      const minCardWidth = minCardLength.endsWith('rem') ? minCardValue * rootFontSize : minCardValue;
+      const gap = Number.parseFloat(styles.columnGap) || 0;
+      const fit = Math.max(1, Math.floor((el.clientWidth + gap) / (minCardWidth + gap)));
+      const cap = Number.parseInt(el.dataset.maxColumns || '6', 10) || 6;
+      return Math.min(cap, fit);
+    });
+
+  for (const width of [900, 1024, 1100, 1280, 1366]) {
     await page.setViewportSize({ width, height: 720 });
     const grid = page.locator('.cozinha-tv-grid');
+    const columns = await expectedColumns(grid);
     await expect(grid).toHaveAttribute('data-kitchen-columns', String(columns));
+    await expect(grid).toHaveAttribute('data-max-columns', '6');
     const layout = await cards.evaluateAll((elements) => {
       const rects = elements.map((element) => element.getBoundingClientRect());
       const actions = [...document.querySelectorAll('.cozinha-tv-card-actions button')];
@@ -101,6 +110,32 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
     expect(layout.minActionHeight).toBeGreaterThanOrEqual(44);
   }
 
+  // Slot estável: 1 pedido não estica a linha inteira (capacidade do viewport, não cards.length).
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/operacao/cozinha/tv?demo=1&tablet=1&pedidos=1', { waitUntil: 'networkidle' });
+  const singleGrid = page.locator('.cozinha-tv-grid');
+  const singleColumns = await expectedColumns(singleGrid);
+  await expect(singleGrid).toHaveAttribute('data-kitchen-columns', String(singleColumns));
+  await expect(singleGrid).toHaveAttribute('data-force-tablet-layout', '1');
+  await expect(singleGrid.locator('article')).toHaveCount(1);
+  const slotRatio = await singleGrid.evaluate((grid) => {
+    const card = grid.querySelector('article');
+    if (!card) return 1;
+    return card.getBoundingClientRect().width / grid.getBoundingClientRect().width;
+  });
+  expect(slotRatio).toBeLessThan(0.4);
+
+  // Simulação por URL: ?maxColunas=2 força no máximo 2 por linha (e liga layout tablet no PC).
+  await page.goto('/operacao/cozinha/tv?demo=1&maxColunas=2&pedidos=4', { waitUntil: 'networkidle' });
+  const cappedGrid = page.locator('.cozinha-tv-grid');
+  await expect(cappedGrid).toHaveAttribute('data-max-columns', '2');
+  await expect(cappedGrid).toHaveAttribute('data-kitchen-columns', '2');
+  await expect(cappedGrid.locator('article')).toHaveCount(4);
+  const cappedRows = await cappedGrid.locator('article').evaluateAll((elements) =>
+    new Set(elements.map((element) => Math.round(element.getBoundingClientRect().top))).size,
+  );
+  expect(cappedRows).toBe(2);
+
   const browser = page.context().browser();
   if (!browser) throw new Error('Browser unavailable for touch tablet layout check');
   const tabletContext = await browser.newContext({ viewport: { width: 1920, height: 1200 }, hasTouch: true });
@@ -109,10 +144,21 @@ test('KDS-S04 TV da cozinha e modo demonstração renderizam', async ({ ops, pag
     const demoUrl = new URL('/operacao/cozinha/tv?demo=1&tablet=1', page.url());
     await tabletPage.goto(demoUrl.toString(), { waitUntil: 'networkidle' });
     const tabletGrid = tabletPage.locator('.cozinha-tv-grid');
-    await expect(tabletGrid).toHaveAttribute('data-kitchen-columns', '4');
+    const tabletColumnCount = await tabletGrid.evaluate((el) => {
+      const styles = window.getComputedStyle(el);
+      const minCardLength = styles.getPropertyValue('--cozinha-card-min').trim();
+      const minCardValue = Number.parseFloat(minCardLength);
+      const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+      const minCardWidth = minCardLength.endsWith('rem') ? minCardValue * rootFontSize : minCardValue;
+      const gap = Number.parseFloat(styles.columnGap) || 0;
+      const fit = Math.max(1, Math.floor((el.clientWidth + gap) / (minCardWidth + gap)));
+      const cap = Number.parseInt(el.dataset.maxColumns || '6', 10) || 6;
+      return Math.min(cap, fit);
+    });
+    await expect(tabletGrid).toHaveAttribute('data-kitchen-columns', String(tabletColumnCount));
     const columns = tabletGrid.locator('.cozinha-tv-grid-column');
-    await expect(columns).toHaveCount(4);
-    await expect(tabletGrid.locator('article')).toHaveCount(30);
+    await expect(columns).toHaveCount(tabletColumnCount);
+    await expect(tabletGrid.locator('article')).toHaveCount(4);
     const firstCardTops = await columns.locator('> article:first-child').evaluateAll((elements) =>
       elements.map((element) => Math.round(element.getBoundingClientRect().top)),
     );

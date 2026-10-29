@@ -219,7 +219,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/eventos', label: 'Eventos', shortLabel: 'Eventos', Icon: IconCalendar, exact: true as const },
   { path: '/comandas', label: 'Comandas', shortLabel: 'Comandas', Icon: IconClipboard, permissionOnly: 'command.read' as const },
   { path: '/clientes', label: 'Clientes', shortLabel: 'Clientes', Icon: IconUsers, permissionOnly: 'clients.manage' as const },
-  { path: '/dashboard', label: 'Dashboard', shortLabel: 'Dashboard', Icon: IconBarChart, permissionOnly: 'dashboard.read' as const },
+  { path: '/dashboard', label: 'Quadro', shortLabel: 'Quadro', Icon: IconBarChart, permissionOnly: 'dashboard.read' as const },
   { path: '/configuracoes', label: 'Configurações', shortLabel: 'Config.', Icon: IconSettings, donoOnly: true as const },
 ];
 
@@ -301,8 +301,8 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
   },
   {
     path: '/operacao/dashboard',
-    label: 'Dashboard',
-    shortLabel: 'Dashboard',
+    label: 'Quadro',
+    shortLabel: 'Quadro',
     Icon: IconBarChart,
     permissionOnly: 'dashboard.read' as const,
   },
