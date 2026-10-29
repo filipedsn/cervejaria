@@ -9,6 +9,8 @@ import {
   CaixaInvalidoError,
   corrigirMovimento,
   contarComandasAbertas,
+  contarPedidosCozinhaPendentes,
+  assertSemPedidosCozinhaPendentes,
   fecharCaixa,
   montarResumoCaixa,
   registrarMovimento,
@@ -152,6 +154,15 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
           return { sessaoId, idempotente: true };
         }
         return { erro: 'A sessão já foi encerrada financeiramente ou não possui classificação administrativa', status: 409 as const };
+      }
+
+      try {
+        await assertSemPedidosCozinhaPendentes(cervejariaId, sessao.pontoVendaId, tx);
+      } catch (err) {
+        if (err instanceof CaixaInvalidoError) {
+          return { erro: err.message, status: (err.statusCode ?? 409) as 409 };
+        }
+        throw err;
       }
 
       const fechadoEm = new Date();
@@ -354,9 +365,19 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
     if (!pontoVenda) return reply.status(404).send({ error: 'Ponto de venda não encontrado' });
 
     const podeVerValores = await usuarioPode(getAuthUser(request), 'cash.values.read');
-    const comandasAbertas = await contarComandasAbertas(cervejariaId, pontoVendaId);
+    const [comandasAbertas, pedidosCozinhaPendentes] = await Promise.all([
+      contarComandasAbertas(cervejariaId, pontoVendaId),
+      contarPedidosCozinhaPendentes(cervejariaId, pontoVendaId),
+    ]);
     const sessao = await buscarSessaoAtual(cervejariaId, pontoVendaId);
-    if (!sessao) return { sessao: null, comandasAbertas, diaOperacional: diaOperacional().toISOString().slice(0, 10) };
+    if (!sessao) {
+      return {
+        sessao: null,
+        comandasAbertas,
+        pedidosCozinhaPendentes,
+        diaOperacional: diaOperacional().toISOString().slice(0, 10),
+      };
+    }
 
     const ocorrencia = sessao.ocorrenciaId
       ? await prisma.ocorrenciaOperacional.findFirst({
@@ -379,16 +400,25 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
           diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10),
         },
         comandasAbertas,
+        pedidosCozinhaPendentes,
         diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10),
         valoresRestritos: true,
       };
     }
 
     const resumo = await montarResumoCaixa(sessao, cervejariaId);
-    if (!sessao.ocorrenciaId || !cashOccurrenceContextEnabled()) return { sessao: resumo, comandasAbertas, diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10) };
+    if (!sessao.ocorrenciaId || !cashOccurrenceContextEnabled()) {
+      return {
+        sessao: resumo,
+        comandasAbertas,
+        pedidosCozinhaPendentes,
+        diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10),
+      };
+    }
     return {
       sessao: { ...resumo, ocorrencia: ocorrenciaResumo },
       comandasAbertas,
+      pedidosCozinhaPendentes,
       diaOperacional: sessao.diaOperacional.toISOString().slice(0, 10),
     };
   });

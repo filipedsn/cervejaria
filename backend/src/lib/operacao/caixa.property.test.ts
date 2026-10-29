@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import {
   assertCaixaAberto,
+  assertSemPedidosCozinhaPendentes,
+  CaixaInvalidoError,
   calcularEsperadoDinheiroGaveta,
   escopoComandasDoTurno,
   planoCorrecaoMovimento,
@@ -225,6 +227,30 @@ describe('caixa operacao (property-based)', () => {
       ),
       { numRuns: 200 },
     );
+  });
+
+  it('bloqueia fechamento quando há pedidos pendentes na cozinha', async () => {
+    const db = {
+      pedidoOperacao: {
+        count: async () => 2,
+      },
+    };
+    await assert.rejects(
+      () => assertSemPedidosCozinhaPendentes('c1', 'pdv1', db as never),
+      (err: unknown) =>
+        err instanceof CaixaInvalidoError
+        && err.statusCode === 409
+        && /2 pedidos pendentes na cozinha/.test(err.message),
+    );
+  });
+
+  it('permite fechamento quando a cozinha está vazia', async () => {
+    const db = {
+      pedidoOperacao: {
+        count: async () => 0,
+      },
+    };
+    await assert.doesNotReject(() => assertSemPedidosCozinhaPendentes('c1', 'pdv1', db as never));
   });
 
   it('resolverPagamentos rejeita soma divergente do devido', () => {

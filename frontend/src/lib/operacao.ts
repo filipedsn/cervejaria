@@ -701,6 +701,8 @@ export function pluralComandasOperacao(qtd: number): string {
 export interface CaixaResposta {
   sessao: ResumoCaixa | null;
   comandasAbertas?: number;
+  /** Pedidos RECEBIDO/EM_PREPARO/PRONTO (e cancelamento pendente) ainda na fila. */
+  pedidosCozinhaPendentes?: number;
   diaOperacional?: string;
   valoresRestritos?: boolean;
 }

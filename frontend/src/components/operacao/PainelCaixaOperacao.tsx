@@ -196,7 +196,17 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   }, [compacto, sessao?.status, sessao?.abertoEm]);
 
   const comandasAbertas = comandasAbertasProp === undefined ? data?.comandasAbertas ?? 0 : comandasAbertasProp;
-  const bloqueioFechamento = comandasAbertas === null || comandasAbertas > 0;
+  const pedidosCozinhaPendentes = data?.pedidosCozinhaPendentes ?? 0;
+  const bloqueioFechamento =
+    comandasAbertas === null || comandasAbertas > 0 || pedidosCozinhaPendentes > 0;
+  const motivoBloqueioFechamento =
+    comandasAbertas === null
+      ? null
+      : comandasAbertas > 0
+        ? `Há ${comandasAbertas === 1 ? '1 comanda aberta' : `${comandasAbertas} comandas abertas`}. Feche ou cancele antes de encerrar o turno.`
+        : pedidosCozinhaPendentes > 0
+          ? `Há ${pedidosCozinhaPendentes === 1 ? '1 pedido pendente' : `${pedidosCozinhaPendentes} pedidos pendentes`} na cozinha. Finalize ou cancele antes de encerrar o turno.`
+          : null;
   const cardapioAbrirPayload = buildTurnoCardapioAbrirPayload(cardapioForm);
   const cardapiosAberturaQuery = useQuery({
     queryKey: ['operacao-cardapios', 'ativo'],
@@ -502,6 +512,9 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             </>}
             {canPermission('cash.close') && canPermission('cash.values.read') && <button type="button" className="touch-btn-orange" disabled={bloqueioFechamento} onClick={abrirDialogoFechar}>Fechar caixa</button>}
           </div>
+          {motivoBloqueioFechamento && canPermission('cash.close') && (
+            <p className="w-full text-sm text-amber-200/90">{motivoBloqueioFechamento}</p>
+          )}
         </div>
       )}
 
@@ -559,6 +572,9 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
               {canPermission('debt.receive') && <Link to="/operacao/contas-pendentes" className={`${classesContasPendentes} touch-btn-sm flex items-center justify-center text-center leading-tight`} aria-label={temContaPendente ? 'Contas pendentes: há valores aguardando recebimento' : 'Contas pendentes'}>Contas pendentes</Link>}
             </div>
             {erro && !dialogo && <div className="alert-error">{erro}</div>}
+            {motivoBloqueioFechamento && canPermission('cash.close') && (
+              <p className="text-sm text-amber-200/90">{motivoBloqueioFechamento}</p>
+            )}
             {canPermission('cash.close') && canPermission('cash.values.read') && <button type="button" className="touch-btn-orange w-full disabled:opacity-50" disabled={bloqueioFechamento} onClick={abrirDialogoFechar} data-audit="operacao-caixa-fechar">Fechar caixa</button>}
           </div>
         </div>
@@ -671,6 +687,9 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           </div>}
 
           {erro && !dialogo && <div className="alert-error">{erro}</div>}
+          {motivoBloqueioFechamento && canPermission('cash.close') && (
+            <p className="text-sm text-amber-200/90">{motivoBloqueioFechamento}</p>
+          )}
 
           {canPermission('cash.close') && canPermission('cash.values.read') && <button
             type="button"
@@ -683,7 +702,9 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
           </button>}
           {isDono && <button
             type="button"
-            className="touch-btn-secondary w-full"
+            className="touch-btn-secondary w-full disabled:opacity-50"
+            disabled={pedidosCozinhaPendentes > 0}
+            title={pedidosCozinhaPendentes > 0 ? 'Finalize a cozinha antes do encerramento administrativo' : undefined}
             onClick={() => { setMotivoEncerramentoAdministrativo(''); setErro(''); setDialogo('encerrar-admin'); }}
             data-audit="operacao-caixa-encerrar-administrativamente"
           >

@@ -3,7 +3,7 @@ import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
 import { itemContaNaVendaLiquida } from '../venda-liquida.js';
 import { centavos, diaOperacional, reais } from './venda.js';
-import { pedidoContaNaComanda } from './cozinha.js';
+import { pedidoContaNaComanda, STATUS_CANCELAMENTO_PENDENTE, STATUS_NA_FILA } from './cozinha.js';
 import { aplicarCardapioInicialTurno } from './sessao-cardapio.js';
 import { verifyPassword } from '../utils.js';
 import { getOperationalProfile } from '../operational-profile.js';
@@ -210,6 +210,44 @@ export async function assertSemComandasAbertas(
     const rotulo = abertas === 1 ? '1 comanda aberta' : `${abertas} comandas abertas`;
     throw new CaixaInvalidoError(
       `Não é possível fechar o caixa: há ${rotulo}. Feche ou cancele todas antes de encerrar o turno.`,
+    );
+  }
+}
+
+/**
+ * Comandas podem fechar com itens ainda na cozinha (config). O turno de caixa
+ * não: a fila da cozinha atravessa dia/turno enquanto o status permanece
+ * RECEBIDO/EM_PREPARO/PRONTO, e reapareceria no próximo caixa aberto.
+ */
+export async function contarPedidosCozinhaPendentes(
+  cervejariaId: string,
+  pontoVendaId: string,
+  db: Pick<Prisma.TransactionClient, 'pedidoOperacao'> = prisma,
+) {
+  return db.pedidoOperacao.count({
+    where: {
+      cervejariaId,
+      OR: [
+        { pontoVendaId },
+        { pontoVendaId: null, comanda: { pontoVendaId } },
+      ],
+      status: { in: [...STATUS_NA_FILA, STATUS_CANCELAMENTO_PENDENTE] },
+      itensComanda: { some: { exigePreparo: true, canceladoEm: null } },
+    },
+  });
+}
+
+export async function assertSemPedidosCozinhaPendentes(
+  cervejariaId: string,
+  pontoVendaId: string,
+  db: Pick<Prisma.TransactionClient, 'pedidoOperacao'> = prisma,
+) {
+  const pendentes = await contarPedidosCozinhaPendentes(cervejariaId, pontoVendaId, db);
+  if (pendentes > 0) {
+    const rotulo = pendentes === 1 ? '1 pedido pendente' : `${pendentes} pedidos pendentes`;
+    throw new CaixaInvalidoError(
+      `Não é possível fechar o caixa: há ${rotulo} na cozinha. Finalize ou cancele na cozinha antes de encerrar o turno.`,
+      409,
     );
   }
 }
@@ -613,6 +651,7 @@ export async function fecharCaixa(params: {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
     const sessao = await assertCaixaAberto(params.cervejariaId, params.pontoVendaId, dia, tx);
     await assertSemComandasAbertas(params.cervejariaId, params.pontoVendaId, tx);
+    await assertSemPedidosCozinhaPendentes(params.cervejariaId, params.pontoVendaId, tx);
 
     return tx.sessaoCaixaOperacao.update({
       where: { id: sessao.id },
