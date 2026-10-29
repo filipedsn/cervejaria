@@ -136,11 +136,12 @@ if ($backendOk -or $frontendOk) {
 
 if ($backendOk -and $frontendOk) {
   Write-Host "Dev no ar: http://localhost:$($paths.FrontendPort) (API :$($paths.BackendPort))" -ForegroundColor Green
-  Write-Host "Internet (Cloudflare): https://tapdev.quivercloud.com.br" -ForegroundColor Cyan
   $lanIp = Get-DevLanIPv4
   if ($lanIp) {
-    Write-Host "Celular (mesma Wi-Fi): http://${lanIp}:$($paths.FrontendPort)" -ForegroundColor Cyan
-    Write-Host "QR codes usam esse IP automaticamente quando o painel esta em localhost." -ForegroundColor DarkGray
+    Write-Host "Celular / QR (mesma Wi-Fi): http://${lanIp}:$($paths.FrontendPort)" -ForegroundColor Cyan
+    Write-Host "tapdev/tunnel externo nao e mais o caminho do DEV; use o IP da LAN com a porta $($paths.FrontendPort)." -ForegroundColor DarkGray
+  } else {
+    Write-Host "Abra no PC: http://localhost:$($paths.FrontendPort)" -ForegroundColor Cyan
   }
   exit 0
 }
