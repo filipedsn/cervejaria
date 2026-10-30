@@ -56,6 +56,7 @@ interface RankingStatsBarProps {
   exitLabel?: string;
   isNativeFullscreen?: boolean;
   onToggleNativeFullscreen?: () => void;
+  toolbarLeading?: ReactNode;
 }
 
 export function RankingStatsBar({
@@ -65,6 +66,7 @@ export function RankingStatsBar({
   exitLabel,
   isNativeFullscreen,
   onToggleNativeFullscreen,
+  toolbarLeading,
 }: RankingStatsBarProps) {
   const items: ReactNode[] = [];
 
@@ -133,6 +135,7 @@ export function RankingStatsBar({
         exitLabel={exitLabel}
         isNativeFullscreen={isNativeFullscreen}
         onToggleNativeFullscreen={onToggleNativeFullscreen}
+        leading={toolbarLeading}
       />
     </div>
   );

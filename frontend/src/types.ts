@@ -527,7 +527,14 @@ export interface RankingResponse {
 
 export interface RankingPdvResponse {
   pontoVenda: { id: string; nome: string };
+  escopo?: 'turno' | 'dia';
   dia: string;
+  sessao?: {
+    id: string;
+    status: string;
+    diaOperacional: string;
+    ocorrenciaId: string | null;
+  } | null;
   ocorrencia: { id: string; nome: string; data: string; agendaId: string | null } | null;
   ranking: RankingEntry[];
 }

@@ -73,10 +73,60 @@ export async function rankingRoutes(app: FastifyInstance) {
   app.get('/pdv/:pontoVendaId', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
     const user = getTenantUser(app, request);
     const { pontoVendaId } = z.object({ pontoVendaId: z.string().min(1) }).parse(request.params);
-    const query = z.object({ dia: isoDay.optional(), ocorrenciaId: z.string().min(1).optional(), agendaId: z.string().min(1).optional() }).parse(request.query);
+    const query = z.object({
+      dia: isoDay.optional(),
+      ocorrenciaId: z.string().min(1).optional(),
+      agendaId: z.string().min(1).optional(),
+      sessaoCaixaId: z.string().min(1).optional(),
+    }).parse(request.query);
     const pontoVenda = await pdvScope(user.cervejariaId!, pontoVendaId, reply);
     if (!pontoVenda) return reply;
-    if (!query.ocorrenciaId) return reply.status(400).send({ error: 'Selecione uma ocorrência para consultar o ranking diário' });
+    if (!query.sessaoCaixaId && !query.ocorrenciaId) {
+      return reply.status(400).send({ error: 'Informe a sessão do turno ou uma ocorrência para consultar o ranking' });
+    }
+
+    if (query.sessaoCaixaId) {
+      const session = await prisma.sessaoCaixaOperacao.findFirst({
+        where: { id: query.sessaoCaixaId, cervejariaId: user.cervejariaId!, pontoVendaId },
+        select: {
+          id: true,
+          status: true,
+          diaOperacional: true,
+          ocorrenciaId: true,
+          ocorrencia: { select: { id: true, nome: true, data: true, agendaId: true } },
+        },
+      });
+      if (!session) return reply.status(404).send({ error: 'Sessão de caixa não encontrada neste PDV' });
+      if (query.ocorrenciaId && session.ocorrenciaId && query.ocorrenciaId !== session.ocorrenciaId) {
+        return reply.status(400).send({ error: 'A ocorrência não pertence à sessão do turno' });
+      }
+      const comandas = await prisma.comanda.findMany({
+        where: {
+          ...personalClientScope(user.cervejariaId!),
+          pontoVendaId,
+          origem: 'CAIXA',
+          sessaoCaixaRealizacaoId: session.id,
+        },
+        include: { cliente: true, itens: { include: { produto: true } } },
+      });
+      const day = session.diaOperacional;
+      const occurrence = session.ocorrencia;
+      return {
+        pontoVenda,
+        escopo: 'turno' as const,
+        dia: day.toISOString().slice(0, 10),
+        sessao: {
+          id: session.id,
+          status: session.status,
+          diaOperacional: day.toISOString().slice(0, 10),
+          ocorrenciaId: session.ocorrenciaId,
+        },
+        ocorrencia: occurrence
+          ? { id: occurrence.id, nome: occurrence.nome, data: occurrence.data.toISOString().slice(0, 10), agendaId: occurrence.agendaId }
+          : null,
+        ranking: withRankingPosicao(aggregateChopeRanking(comandas)),
+      };
+    }
 
     let day = query.dia ? new Date(`${query.dia}T00:00:00.000Z`) : diaOperacional();
     let occurrence: { id: string; nome: string; data: Date; agendaId: string | null } | null = null;
@@ -87,39 +137,32 @@ export async function rankingRoutes(app: FastifyInstance) {
       });
       if (!agenda) return reply.status(404).send({ error: 'Agenda não encontrada neste PDV' });
     }
-    if (query.ocorrenciaId) {
-      occurrence = await prisma.ocorrenciaOperacional.findFirst({
-        where: { id: query.ocorrenciaId, cervejariaId: user.cervejariaId!, pontoVendaId },
-        select: { id: true, nome: true, data: true, agendaId: true },
-      });
-      if (!occurrence) return reply.status(404).send({ error: 'Ocorrência não encontrada neste PDV' });
-      if (query.agendaId && occurrence.agendaId !== query.agendaId) {
-        return reply.status(400).send({ error: 'A ocorrência não pertence à agenda selecionada' });
-      }
-      day = occurrence.data;
+    occurrence = await prisma.ocorrenciaOperacional.findFirst({
+      where: { id: query.ocorrenciaId!, cervejariaId: user.cervejariaId!, pontoVendaId },
+      select: { id: true, nome: true, data: true, agendaId: true },
+    });
+    if (!occurrence) return reply.status(404).send({ error: 'Ocorrência não encontrada neste PDV' });
+    if (query.agendaId && occurrence.agendaId !== query.agendaId) {
+      return reply.status(400).send({ error: 'A ocorrência não pertence à agenda selecionada' });
     }
-    const nextDay = new Date(day);
-    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    day = occurrence.data;
     const comandas = await prisma.comanda.findMany({
       where: {
         ...personalClientScope(user.cervejariaId!),
         pontoVendaId,
-        OR: occurrence
-          ? [
-              { origem: 'CAIXA', ocorrenciaId: occurrence.id },
-              { origem: 'EVENTO', ocorrenciaId: occurrence.id, ocorrencia: { is: { cervejariaId: user.cervejariaId!, pontoVendaId } } },
-            ]
-          : [
-              { origem: 'CAIXA', diaOperacional: { gte: day, lt: nextDay } },
-              { origem: 'EVENTO', ocorrenciaId: { not: null }, ocorrencia: { is: { cervejariaId: user.cervejariaId!, pontoVendaId, data: { gte: day, lt: nextDay } } } },
-            ],
+        OR: [
+          { origem: 'CAIXA', ocorrenciaId: occurrence.id },
+          { origem: 'EVENTO', ocorrenciaId: occurrence.id, ocorrencia: { is: { cervejariaId: user.cervejariaId!, pontoVendaId } } },
+        ],
       },
       include: { cliente: true, itens: { include: { produto: true } } },
     });
     return {
       pontoVenda,
+      escopo: 'dia' as const,
       dia: day.toISOString().slice(0, 10),
-      ocorrencia: occurrence ? { ...occurrence, data: occurrence.data.toISOString().slice(0, 10) } : null,
+      sessao: null,
+      ocorrencia: { ...occurrence, data: occurrence.data.toISOString().slice(0, 10) },
       ranking: withRankingPosicao(aggregateChopeRanking(comandas)),
     };
   });

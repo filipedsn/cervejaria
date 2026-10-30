@@ -180,6 +180,7 @@ export function Layout() {
   const rankingEntryParams = new URLSearchParams({ pontoVendaId: pontoVendaQrId ?? '' });
   const caixaRankingSession = caixaRankingQuery.data?.sessao;
   if (caixaRankingSession?.status === 'ABERTO') {
+    rankingEntryParams.set('sessaoCaixaId', caixaRankingSession.id);
     rankingEntryParams.set('dia', caixaRankingSession.ocorrencia?.data ?? caixaRankingSession.diaOperacional);
     if (caixaRankingSession.ocorrenciaId) rankingEntryParams.set('ocorrenciaId', caixaRankingSession.ocorrenciaId);
   }

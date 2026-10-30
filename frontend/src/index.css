@@ -2651,6 +2651,31 @@ button[title="Excluir"].icon-btn-danger {
   background: rgba(4, 16, 31, 0.72);
 }
 
+.ranking-operational-scopes--toolbar {
+  display: inline-flex;
+  width: auto;
+  max-width: min(100%, 360px);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.ranking-operational-scopes--toolbar .segmented-control-btn {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  min-height: 36px;
+}
+
+.ranking-operational-month--toolbar {
+  display: flex;
+  align-items: center;
+  max-width: 220px;
+}
+
+.ranking-operational-footer .ranking-operational-help {
+  margin: 0;
+  max-width: none;
+}
+
 .ranking-operational-scopes {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

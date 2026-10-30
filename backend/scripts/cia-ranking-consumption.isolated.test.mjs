@@ -124,6 +124,7 @@ try {
   await check('daily API returns the same participant count, total, and stable position for 0, 1, 2, 3, and many participants', async () => {
     const missingOccurrence = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=2026-12-01`, headers: auth(owner) });
     assert.equal(missingOccurrence.statusCode, 400, missingOccurrence.body);
+    assert.match(missingOccurrence.json().error, /sessão do turno|ocorrência/i);
     const empty = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?dia=2026-12-01&ocorrenciaId=${oneOffRows.get('2026-12-01').id}`, headers: auth(owner) });
     assert.equal(empty.statusCode, 200, empty.body);
     assert.deepEqual(empty.json().ranking, []);
@@ -186,6 +187,60 @@ try {
     assert.equal(standaloneDay.statusCode, 200, standaloneDay.body);
     assert.equal(standaloneDay.json().ranking.length, 1);
     assert.equal(standaloneDay.json().ranking[0].totalMl, 100);
+  });
+
+  await check('shift ranking aggregates by cash session including unscheduled turns', async () => {
+    const unscheduledClient = await prisma.cliente.create({ data: { cervejariaId: company.id, nome: `Turno Sem Agenda QA ${suffix}`, telefone: null } });
+    const scheduledClient = await prisma.cliente.create({ data: { cervejariaId: company.id, nome: `Turno Com Agenda QA ${suffix}`, telefone: null } });
+    const shiftOccurrence = await prisma.ocorrenciaOperacional.create({
+      data: { cervejariaId: company.id, pontoVendaId: point.id, agendaId: null, nome: `Turno Isolado QA ${suffix}`, data: day('2026-12-08'), horaInicio: '18:00', horaFim: '22:00' },
+    });
+    const unscheduledSession = await prisma.sessaoCaixaOperacao.create({
+      data: { cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: day('2026-12-07'), status: 'FECHADO', trocoInicial: 0, abertoPorId: owner.id, fechadoPorId: owner.id, fechadoEm: new Date(), ocorrenciaId: null },
+    });
+    const scheduledSession = await prisma.sessaoCaixaOperacao.create({
+      data: { cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: day('2026-12-08'), status: 'FECHADO', trocoInicial: 0, abertoPorId: owner.id, fechadoPorId: owner.id, fechadoEm: new Date(), ocorrenciaId: shiftOccurrence.id },
+    });
+    const unscheduledCommand = await prisma.comanda.create({
+      data: {
+        origem: 'CAIXA', clienteId: unscheduledClient.id, status: 'FECHADA', tipo: 'COMANDA', pontoVendaId: point.id,
+        ocorrenciaId: null, sessaoCaixaRealizacaoId: unscheduledSession.id, diaOperacional: day('2026-12-07'), total: 10, fechadaEm: day('2026-12-07'),
+      },
+    });
+    await prisma.itemComanda.create({ data: { comandaId: unscheduledCommand.id, produtoId: product.id, volumeMl: 450, quantidade: 1, precoUnit: 10 } });
+    const scheduledCommand = await prisma.comanda.create({
+      data: {
+        origem: 'CAIXA', clienteId: scheduledClient.id, status: 'FECHADA', tipo: 'COMANDA', pontoVendaId: point.id,
+        ocorrenciaId: shiftOccurrence.id, sessaoCaixaRealizacaoId: scheduledSession.id, diaOperacional: day('2026-12-08'), total: 10, fechadaEm: day('2026-12-08'),
+      },
+    });
+    await prisma.itemComanda.create({ data: { comandaId: scheduledCommand.id, produtoId: product.id, volumeMl: 250, quantidade: 1, precoUnit: 10 } });
+    const otherSessionSale = await prisma.comanda.create({
+      data: {
+        origem: 'CAIXA', clienteId: scheduledClient.id, status: 'FECHADA', tipo: 'COMANDA', pontoVendaId: point.id,
+        ocorrenciaId: shiftOccurrence.id, sessaoCaixaRealizacaoId: null, diaOperacional: day('2026-12-08'), total: 10, fechadaEm: day('2026-12-08'),
+      },
+    });
+    await prisma.itemComanda.create({ data: { comandaId: otherSessionSale.id, produtoId: product.id, volumeMl: 900, quantidade: 1, precoUnit: 10 } });
+
+    const unscheduled = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?sessaoCaixaId=${unscheduledSession.id}`, headers: auth(owner) });
+    assert.equal(unscheduled.statusCode, 200, unscheduled.body);
+    assert.equal(unscheduled.json().escopo, 'turno');
+    assert.equal(unscheduled.json().ocorrencia, null);
+    assert.deepEqual(unscheduled.json().ranking.map((row) => [row.clienteId, row.totalMl]), [[unscheduledClient.id, 450]]);
+
+    const scheduled = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?sessaoCaixaId=${scheduledSession.id}`, headers: auth(owner) });
+    assert.equal(scheduled.statusCode, 200, scheduled.body);
+    assert.equal(scheduled.json().escopo, 'turno');
+    assert.equal(scheduled.json().ocorrencia.id, shiftOccurrence.id);
+    assert.deepEqual(scheduled.json().ranking.map((row) => [row.clienteId, row.totalMl]), [[scheduledClient.id, 250]]);
+
+    const dayScope = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?ocorrenciaId=${shiftOccurrence.id}`, headers: auth(owner) });
+    assert.equal(dayScope.statusCode, 200, dayScope.body);
+    assert.equal(dayScope.json().ranking.reduce((sum, row) => sum + row.totalMl, 0), 1150);
+
+    const foreignSession = await app.inject({ method: 'GET', url: `/api/ranking/pdv/${point.id}?sessaoCaixaId=${foreignPoint.id}`, headers: auth(owner) });
+    assert.equal(foreignSession.statusCode, 404, foreignSession.body);
   });
 
   await check('recurrence aggregation preserves exact agenda identity and occurrence picker reaches older history', async () => {
@@ -772,9 +827,13 @@ try {
       await trophy.click();
       assert.equal(new URL(page.url()).pathname, '/operacao/ranking');
       assert.equal(new URL(page.url()).searchParams.get('pontoVendaId'), point.id, 'ranking link preserves the selected PDV');
-      await page.waitForFunction(() => new URL(location.href).searchParams.has('agendaId'));
+      assert.ok(new URL(page.url()).searchParams.get('sessaoCaixaId'), 'ranking link carries the open cash session');
       assert.equal(new URL(page.url()).searchParams.get('ocorrenciaId'), occurrenceRows[1].id, 'turno aberto preselects its linked occurrence');
+      await page.waitForFunction(() => new URL(location.href).searchParams.has('agendaId'));
       assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'linked occurrence supplies the agenda context');
+      await page.getByRole('button', { name: 'Turno', exact: true }).waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Turno', exact: true }).getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#ranking-pdv-day, #ranking-pdv-occurrence').count(), 0, 'day/occurrence filters stay off the ranking viewport');
       await context.close();
 
       const staffContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
