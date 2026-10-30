@@ -2655,7 +2655,7 @@ button[title="Excluir"].icon-btn-danger {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px 16px;
   padding: 6px 20px;
   border-bottom: 1px solid var(--ranking-border-soft);
@@ -2667,7 +2667,6 @@ button[title="Excluir"].icon-btn-danger {
   flex-wrap: wrap;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
 }
 
 .ranking-operational-scope-btn {
@@ -2705,9 +2704,11 @@ button[title="Excluir"].icon-btn-danger {
   max-width: 220px;
 }
 
-.ranking-operational-footer .ranking-operational-help {
+.ranking-operational-credit {
   margin: 0;
-  max-width: none;
+  color: var(--ranking-text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .ranking-operational-scopes {

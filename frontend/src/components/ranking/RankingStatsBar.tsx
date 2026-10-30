@@ -51,7 +51,7 @@ function TrendIcon() {
 
 interface RankingStatsBarProps {
   stats: RankingTvStats | null;
-  exitTo: string;
+  exitTo?: string;
   tvTo?: string;
   exitLabel?: string;
   isNativeFullscreen?: boolean;

@@ -11,7 +11,6 @@ import { computeRankingStats } from '../lib/ranking-tv-stats';
 import type { RankingEntry, RankingPdvPeriodoResponse, RankingPdvResponse } from '../types';
 import { EmptyState } from '../components/EmptyState';
 import { Loading } from '../components/Loading';
-import { MonthNavigator } from '../components/MonthNavigator';
 import { RankingPodium } from '../components/ranking/RankingPodium';
 import { RankingRestGrid } from '../components/ranking/RankingRestGrid';
 import { RankingHeader } from '../components/ranking/RankingHeader';
@@ -61,7 +60,7 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
   const occurrenceId = searchParams.get('ocorrenciaId') ?? '';
   const agendaId = searchParams.get('agendaId') ?? '';
   const dia = searchParams.get('dia') ?? operationDay();
-  const mes = searchParams.get('mes') ?? currentMesKey();
+  const mes = currentMesKey();
   const escopo = parseEscopo(searchParams.get('escopo'), Boolean(sessionId), Boolean(occurrenceId));
   const activePoints = contexto.pontosVenda.filter((point) => point.ativo);
   const pointId = searchParams.get('pontoVendaId') ?? activePoints[0]?.id ?? '';
@@ -162,7 +161,12 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
       params.set('dia', selectedOccurrence.data);
       changed = true;
     }
-    if (escopo === 'mensal' && !params.get('mes')) { params.set('mes', mes); changed = true; }
+    if (escopo === 'mensal') {
+      if (params.get('mes') !== mes) { params.set('mes', mes); changed = true; }
+    } else if (params.has('mes')) {
+      params.delete('mes');
+      changed = true;
+    }
     if (occurrencesQuery.isSuccess && occurrenceId && selectedOccurrence?.agenda?.id && !params.get('agendaId')) {
       params.set('agendaId', selectedOccurrence.agenda.id);
       changed = true;
@@ -186,14 +190,15 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
     setSearchParams(params, { replace: true });
   }, [availableScopesKey, escopo, searchParams, setSearchParams]);
 
-  const updateParams = (next: { escopo?: Escopo; dia?: string; mes?: string; ocorrenciaId?: string | null; agendaId?: string | null; sessaoCaixaId?: string | null; pontoVendaId?: string }) => {
+  const updateParams = (next: { escopo?: Escopo; dia?: string; ocorrenciaId?: string | null; agendaId?: string | null; sessaoCaixaId?: string | null; pontoVendaId?: string }) => {
     const params = new URLSearchParams(searchParams);
     if (next.escopo) {
       if (next.escopo === 'turno') params.delete('escopo');
       else params.set('escopo', next.escopo);
+      if (next.escopo === 'mensal') params.set('mes', currentMesKey());
+      else params.delete('mes');
     }
     if (next.dia) params.set('dia', next.dia);
-    if (next.mes) params.set('mes', next.mes);
     if (next.ocorrenciaId === null) params.delete('ocorrenciaId');
     else if (next.ocorrenciaId !== undefined) next.ocorrenciaId ? params.set('ocorrenciaId', next.ocorrenciaId) : params.delete('ocorrenciaId');
     if (next.agendaId !== undefined) next.agendaId ? params.set('agendaId', next.agendaId) : params.delete('agendaId');
@@ -205,6 +210,7 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
       params.delete('agendaId');
       params.delete('sessaoCaixaId');
       params.delete('escopo');
+      params.delete('mes');
     }
     if (pointId && !next.pontoVendaId) params.set('pontoVendaId', pointId);
     setSearchParams(params);
@@ -278,11 +284,8 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
           badge="Atualiza a cada minuto"
         />
 
-        <div className="ranking-operational-scopes-strip">
-          <Link to="/operacao/comandas" className="ranking-operational-back">
-            Voltar para Comandas
-          </Link>
-          {availableScopes.length > 0 && (
+        {availableScopes.length > 0 && (
+          <div className="ranking-operational-scopes-strip">
             <div className="ranking-operational-scopes-quiet" role="group" aria-label="Período do ranking">
               {availableScopes.map((scope) => (
                 <button
@@ -296,22 +299,11 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
                 </button>
               ))}
             </div>
-          )}
-          {escopo === 'mensal' && (
-            <div className="ranking-operational-month ranking-operational-month--strip">
-              <MonthNavigator
-                value={mes}
-                options={periodQuery.data?.mesesDisponiveis.length ? periodQuery.data.mesesDisponiveis : [mes]}
-                onChange={(value) => updateParams({ escopo: 'mensal', mes: value })}
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <RankingStatsBar
           stats={computeRankingStats(rows)}
-          exitTo="/operacao/comandas"
-          exitLabel="Voltar para Comandas"
           tvTo={tvPath}
         />
 
@@ -345,10 +337,7 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
         <footer className="ranking-operational-footer">
           <RankingUpdatedAt lastUpdatedAt={lastUpdatedAt} />
           <span>Atualização automática a cada minuto</span>
-          <details className="ranking-operational-help">
-            <summary>Como o consumo é contado</summary>
-            <p>O ranking soma itens de chope lançados e sem cancelamento. Turno usa a sessão de caixa aberta; Dia usa a ocorrência; Mensal e Geral acumulam pela agenda.</p>
-          </details>
+          <p className="ranking-operational-credit">Desenvolvido por Quiver Cloud - (27) 98128-3526</p>
         </footer>
       </div>
     </div>
