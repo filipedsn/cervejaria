@@ -122,18 +122,34 @@ recreate_api() {
   compose up -d --no-build --force-recreate api
 }
 
+# Mais recente entre candidatos, sem `ls | head` (pipefail + SIGPIPE → ls exit 2).
+newest_backup() {
+  local newest="" newest_mtime=0 f mt
+  for f in "$@"; do
+    [[ -f "$f" ]] || continue
+    mt="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
+    if [[ -z "$newest" || "$mt" -ge "$newest_mtime" ]]; then
+      newest=$f
+      newest_mtime=$mt
+    fi
+  done
+  [[ -n "$newest" ]] || return 1
+  printf '%s\n' "$newest"
+}
+
 # Restaura o dump recém-feito num Postgres descartável e aplica as migrations nele.
 rehearse_migrations() (
   trap - ERR
   set -euo pipefail
   # shellcheck disable=SC1090
   source "$BACKUP_ENV"
-  local dump pg_image pass url
-  # shellcheck disable=SC2012
-  dump="$(ls -1t "$BACKUP_DIR"/"${PREFIX:-backup-prod}"-*.dump "$BACKUP_DIR"/"${PREFIX:-backup-prod}"-*.sql 2>/dev/null | head -n1)"
-  [[ -n "$dump" ]] || { log "ensaio: nenhum backup encontrado em $BACKUP_DIR"; exit 1; }
+  local dump pg_image pass url restore_rc
+  shopt -s nullglob
+  dump="$(newest_backup "$BACKUP_DIR"/"${PREFIX:-backup-prod}"-*.dump "$BACKUP_DIR"/"${PREFIX:-backup-prod}"-*.sql)" \
+    || { log "ensaio: nenhum backup encontrado em $BACKUP_DIR"; exit 1; }
   pg_image="$(docker inspect -f '{{.Config.Image}}' "$CONTAINER")"
-  pass="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)"
+  # openssl evita pipeline quebrada por pipefail (head|base64|tr|head).
+  pass="$(openssl rand -hex 12)"
   url="postgresql://$PGUSER:$pass@127.0.0.1:$REHEARSAL_PORT/$PGDATABASE?schema=public"
   cleanup() { docker rm -f "$REHEARSAL_CONTAINER" >/dev/null 2>&1 || true; }
   trap cleanup EXIT
@@ -147,7 +163,18 @@ rehearse_migrations() (
   done
   docker cp "$dump" "$REHEARSAL_CONTAINER:/tmp/rehearsal.backup"
   if [[ "$dump" == *.dump ]]; then
+    # pg_restore: 0=ok, 1=warnings (comum em custom dump), >=2=erro fatal.
+    set +e
     docker exec "$REHEARSAL_CONTAINER" pg_restore -U "$PGUSER" -d "$PGDATABASE" --no-owner --no-acl /tmp/rehearsal.backup
+    restore_rc=$?
+    set -e
+    if (( restore_rc >= 2 )); then
+      log "ensaio: pg_restore falhou (código $restore_rc)"
+      exit "$restore_rc"
+    fi
+    if (( restore_rc == 1 )); then
+      log "ensaio: pg_restore warnings (código 1) — seguindo"
+    fi
   else
     docker exec "$REHEARSAL_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PGUSER" -d "$PGDATABASE" -f /tmp/rehearsal.backup >/dev/null
   fi
