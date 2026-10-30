@@ -3169,7 +3169,23 @@ button[title="Excluir"].icon-btn-danger {
 .portal-pdv-orders, .portal-pdv-summary { margin-top: 1rem; }
 .portal-pdv-orders h3, .portal-pdv-summary h3 { margin: 0 0 .75rem; color: #b7e9ff; font-size: .95rem; text-transform: uppercase; letter-spacing: .05em; }
 .portal-pdv-category { margin-top: 1.15rem; }
-.portal-pdv-category h4 { margin: 0 0 .55rem; color: #9db3c7; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.portal-pdv-category h4,
+.portal-pdv-section-label { margin: 0 0 .55rem; color: #9db3c7; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.portal-pdv-chope-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3rem;
+  border: 0;
+  border-radius: .7rem;
+  background: #0ea5e9;
+  color: #fff;
+  font-weight: 800;
+}
+.portal-pdv-chope-add:disabled {
+  opacity: .45;
+}
 .portal-pdv-product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
 .portal-pdv-product { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; margin-top: .55rem; padding: 1rem 1.1rem; border: 1px solid rgba(85, 137, 174, .35); border-radius: .9rem; background: rgba(10, 25, 39, .86); color: #f8fafc; text-align: left; }
 .portal-pdv-product-grid .portal-pdv-product { min-height: 5.35rem; margin-top: 0; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: .65rem; padding: .8rem .85rem; }
