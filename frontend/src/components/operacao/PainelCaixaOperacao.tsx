@@ -29,6 +29,7 @@ import { OperacaoTurnoTapsPanel } from './OperacaoTurnoTapsPanel';
 import type { Trailer } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { cashOccurrenceQueryUrl, cashOccurrenceSelectionIsEligible, eligibleCashOccurrences, type CashOccurrenceOption } from '../../lib/cash-occurrences';
+import { datetimeLocalSaoPauloToIso, formatDateTimeSaoPaulo, toDatetimeLocalSaoPaulo } from '../../lib/datetime-sp';
 
 type Dialogo = 'nenhum' | 'abrir' | 'movimento' | 'correcao' | 'fechar' | 'cardapio' | 'encerrar-admin';
 function dataCalendarioPt(data: string) {
@@ -59,11 +60,13 @@ function Diferenca({ valor }: { valor: number }) {
   );
 }
 
-function IconeFechamento({ tipo }: { tipo: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO' | 'OBS' }) {
+function IconeFechamento({ tipo }: { tipo: 'DINHEIRO' | 'PIX' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO' | 'OBS' | 'DATA' | 'HORA' }) {
   const common = { className: 'h-6 w-6 sm:h-8 sm:w-8', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true as const };
   if (tipo === 'DINHEIRO') return <svg {...common}><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9h.01M18 15h.01"/></svg>;
   if (tipo === 'PIX') return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v2m-3 4h2m1-1v2"/></svg>;
   if (tipo === 'OBS') return <svg {...common}><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 12h8M8 16h8"/></svg>;
+  if (tipo === 'DATA') return <svg {...common}><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M7.5 3v4M16.5 3v4M3.5 9.5h17"/></svg>;
+  if (tipo === 'HORA') return <svg {...common}><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>;
   return <svg {...common}><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="M2.5 9h19M6.5 15h4"/></svg>;
 }
 
@@ -95,6 +98,8 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [historicoAberto, setHistoricoAberto] = useState<string | null>(null);
   const [contado, setContado] = useState<Record<string, string>>({});
   const [obsFechamento, setObsFechamento] = useState('');
+  const [fechadoEmData, setFechadoEmData] = useState('');
+  const [fechadoEmHora, setFechadoEmHora] = useState('');
   const [motivoEncerramentoAdministrativo, setMotivoEncerramentoAdministrativo] = useState('');
   const [erro, setErro] = useState('');
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
@@ -280,6 +285,10 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         contadoCartaoDebito: parseCurrencyInput(contado.debito ?? '0'),
         contadoCartaoCredito: parseCurrencyInput(contado.credito ?? '0'),
         observacaoFechamento: obsFechamento.trim() || undefined,
+        fechadoEm:
+          fechadoEmData && fechadoEmHora
+            ? datetimeLocalSaoPauloToIso(`${fechadoEmData}T${fechadoEmHora}`)
+            : undefined,
       }),
     onSuccess: () => {
       invalidar();
@@ -337,6 +346,10 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
     // values can silently conceal a cash/card reconciliation discrepancy.
     setContado({ dinheiro: '', pix: '', debito: '', credito: '' });
     setObsFechamento('');
+    const agoraLocal = toDatetimeLocalSaoPaulo();
+    const [dataAgora, horaAgora] = agoraLocal.split('T');
+    setFechadoEmData(dataAgora ?? '');
+    setFechadoEmHora(horaAgora ?? '');
     setErro('');
     setDialogo('fechar');
   };
@@ -717,6 +730,12 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         <div className="card space-y-3">
           <div>
             <h2 className="text-base font-semibold">Turno encerrado</h2>
+            {sessao.fechadoEm && (
+              <p className="mt-1 text-sm text-ink-muted">
+                Encerrado em {formatDateTimeSaoPaulo(sessao.fechadoEm)}
+                {sessao.abertoEm ? ` · aberto em ${formatDateTimeSaoPaulo(sessao.abertoEm)}` : ''}
+              </p>
+            )}
             {sessao.tipoEncerramento === 'ADMINISTRATIVO' ? (
               <p className="text-sm font-semibold text-amber-700">Encerramento administrativo · conferência financeira pendente; contagens desconhecidas.</p>
             ) : sessao.tipoEncerramento === 'FINANCEIRO' ? (
@@ -1013,6 +1032,49 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
                 <p className="mt-1 text-sm text-ink-muted">Contas ainda não recebidas; não entram na conferência dos valores pagos.</p>
               </div>
               <strong className="shrink-0 text-xl font-bold tabular-nums text-amber-400">{formatCurrency(sessao?.pendente ?? 0)}</strong>
+            </div>
+            <div className="sm:col-span-2 space-y-3">
+              <div>
+                <p className="text-lg font-semibold text-ink sm:text-2xl">Data e hora do encerramento</p>
+                <p className="mt-1 text-sm text-ink-muted">Use o horário em que a operação realmente acabou (ex.: após a última venda), mesmo que você só consiga fechar o caixa no dia seguinte. Deve ser depois da última comanda do turno.</p>
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2 sm:gap-x-8">
+                <div>
+                  <label className="mb-2 block text-lg font-semibold text-ink sm:text-2xl" htmlFor="fechado-em-data">Data</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-ink-muted sm:w-24">
+                      <IconeFechamento tipo="DATA" />
+                    </span>
+                    <input
+                      id="fechado-em-data"
+                      type="date"
+                      className="input min-h-16 text-lg sm:min-h-24 sm:text-2xl"
+                      style={{ paddingLeft: '6.25rem' }}
+                      value={fechadoEmData}
+                      max={toDatetimeLocalSaoPaulo().slice(0, 10)}
+                      onChange={(e) => setFechadoEmData(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-2 block text-lg font-semibold text-ink sm:text-2xl" htmlFor="fechado-em-hora">Hora</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-ink-muted sm:w-24">
+                      <IconeFechamento tipo="HORA" />
+                    </span>
+                    <input
+                      id="fechado-em-hora"
+                      type="time"
+                      className="input min-h-16 text-lg sm:min-h-24 sm:text-2xl"
+                      style={{ paddingLeft: '6.25rem' }}
+                      value={fechadoEmHora}
+                      onChange={(e) => setFechadoEmHora(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="sm:col-span-2"><label className="mb-3 block text-lg font-semibold text-ink sm:text-2xl">Observação (opcional)</label><div className="relative"><span className="absolute inset-y-0 left-0 flex w-16 items-center justify-center border-r border-line text-ink-muted sm:w-24"><IconeFechamento tipo="OBS" /></span><input className="input min-h-16 text-lg sm:min-h-24 sm:text-2xl" style={{ paddingLeft: '6.25rem' }} value={obsFechamento} onChange={(e) => setObsFechamento(e.target.value)} placeholder="Adicione uma observação, se necessário..." /></div></div>
           </div>
