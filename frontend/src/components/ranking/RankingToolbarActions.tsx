@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 function ExitIcon() {
@@ -39,7 +38,6 @@ interface RankingToolbarActionsProps {
   exitLabel?: string;
   isNativeFullscreen?: boolean;
   onToggleNativeFullscreen?: () => void;
-  leading?: ReactNode;
 }
 
 export function RankingToolbarActions({
@@ -48,11 +46,9 @@ export function RankingToolbarActions({
   exitLabel = 'Sair da tela cheia',
   isNativeFullscreen = false,
   onToggleNativeFullscreen,
-  leading,
 }: RankingToolbarActionsProps) {
   return (
     <div className="tap-champions-stats-actions">
-      {leading}
       {tvTo && (
         <Link to={tvTo} className="tap-champions-icon-btn" aria-label="Abrir modo TV" title="Modo TV">
           <TvIcon />

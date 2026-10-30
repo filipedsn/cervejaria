@@ -245,33 +245,6 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
     ? `Ainda não há consumo registrado na agenda ${selectedAgenda.nome} para este período.`
     : `Ainda não há consumo registrado em ${contextLabel}.`;
 
-  const scopeControl = availableScopes.length > 0 ? (
-    <div className="segmented-control ranking-operational-scopes ranking-operational-scopes--toolbar" aria-label="Período do ranking">
-      {availableScopes.map((scope) => (
-        <button
-          key={scope}
-          type="button"
-          aria-pressed={escopo === scope}
-          className={`segmented-control-btn ${escopo === scope ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
-          onClick={() => updateParams({ escopo: scope })}
-        >
-          {scope === 'turno' ? 'Turno' : scope === 'dia' ? 'Dia' : scope === 'mensal' ? 'Mensal' : 'Geral'}
-        </button>
-      ))}
-    </div>
-  ) : null;
-
-  const toolbarLeading = (
-    <>
-      {scopeControl}
-      {escopo === 'mensal' && (
-        <div className="ranking-operational-month ranking-operational-month--toolbar">
-          <MonthNavigator value={mes} options={periodQuery.data?.mesesDisponiveis.length ? periodQuery.data.mesesDisponiveis : [mes]} onChange={(value) => updateParams({ escopo: 'mensal', mes: value })} />
-        </div>
-      )}
-    </>
-  );
-
   if (tv) {
     return <RankingTvView
       kicker="Consumo no PDV"
@@ -305,12 +278,41 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
           badge="Atualiza a cada minuto"
         />
 
+        <div className="ranking-operational-scopes-strip">
+          <Link to="/operacao/comandas" className="ranking-operational-back">
+            Voltar para Comandas
+          </Link>
+          {availableScopes.length > 0 && (
+            <div className="ranking-operational-scopes-quiet" role="group" aria-label="Período do ranking">
+              {availableScopes.map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  aria-pressed={escopo === scope}
+                  className={`ranking-operational-scope-btn ${escopo === scope ? 'is-active' : ''}`}
+                  onClick={() => updateParams({ escopo: scope })}
+                >
+                  {scope === 'turno' ? 'Turno' : scope === 'dia' ? 'Dia' : scope === 'mensal' ? 'Mensal' : 'Geral'}
+                </button>
+              ))}
+            </div>
+          )}
+          {escopo === 'mensal' && (
+            <div className="ranking-operational-month ranking-operational-month--strip">
+              <MonthNavigator
+                value={mes}
+                options={periodQuery.data?.mesesDisponiveis.length ? periodQuery.data.mesesDisponiveis : [mes]}
+                onChange={(value) => updateParams({ escopo: 'mensal', mes: value })}
+              />
+            </div>
+          )}
+        </div>
+
         <RankingStatsBar
           stats={computeRankingStats(rows)}
           exitTo="/operacao/comandas"
           exitLabel="Voltar para Comandas"
           tvTo={tvPath}
-          toolbarLeading={toolbarLeading}
         />
 
         <main className="tap-champions-main ranking-operational-main">

@@ -831,8 +831,10 @@ try {
       assert.equal(new URL(page.url()).searchParams.get('ocorrenciaId'), occurrenceRows[1].id, 'turno aberto preselects its linked occurrence');
       await page.waitForFunction(() => new URL(location.href).searchParams.has('agendaId'));
       assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'linked occurrence supplies the agenda context');
+      await page.getByRole('link', { name: 'Voltar para Comandas', exact: true }).first().waitFor();
       await page.getByRole('button', { name: 'Turno', exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: 'Turno', exact: true }).getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('.tap-champions-stats-actions .ranking-operational-scope-btn, .tap-champions-stats-actions .ranking-operational-scopes-quiet').count(), 0, 'scope controls stay out of the stats actions');
       assert.equal(await page.locator('#ranking-pdv-day, #ranking-pdv-occurrence').count(), 0, 'day/occurrence filters stay off the ranking viewport');
       await context.close();
 
