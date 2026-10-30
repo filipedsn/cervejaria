@@ -16,6 +16,7 @@ import { listarOpcionaisProduto, substituirOpcionaisProduto } from '../../lib/pr
 import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operational-config.js';
 import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { catalogoCategoriasCanonicoAtivo, categoriaPdvInputSchema, normalizarNomeCategoria } from '../../lib/operacao/catalogo-categorias.js';
+import { filtrarCategoriaChopeSeTapsDesligados } from '../../lib/operacao/categoria-chope-torneiras.js';
 
 const precoProdutoSchema = z.object({ volumeMl: z.number().int().positive(), preco: z.number().positive() });
 const tipoProdutoSchema = z.enum(['BEBIDA', 'COMIDA']);
@@ -101,16 +102,22 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     return { ok: true };
   });
   app.get('/categorias', async (request) => {
-    const { cervejariaId } = request.operacao;
+    const { cervejariaId, tapsEnabled } = request.operacao;
     if (catalogoCategoriasCanonicoAtivo()) {
       const categorias = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
       const cervejaria = await prisma.cervejaria.findUnique({ where: { id: cervejariaId }, select: { operacaoCategoriasOrdem: true } });
       const config = cervejaria?.operacaoCategoriasOrdem;
       const rawOrder = Array.isArray(config) ? config : config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : [];
-      const names = categorias.map((categoria) => categoria.nome);
+      const namesVisiveis = filtrarCategoriaChopeSeTapsDesligados(
+        categorias.map((categoria) => categoria.nome),
+        tapsEnabled,
+      );
+      const visibleSet = new Set(namesVisiveis);
+      const visible = categorias.filter((categoria) => visibleSet.has(categoria.nome));
+      const names = visible.map((categoria) => categoria.nome);
       const saved = Array.isArray(rawOrder) ? rawOrder.filter((name): name is string => typeof name === 'string' && names.includes(name)) : [];
       const ordem = [...new Set(saved), ...names.filter((name) => !saved.includes(name))];
-      return { categorias: ordem, categoriasPdv: categorias, ordem, catalogoCanonico: true };
+      return { categorias: ordem, categoriasPdv: visible, ordem, catalogoCanonico: true };
     }
     const categorias = request.operacao.tapsEnabled
       ? [...CATEGORIAS_PRODUTO_OPERACAO, 'Chope']

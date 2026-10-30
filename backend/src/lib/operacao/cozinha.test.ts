@@ -4,6 +4,7 @@ import {
   StatusPedidoCozinhaDesatualizadoError,
   TRANSICOES,
   aplicarStatusPedidoCozinha,
+  filtrarItensAtendimentoBalcao,
   filtroListaPedidosCozinha,
   resumoPedidoCozinha,
 } from './cozinha.js';
@@ -108,6 +109,57 @@ describe('filtroListaPedidosCozinha', () => {
         { status: 'ENTREGUE', diaOperacional: hoje },
       ],
     });
+  });
+});
+
+describe('filtrarItensAtendimentoBalcao', () => {
+  const linhas = [
+    { nome: 'IPA', quantidade: 1, volumeMl: 500, exigePreparo: false, canceladoEm: null, categoria: 'Chope' },
+    { nome: 'Porção', quantidade: 1, volumeMl: 1, exigePreparo: true, canceladoEm: null, categoria: 'Porções' },
+    { nome: 'Pilsen', quantidade: 2, volumeMl: 300, exigePreparo: false, canceladoEm: new Date(), categoria: 'Chope' },
+    { nome: 'Água', quantidade: 1, volumeMl: 1, exigePreparo: false, canceladoEm: null, categoria: 'Bebidas' },
+  ];
+
+  it('não alerta quando a lista de categorias está desligada', () => {
+    assert.deepEqual(filtrarItensAtendimentoBalcao(linhas, null), []);
+    assert.deepEqual(filtrarItensAtendimentoBalcao(linhas, []), []);
+  });
+
+  it('mantém só itens sem preparo das categorias configuradas', () => {
+    assert.deepEqual(filtrarItensAtendimentoBalcao(linhas, ['Chope']), [
+      { nome: 'IPA', quantidade: 1, volumeMl: 500 },
+    ]);
+  });
+
+  it('trata chope sem categoria cadastrada como Chope pelo formato', () => {
+    assert.deepEqual(
+      filtrarItensAtendimentoBalcao(
+        [
+          {
+            nome: 'Pilsen',
+            quantidade: 1,
+            volumeMl: 300,
+            exigePreparo: false,
+            canceladoEm: null,
+            categoria: null,
+            tipo: 'BEBIDA',
+            formato: 'CHOPE',
+          },
+          {
+            nome: 'Espeto',
+            quantidade: 1,
+            volumeMl: 1,
+            exigePreparo: false,
+            canceladoEm: null,
+            categoria: null,
+            tipo: 'COMIDA',
+            formato: null,
+          },
+        ],
+        ['Chope'],
+      ),
+      [{ nome: 'Pilsen', quantidade: 1, volumeMl: 300 }],
+    );
   });
 });
 

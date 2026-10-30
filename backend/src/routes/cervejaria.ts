@@ -15,6 +15,12 @@ import { parseCervejariaDashboardPeriodo } from '../lib/cervejaria-dashboard-per
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
+import { syncCategoriaChopeComTorneiras } from '../lib/operacao/categoria-chope-torneiras.js';
+import {
+  categoriasElegiveisAlertaBalcao,
+  categoriasVisiveisNoPortal,
+  listCategoriasEstabelecimento,
+} from '../lib/portal-categorias.js';
 
 const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const ALLOWED_BACKGROUND_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -72,12 +78,10 @@ export async function cervejariaRoutes(app: FastifyInstance) {
 
   app.get('/configuracao-portal-categorias', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
-    const [brewery, categories, legacyCategories] = await Promise.all([
+    const [brewery, names] = await Promise.all([
       prisma.cervejaria.findUniqueOrThrow({ where: { id: user.cervejariaId! }, select: { portalCategoriasPermitidas: true } }),
-      prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId! }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }], select: { nome: true } }),
-      prisma.produto.findMany({ where: { cervejariaId: user.cervejariaId!, ativo: true, categoria: { not: null } }, distinct: ['categoria'], select: { categoria: true } }),
+      listCategoriasEstabelecimento(user.cervejariaId!),
     ]);
-    const names = [...new Set([...categories.map((category) => category.nome), ...legacyCategories.map((category) => category.categoria).filter((name): name is string => Boolean(name)), 'Outros'])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return {
       categorias: names,
       categoriasPermitidas: Array.isArray(brewery.portalCategoriasPermitidas) ? brewery.portalCategoriasPermitidas : null,
@@ -87,16 +91,66 @@ export async function cervejariaRoutes(app: FastifyInstance) {
   app.put('/configuracao-portal-categorias', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = z.object({ categoriasPermitidas: z.array(z.string().trim().min(1).max(100)).max(200).nullable() }).parse(request.body);
-    const [existing, legacyCategories] = await Promise.all([
-      prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId! }, select: { nome: true } }),
-      prisma.produto.findMany({ where: { cervejariaId: user.cervejariaId!, ativo: true, categoria: { not: null } }, distinct: ['categoria'], select: { categoria: true } }),
-    ]);
-    const names = [...new Set([...existing.map((category) => category.nome), ...legacyCategories.map((category) => category.categoria).filter((name): name is string => Boolean(name)), 'Outros'])];
+    const names = await listCategoriasEstabelecimento(user.cervejariaId!);
     const known = new Set(names);
     if (body.categoriasPermitidas?.some((name) => !known.has(name))) throw badRequest('Uma ou mais categorias não pertencem a este estabelecimento');
     const categories = body.categoriasPermitidas === null ? null : [...new Set(body.categoriasPermitidas)];
-    await prisma.cervejaria.update({ where: { id: user.cervejariaId! }, data: { portalCategoriasPermitidas: categories === null ? Prisma.DbNull : categories } });
+    const brewery = await prisma.cervejaria.findUniqueOrThrow({
+      where: { id: user.cervejariaId! },
+      select: { portalAlertaBalcaoCategorias: true },
+    });
+    const { alertaAtivo } = categoriasElegiveisAlertaBalcao(names, categories, brewery.portalAlertaBalcaoCategorias);
+    await prisma.cervejaria.update({
+      where: { id: user.cervejariaId! },
+      data: {
+        portalCategoriasPermitidas: categories === null ? Prisma.DbNull : categories,
+        portalAlertaBalcaoCategorias: alertaAtivo === null ? Prisma.DbNull : alertaAtivo,
+      },
+    });
     return { categorias: names, categoriasPermitidas: categories };
+  });
+
+  app.get('/configuracao-portal-alerta-balcao', { preHandler: [app.requireDono] }, async (request) => {
+    const user = getAuthUser(request);
+    const [brewery, names] = await Promise.all([
+      prisma.cervejaria.findUniqueOrThrow({
+        where: { id: user.cervejariaId! },
+        select: { portalAlertaBalcaoCategorias: true, portalCategoriasPermitidas: true },
+      }),
+      listCategoriasEstabelecimento(user.cervejariaId!),
+    ]);
+    const { elegiveis, alertaAtivo } = categoriasElegiveisAlertaBalcao(
+      names,
+      brewery.portalCategoriasPermitidas,
+      brewery.portalAlertaBalcaoCategorias,
+    );
+    return {
+      categorias: elegiveis,
+      categoriasAlertaBalcao: alertaAtivo,
+    };
+  });
+
+  app.put('/configuracao-portal-alerta-balcao', { preHandler: [app.requireDono] }, async (request) => {
+    const user = getAuthUser(request);
+    const body = z.object({ categoriasAlertaBalcao: z.array(z.string().trim().min(1).max(100)).max(200).nullable() }).parse(request.body);
+    const [names, brewery] = await Promise.all([
+      listCategoriasEstabelecimento(user.cervejariaId!),
+      prisma.cervejaria.findUniqueOrThrow({
+        where: { id: user.cervejariaId! },
+        select: { portalCategoriasPermitidas: true },
+      }),
+    ]);
+    const elegiveis = categoriasVisiveisNoPortal(names, brewery.portalCategoriasPermitidas);
+    const known = new Set(elegiveis);
+    if (body.categoriasAlertaBalcao?.some((name) => !known.has(name))) {
+      throw badRequest('Só é possível alertar categorias disponíveis no portal do cliente');
+    }
+    const categories = body.categoriasAlertaBalcao === null ? null : [...new Set(body.categoriasAlertaBalcao)];
+    await prisma.cervejaria.update({
+      where: { id: user.cervejariaId! },
+      data: { portalAlertaBalcaoCategorias: categories === null ? Prisma.DbNull : categories },
+    });
+    return { categorias: elegiveis, categoriasAlertaBalcao: categories };
   });
 
   app.get('/dashboard', { preHandler: [requirePermissaoOuDono(app, 'dashboard.read')] }, async (request, reply) => {
@@ -178,7 +232,13 @@ export async function cervejariaRoutes(app: FastifyInstance) {
   app.patch('/configuracao-operacional', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = updateOperationalConfigSchema.parse(request.body);
-    return prisma.$transaction((tx) => updateOperationalConfig(tx, user.cervejariaId!, body, { userId: user.sub, role: 'DONO' }));
+    const updated = await prisma.$transaction((tx) =>
+      updateOperationalConfig(tx, user.cervejariaId!, body, { userId: user.sub, role: 'DONO' }),
+    );
+    if (body.tapsEnabled !== undefined) {
+      await syncCategoriaChopeComTorneiras(user.cervejariaId!, body.tapsEnabled);
+    }
+    return updated;
   });
 
   app.post('/branding/reextract', { preHandler: [app.requireDono] }, async (request) => {

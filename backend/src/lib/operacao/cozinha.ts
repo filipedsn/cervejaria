@@ -2,6 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma, StatusPedidoOperacao, ComandaTipo } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { emitToCervejaria } from '../realtime.js';
+import { listCategoriasEstabelecimento } from '../portal-categorias.js';
+import { categoriasElegiveisAlertaBalcao } from '../portal-categorias-policy.js';
+import { categoriaParaAlertaBalcao } from '../produto-utils.js';
 import { toNumber } from '../utils.js';
 
 type TxClient = Prisma.TransactionClient;
@@ -245,6 +248,129 @@ export function notificarComandaOperacaoAtualizada(
     type: 'operacao:comanda-atualizada',
     data: { comandaId },
   });
+}
+
+export type AtendimentoBalcaoPayload = {
+  comandaId: string;
+  pedidoIds: string[];
+  clienteNome: string | null;
+  comandaNumero: number | null;
+  comandaIdentificador: string | null;
+  itens: Array<{
+    nome: string;
+    quantidade: number;
+    volumeMl: number | null;
+  }>;
+};
+
+/**
+ * Itens de balcão: sem preparo, não cancelados e cuja categoria está na lista
+ * configurada. `categoriasAlerta` null/vazia = feature desligada (não alerta).
+ * Chope sem categoria cadastrada resolve para "Chope" via tipo/formato.
+ */
+export function filtrarItensAtendimentoBalcao(
+  itens: Array<{
+    nome: string | null;
+    quantidade: number;
+    volumeMl: number | null;
+    exigePreparo: boolean;
+    canceladoEm: Date | null;
+    categoria?: string | null;
+    tipo?: string | null;
+    formato?: string | null;
+  }>,
+  categoriasAlerta: string[] | null,
+): AtendimentoBalcaoPayload['itens'] {
+  if (!Array.isArray(categoriasAlerta) || categoriasAlerta.length === 0) return [];
+  const allowed = new Set(categoriasAlerta.map((name) => name.trim()).filter(Boolean));
+  if (allowed.size === 0) return [];
+
+  return itens
+    .filter((item) => !item.exigePreparo && !item.canceladoEm && allowed.has(categoriaParaAlertaBalcao(item)))
+    .map((item) => ({
+      nome: item.nome ?? 'Item',
+      quantidade: item.quantidade,
+      volumeMl: item.volumeMl,
+    }));
+}
+
+/**
+ * Avisa o balcão quando o portal lança itens sem preparo nas categorias
+ * configuradas. Não substitui a fila da cozinha.
+ */
+export async function notificarAtendimentoBalcaoPortal(
+  app: FastifyInstance,
+  cervejariaId: string,
+  comandaId: string,
+  pedidoIds: string[],
+): Promise<AtendimentoBalcaoPayload | null> {
+  if (pedidoIds.length === 0) return null;
+
+  const [brewery, categoriasEstabelecimento] = await Promise.all([
+    prisma.cervejaria.findUnique({
+      where: { id: cervejariaId },
+      select: { portalAlertaBalcaoCategorias: true, portalCategoriasPermitidas: true },
+    }),
+    listCategoriasEstabelecimento(cervejariaId),
+  ]);
+  const { alertaAtivo: categoriasAlerta } = categoriasElegiveisAlertaBalcao(
+    categoriasEstabelecimento,
+    brewery?.portalCategoriasPermitidas,
+    brewery?.portalAlertaBalcaoCategorias,
+  );
+
+  const pedidos = await prisma.pedidoOperacao.findMany({
+    where: { id: { in: pedidoIds }, cervejariaId, comandaId },
+    include: {
+      itensComanda: {
+        select: {
+          nome: true,
+          quantidade: true,
+          volumeMl: true,
+          exigePreparo: true,
+          canceladoEm: true,
+          produto: { select: { categoria: true, tipo: true, formato: true } },
+        },
+      },
+      comanda: {
+        select: {
+          id: true,
+          numero: true,
+          identificador: true,
+          cliente: { select: { nome: true } },
+        },
+      },
+    },
+  });
+
+  const itens = filtrarItensAtendimentoBalcao(
+    pedidos.flatMap((pedido) =>
+      pedido.itensComanda.map((item) => ({
+        ...item,
+        categoria: item.produto?.categoria ?? null,
+        tipo: item.produto?.tipo ?? null,
+        formato: item.produto?.formato ?? null,
+      })),
+    ),
+    categoriasAlerta,
+  );
+  if (itens.length === 0) return null;
+
+  const comanda = pedidos[0]?.comanda;
+  const payload: AtendimentoBalcaoPayload = {
+    comandaId,
+    pedidoIds: pedidos.map((pedido) => pedido.id),
+    clienteNome: comanda?.cliente?.nome ?? null,
+    comandaNumero: comanda?.numero ?? null,
+    comandaIdentificador: comanda?.identificador ?? null,
+    itens,
+  };
+
+  emitToCervejaria(app.io, cervejariaId, {
+    type: 'operacao:atendimento-pedido',
+    data: payload,
+  });
+  return payload;
 }
 
 /**

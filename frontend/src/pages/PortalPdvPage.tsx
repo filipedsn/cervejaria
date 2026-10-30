@@ -28,9 +28,17 @@ type PdvProduct = {
   gruposOpcionais?: Array<{ id: string; nome: string; opcoes: Array<{ id: string; nome: string; precoAdicional: number }> }>;
 };
 
+type PdvChope = {
+  tapId: string;
+  tapNumero: number;
+  tapNome?: string | null;
+  produto: { id: string; nome: string; precos: Array<{ volumeMl: number; preco: number }> };
+};
+
 type PdvCardapio = {
   produtos: PdvProduct[];
-  ordemCategorias: string[];
+  chopes?: PdvChope[];
+  ordemCategorias?: string[];
 };
 
 type PdvCardapioResponse = PdvCardapio | PdvProduct[];
@@ -61,7 +69,18 @@ function rotuloStatusPortal(status: string): string {
   }
 }
 
-type PdvCartItem = { chave: string; produtoId: string; volumeMl?: number; nome: string; quantidade: number; preco: number; paraViagem: boolean; observacao?: string; opcionais: Array<{ opcionalId: string; quantidade: number; nome: string; precoAdicional: number }> };
+type PdvCartItem = {
+  chave: string;
+  produtoId: string;
+  tapId?: string;
+  volumeMl?: number;
+  nome: string;
+  quantidade: number;
+  preco: number;
+  paraViagem: boolean;
+  observacao?: string;
+  opcionais: Array<{ opcionalId: string; quantidade: number; nome: string; precoAdicional: number }>;
+};
 
 /** Chope comes once per volume with the same product id. */
 const chaveProduto = (product: PdvProduct) => `${product.id}:${product.volumeMl ?? 0}`;
@@ -108,6 +127,10 @@ export function PortalPdvPage() {
   const [telefone, setTelefone] = useState('');
   const [result, setResult] = useState<{ numero: number | null; reused: boolean; comanda: PdvComanda } | null>(null);
   const [menuTab, setMenuTab] = useState<'pedidos' | 'resumo'>('pedidos');
+  const [catalogTab, setCatalogTab] = useState<string>('');
+  const [tapSelecionadaId, setTapSelecionadaId] = useState('');
+  const [volumeChopeMl, setVolumeChopeMl] = useState<number | undefined>(undefined);
+  const [quantidadeChope, setQuantidadeChope] = useState(1);
   const [cart, setCart] = useState<PdvCartItem[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState<PdvProduct | null>(null);
   const [quantidadeItem, setQuantidadeItem] = useState(1);
@@ -193,6 +216,7 @@ export function PortalPdvPage() {
           produtoId: item.produtoId,
           quantidade: item.quantidade,
           ...(item.volumeMl ? { volumeMl: item.volumeMl } : {}),
+          ...(item.tapId ? { tapId: item.tapId } : {}),
           paraViagem: item.paraViagem,
           observacao: item.observacao,
           opcionais: item.opcionais.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
@@ -270,8 +294,10 @@ export function PortalPdvPage() {
   const cartTotal = cart.reduce((total, item) => total + item.preco * item.quantidade, 0);
 
   const produtosCardapio = Array.isArray(cardapio.data) ? cardapio.data : (cardapio.data?.produtos ?? []);
+  const chopesCardapio = Array.isArray(cardapio.data) ? [] : (cardapio.data?.chopes ?? []);
   const ordemCategorias = categoriasCardapio.data?.ordemCategorias
     ?? (Array.isArray(cardapio.data) ? CATEGORIAS_PRODUTO_OPERACAO : (cardapio.data?.ordemCategorias ?? CATEGORIAS_PRODUTO_OPERACAO));
+  const ABA_CHOPES = '__chopes__';
 
   const produtosPorCategoria = (() => {
     const grupos = new Map<string, PdvProduct[]>();
@@ -279,11 +305,65 @@ export function PortalPdvPage() {
       const categoria = categoriasCardapio.data?.catalogoCanonico
         ? product.categoria?.trim() || 'Outros'
         : normalizeCategoriaProduto(product.categoria);
+      if (categoria.trim().toLocaleLowerCase('pt-BR') === 'chope') continue;
       grupos.set(categoria, [...(grupos.get(categoria) ?? []), product]);
     }
     const prioridade = new Map<string, number>(ordemCategorias.map((categoria, index) => [categoria, index]));
     return [...grupos.entries()].sort(([a], [b]) => (prioridade.get(a) ?? Infinity) - (prioridade.get(b) ?? Infinity));
   })();
+
+  const catalogTabs = [
+    ...(chopesCardapio.length > 0 ? [{ id: ABA_CHOPES, label: 'Chopes' }] : []),
+    ...produtosPorCategoria.map(([categoria]) => ({ id: categoria, label: categoria })),
+  ];
+  const catalogTabsKey = catalogTabs.map((tab) => tab.id).join('\u001f');
+  useEffect(() => {
+    if (!catalogTabs.length) {
+      setCatalogTab('');
+      return;
+    }
+    setCatalogTab((current) => (catalogTabs.some((tab) => tab.id === current) ? current : catalogTabs[0]!.id));
+  }, [catalogTabsKey]);
+
+  const catalogTabAtiva = catalogTabs.some((tab) => tab.id === catalogTab) ? catalogTab : catalogTabs[0]?.id;
+  const tapSelecionada = chopesCardapio.find((chope) => chope.tapId === tapSelecionadaId);
+  const volumeChopeSelecionado = tapSelecionada?.produto.precos.find((preco) => preco.volumeMl === volumeChopeMl);
+  const podeAdicionarChope = Boolean(tapSelecionada && volumeChopeSelecionado && volumeChopeSelecionado.preco > 0 && quantidadeChope > 0);
+
+  const selecionarTapPortal = (tapId: string) => {
+    setTapSelecionadaId(tapId);
+    setVolumeChopeMl(undefined);
+    setQuantidadeChope(1);
+  };
+
+  const adicionarChopeAoCarrinho = () => {
+    if (!tapSelecionada || !volumeChopeSelecionado) return;
+    const volumeMl = volumeChopeSelecionado.volumeMl;
+    const preco = volumeChopeSelecionado.preco;
+    const nome = `${tapSelecionada.produto.nome} ${volumeMl} ml`;
+    const chave = `chope:${tapSelecionada.tapId}:${tapSelecionada.produto.id}:${volumeMl}`;
+    setCart((current) => {
+      const existing = current.find((item) => item.chave === chave);
+      if (existing) {
+        return current.map((item) =>
+          item.chave === chave ? { ...item, quantidade: item.quantidade + quantidadeChope } : item,
+        );
+      }
+      return [...current, {
+        chave,
+        produtoId: tapSelecionada.produto.id,
+        tapId: tapSelecionada.tapId,
+        volumeMl,
+        nome,
+        quantidade: quantidadeChope,
+        preco,
+        paraViagem: false,
+        opcionais: [],
+      }];
+    });
+    setVolumeChopeMl(undefined);
+    setQuantidadeChope(1);
+  };
 
   const buscarCliente = useMutation({
     mutationFn: (phone: string) =>
@@ -382,21 +462,157 @@ export function PortalPdvPage() {
                   </div>
                 )}
                 <h3>Escolha seus itens</h3>
-                {produtosPorCategoria.map(([categoria, produtos]) => (
-                  <section className="portal-pdv-category" key={categoria}>
-                    <h4>{categoria}</h4>
-                    <div className="portal-pdv-product-grid">
-                      {produtos.map((product) => (
-                        <button type="button" key={chaveProduto(product)} className="portal-pdv-product" onClick={() => addProduct(product)}>
-                          <span><strong>{nomeProduto(product)}</strong>{product.descricao && <small>{product.descricao}</small>}</span>
-                          <b>+ R$ {(product.precoEfetivo ?? 0).toFixed(2).replace('.', ',')}</b>
+                {catalogTabs.length > 0 ? (
+                  <div
+                    className="segmented-control grid mb-4"
+                    style={{ gridTemplateColumns: `repeat(${catalogTabs.length}, minmax(0, 1fr))` }}
+                  >
+                    {catalogTabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        className={`segmented-control-btn ${catalogTabAtiva === tab.id ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+                        onClick={() => {
+                          setCatalogTab(tab.id);
+                          if (tab.id !== ABA_CHOPES) {
+                            setTapSelecionadaId('');
+                            setVolumeChopeMl(undefined);
+                            setQuantidadeChope(1);
+                          }
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {catalogTabAtiva === ABA_CHOPES && chopesCardapio.length > 0 ? (
+                  <div className="space-y-4">
+                    <section className="space-y-2">
+                      <h4 className="portal-pdv-section-label">Escolha a Tap</h4>
+                      <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+                        {chopesCardapio.map((chope) => {
+                          const selecionada = tapSelecionada?.tapId === chope.tapId;
+                          return (
+                            <button
+                              key={chope.tapId}
+                              type="button"
+                              aria-pressed={selecionada}
+                              aria-label={`Selecionar Tap ${String(chope.tapNumero).padStart(2, '0')}, ${chope.produto.nome}`}
+                              className="flex min-w-0 flex-col items-center gap-2 rounded-xl p-1 text-center"
+                              onClick={() => selecionarTapPortal(chope.tapId)}
+                            >
+                              <span
+                                className={`flex h-16 w-16 items-center justify-center rounded-full border-[3px] text-lg font-bold transition-colors ${
+                                  selecionada
+                                    ? 'border-amber-500 bg-amber-400/10 text-slate-50'
+                                    : 'border-slate-500/50 bg-slate-900/40 text-slate-300'
+                                }`}
+                              >
+                                {String(chope.tapNumero).padStart(2, '0')}
+                              </span>
+                              <span className="w-full truncate text-sm font-semibold text-slate-300">
+                                {chope.produto.nome}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                    {tapSelecionada ? (
+                      <>
+                        <section className="space-y-2">
+                          <h4 className="portal-pdv-section-label">Volume</h4>
+                          <div className="grid grid-cols-3 gap-2">
+                            {tapSelecionada.produto.precos.map((opcao) => {
+                              const ativo = volumeChopeMl === opcao.volumeMl;
+                              return (
+                                <button
+                                  key={`${tapSelecionada.tapId}-${opcao.volumeMl}`}
+                                  type="button"
+                                  aria-pressed={ativo}
+                                  className={`rounded-xl border px-3 py-3 text-center ${
+                                    ativo
+                                      ? 'border-sky-400 bg-sky-600 text-white'
+                                      : 'border-slate-500/40 bg-slate-900/50 text-slate-300'
+                                  }`}
+                                  onClick={() => setVolumeChopeMl(opcao.volumeMl)}
+                                >
+                                  <span className="block font-semibold">{opcao.volumeMl} ml</span>
+                                  <span className="text-xs">{formatCurrency(opcao.preco)}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                        {volumeChopeSelecionado ? (
+                          <div className="rounded-xl border border-slate-500/30 bg-slate-900/55 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="break-words font-semibold text-slate-50">
+                                  {tapSelecionada.produto.nome} {volumeChopeSelecionado.volumeMl} ml
+                                </p>
+                                <p className="break-words text-sm text-slate-400">Tap {tapSelecionada.tapNumero}</p>
+                                <p className="text-sm text-slate-400">{formatCurrency(volumeChopeSelecionado.preco)} cada</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-slate-500">Total</p>
+                                <p className="font-bold text-sky-300">
+                                  {formatCurrency(volumeChopeSelecionado.preco * quantidadeChope)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                        <section className="flex items-center justify-between gap-4">
+                          <span className="font-semibold text-slate-300">Quantidade</span>
+                          <div className="flex items-center gap-4 rounded-2xl border border-slate-500/40 bg-slate-900/50 px-3 py-2">
+                            <button
+                              type="button"
+                              aria-label="Diminuir quantidade"
+                              className="min-h-10 min-w-10 rounded-xl bg-slate-800 text-xl font-bold text-white"
+                              onClick={() => setQuantidadeChope((atual) => Math.max(1, atual - 1))}
+                            >
+                              −
+                            </button>
+                            <span className="min-w-8 text-center text-2xl font-bold text-white">{quantidadeChope}</span>
+                            <button
+                              type="button"
+                              aria-label="Aumentar quantidade"
+                              className="min-h-10 min-w-10 rounded-xl bg-sky-600 text-xl font-bold text-white"
+                              onClick={() => setQuantidadeChope((atual) => atual + 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </section>
+                        <button
+                          type="button"
+                          className="portal-pdv-chope-add"
+                          disabled={!podeAdicionarChope}
+                          onClick={adicionarChopeAoCarrinho}
+                        >
+                          Adicionar ao pedido
                         </button>
-                      ))}
-                    </div>
-                  </section>
-                ))}
+                      </>
+                    ) : (
+                      <p className="text-sm text-slate-400">Toque em uma Tap para escolher o volume.</p>
+                    )}
+                  </div>
+                ) : catalogTabAtiva ? (
+                  <div className="portal-pdv-product-grid">
+                    {(produtosPorCategoria.find(([categoria]) => categoria === catalogTabAtiva)?.[1] ?? []).map((product) => (
+                      <button type="button" key={chaveProduto(product)} className="portal-pdv-product" onClick={() => addProduct(product)}>
+                        <span><strong>{nomeProduto(product)}</strong>{product.descricao && <small>{product.descricao}</small>}</span>
+                        <b>+ R$ {(product.precoEfetivo ?? 0).toFixed(2).replace('.', ',')}</b>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 {cardapio.isLoading && <p className="text-sm text-ink-muted">Carregando cardápio...</p>}
-                {!cardapio.isLoading && !produtosCardapio.length && <p className="text-sm text-ink-muted">Nenhum item disponível neste caixa.</p>}
+                {!cardapio.isLoading && !produtosCardapio.length && !chopesCardapio.length && (
+                  <p className="text-sm text-ink-muted">Nenhum item disponível neste caixa.</p>
+                )}
               </div>
             )}
             {menuTab === 'resumo' && (
