@@ -355,42 +355,64 @@ export function DashboardPage() {
         {/* Mês/ano ou intervalo */}
         <div className="min-w-0 space-y-2">
           <span className="section-label block">Per&#237;odo</span>
-          <div className="flex gap-2 mb-2">
-            <button type="button" onClick={setModoMes} className={`min-h-9 rounded-xl px-3 text-sm font-semibold ${modo === 'mes' ? 'bg-brand-600 text-white' : 'bg-surface border border-line text-ink-muted'}`}>Mês</button>
-            <button type="button" onClick={setModoPeriodo} className={`min-h-9 rounded-xl px-3 text-sm font-semibold ${modo === 'periodo' ? 'bg-brand-600 text-white' : 'bg-surface border border-line text-ink-muted'}`}>Intervalo</button>
-          </div>
-          {modo === 'mes' ? (
-          <div className="flex w-full items-center justify-between gap-2 rounded-2xl border border-line bg-surface px-1.5 py-1.5">
-          <button
-            type="button"
-            onClick={() => goMonth(-1)}
-            className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0"
-            aria-label="Mês anterior"
-          >
-            ◀
-          </button>
-          <p className="min-w-[9rem] flex-1 text-center font-bold text-sm sm:text-base tabular-nums whitespace-nowrap">
-            {MESES[mesSelecionadoIdx]}/{ano}
-          </p>
-          <button
-            type="button"
-            onClick={() => goMonth(1)}
-            disabled={!canGoNext}
-            className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0 disabled:opacity-30"
-            aria-label="Próximo mês"
-          >
-            ▶
-          </button>
-          </div>
-          ) : (
-          <div className="space-y-2 rounded-2xl border border-line bg-surface p-2">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-xs text-ink-muted">De<input type="date" className="input mt-1 min-h-10" value={deDraft} max={isoToday()} onChange={(e) => setDeDraft(e.target.value)} /></label>
-              <label className="text-xs text-ink-muted">Até<input type="date" className="input mt-1 min-h-10" value={ateDraft} max={isoToday()} onChange={(e) => setAteDraft(e.target.value)} /></label>
+          <div className="rounded-2xl border border-line bg-surface p-1.5 space-y-1.5">
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-lighter p-1" role="tablist" aria-label="Tipo de período">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={modo === 'mes'}
+                onClick={setModoMes}
+                className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+                  modo === 'mes' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                Mês
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={modo === 'periodo'}
+                onClick={setModoPeriodo}
+                className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+                  modo === 'periodo' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                Intervalo
+              </button>
             </div>
-            <button type="button" className="touch-btn-orange w-full min-h-10 text-sm" onClick={aplicarPeriodo}>Aplicar período</button>
+            {modo === 'mes' ? (
+            <div className="flex w-full items-center justify-between gap-2 px-0.5 py-0.5">
+            <button
+              type="button"
+              onClick={() => goMonth(-1)}
+              className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0"
+              aria-label="Mês anterior"
+            >
+              ◀
+            </button>
+            <p className="min-w-[9rem] flex-1 text-center font-bold text-sm sm:text-base tabular-nums whitespace-nowrap">
+              {MESES[mesSelecionadoIdx]}/{ano}
+            </p>
+            <button
+              type="button"
+              onClick={() => goMonth(1)}
+              disabled={!canGoNext}
+              className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0 disabled:opacity-30"
+              aria-label="Próximo mês"
+            >
+              ▶
+            </button>
+            </div>
+            ) : (
+            <div className="space-y-2 px-0.5 pb-0.5">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-ink-muted">De<input type="date" className="input mt-1 min-h-10" value={deDraft} max={isoToday()} onChange={(e) => setDeDraft(e.target.value)} /></label>
+                <label className="text-xs text-ink-muted">Até<input type="date" className="input mt-1 min-h-10" value={ateDraft} max={isoToday()} onChange={(e) => setAteDraft(e.target.value)} /></label>
+              </div>
+              <button type="button" className="touch-btn-orange w-full min-h-10 text-sm" onClick={aplicarPeriodo}>Aplicar período</button>
+            </div>
+            )}
           </div>
-          )}
         </div>
 
         {/* Filtros — ocupam as colunas restantes, na mesma linha */}
