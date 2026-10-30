@@ -16,6 +16,8 @@ import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
 import type { CaixaResposta, ContaPendenteOperacao } from '../../lib/operacao';
 import { contaPendenteCorrespondeBusca } from '../../lib/contas-pendentes-busca';
+import { agruparContasPorCliente, dataConsumoConta, type GrupoContasCliente } from '../../lib/contas-pendentes-grupo';
+import { montarMensagemCobrancaContas } from '../../lib/contas-pendentes-cobranca';
 import type { Cervejaria } from '../../types';
 
 type FiltroConta = 'TODAS' | 'HOJE' | 'ATRASADAS' | 'MAIOR_VALOR';
@@ -31,10 +33,14 @@ function dataLocal(valor: string | Date) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(valor));
 }
 
-function diasEmAberto(conta: ContaPendenteOperacao) {
-  const inicio = new Date(dataLocal(conta.createdAt) + 'T00:00:00-03:00').getTime();
+function diasEmAbertoDesde(createdAt: string) {
+  const inicio = new Date(dataLocal(createdAt) + 'T00:00:00-03:00').getTime();
   const hoje = new Date(dataLocal(new Date()) + 'T00:00:00-03:00').getTime();
   return Math.max(0, Math.floor((hoje - inicio) / 86_400_000));
+}
+
+function dataTurnoLabel(conta: ContaPendenteOperacao) {
+  return new Date(dataConsumoConta(conta)).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
 function Icon({ nome, className = 'h-5 w-5' }: { nome: 'pessoa' | 'moeda' | 'tendencia' | 'busca' | 'calendario' | 'relogio' | 'ordenar' | 'itens' | 'olho' | 'enviar' | 'whatsapp' | 'cartao'; className?: string }) {
@@ -64,7 +70,8 @@ export function OperacaoContasPendentesPage() {
   const [pontoVendaId, setPontoVendaId] = useState('');
   const [contaSelecionada, setContaSelecionada] = useState<ContaPendenteOperacao | null>(null);
   const [contaItensAbertos, setContaItensAbertos] = useState<ContaPendenteOperacao | null>(null);
-  const [contaExpandidaId, setContaExpandidaId] = useState<string | null | undefined>(undefined);
+  const [grupoExpandidoId, setGrupoExpandidoId] = useState<string | null | undefined>(undefined);
+  const [turnoReceberId, setTurnoReceberId] = useState<Record<string, string>>({});
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FiltroConta>('TODAS');
   const [paymentForm, setPaymentForm] = useState<PaymentFormRow[]>([]);
@@ -100,18 +107,21 @@ export function OperacaoContasPendentesPage() {
   const recebimentosHoje = resumoQuery.data?.recebimentosHoje ?? 0;
   const valorPendente = contas.reduce((total, conta) => total + conta.saldo, 0);
   const clientesPendentes = new Set(contas.map((conta) => conta.cliente.id)).size;
-  const contasVisiveis = useMemo(() => {
+  const gruposVisiveis = useMemo(() => {
     const filtradas = contas.filter((conta) => {
       if (!contaPendenteCorrespondeBusca(conta, busca)) return false;
-      const dataConsumo = dataLocal(conta.comanda.fechadaEm ?? conta.createdAt);
+      const dataConsumo = dataLocal(dataConsumoConta(conta));
       if (filtro === 'HOJE') return dataConsumo === dataLocal(new Date());
-      if (filtro === 'ATRASADAS') return diasEmAberto(conta) >= 3;
+      if (filtro === 'ATRASADAS') return diasEmAbertoDesde(conta.createdAt) >= 3;
       return true;
     });
-    return filtro === 'MAIOR_VALOR' ? filtradas.sort((a, b) => b.saldo - a.saldo) : filtradas;
+    const grupos = agruparContasPorCliente(filtradas);
+    return filtro === 'MAIOR_VALOR'
+      ? [...grupos].sort((a, b) => b.saldo - a.saldo)
+      : grupos;
   }, [busca, contas, filtro]);
-  const contaExpandida = contasVisiveis.find((conta) => conta.id === contaExpandidaId)
-    ?? (contaExpandidaId === undefined ? contasVisiveis[0] : undefined);
+  const grupoExpandido = gruposVisiveis.find((grupo) => grupo.clienteId === grupoExpandidoId)
+    ?? (grupoExpandidoId === undefined ? gruposVisiveis[0] : undefined);
 
   const receber = useMutation({
     mutationFn: () => {
@@ -133,47 +143,25 @@ export function OperacaoContasPendentesPage() {
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível registrar o recebimento.'),
   });
+
   const abrirRecebimento = (conta: ContaPendenteOperacao) => {
     setContaSelecionada(conta);
     setPaymentForm(createDefaultPaymentForm(conta.saldo));
     setErro('');
     setMensagem('');
   };
-  const enviarCobranca = (conta: ContaPendenteOperacao) => {
-    const telefone = (conta.cliente.telefone ?? '').replace(/\D/g, '');
+
+  const contaParaReceber = (grupo: GrupoContasCliente) => {
+    if (grupo.contas.length === 1) return grupo.contas[0];
+    const escolhida = turnoReceberId[grupo.clienteId];
+    return grupo.contas.find((conta) => conta.id === escolhida) ?? null;
+  };
+
+  const enviarCobranca = (grupo: GrupoContasCliente) => {
+    const telefone = (grupo.cliente.telefone ?? '').replace(/\D/g, '');
     if (!telefone) return;
     const telefoneComPais = telefone.startsWith('55') ? telefone : '55' + telefone;
-    const dataConsumo = new Date(conta.comanda.fechadaEm ?? conta.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-    const quantidadesPorItem = new Map<string, number>();
-    for (const item of conta.comanda.itens) {
-      const nome = item.nome?.trim() || 'Item';
-      quantidadesPorItem.set(nome, (quantidadesPorItem.get(nome) ?? 0) + item.quantidade);
-    }
-    const itens = [...quantidadesPorItem.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([nome, quantidade]) => `- ${quantidade}x ${nome}`)
-      .join('\n');
-    const chavePix = perfilCobranca?.chavePix?.trim();
-    const texto = [
-      `Oi, ${conta.cliente.nome}! Tudo bem?`,
-      '',
-      `Passando para lembrar que ficou um saldo em aberto referente à sua comanda do dia ${dataConsumo}.`,
-      '',
-      'Resumo do consumo:',
-      itens,
-      `Valor pendente: ${formatCurrency(conta.saldo)}`,
-      ...(chavePix
-        ? [
-            `Chave PIX: ${chavePix}`,
-            'Você pode realizar o pagamento via PIX utilizando a chave acima.',
-          ]
-        : []),
-      'Se já tiver feito o pagamento, favor enviar o comprovante.',
-      '',
-      'Qualquer dúvida, é só chamar a gente por aqui.',
-      'Obrigado!',
-      perfilCobranca?.nome ?? 'Nossa equipe',
-    ].join('\n');
+    const texto = montarMensagemCobrancaContas(grupo.contas, perfilCobranca);
     window.open('https://wa.me/' + telefoneComPais + '?text=' + encodeURIComponent(texto), '_blank', 'noopener,noreferrer');
   };
 
@@ -183,7 +171,7 @@ export function OperacaoContasPendentesPage() {
     <div className="space-y-5 pb-6">
       <header>
         <h1 className="page-title">Contas pendentes</h1>
-        <p className="page-subtitle">Saldos de comandas encerradas aguardando recebimento.</p>
+        <p className="page-subtitle">Saldos consolidados por cliente, com detalhe por turno.</p>
       </header>
       {pontosVenda.length > 1 && (
         <label className="block max-w-sm">
@@ -230,71 +218,115 @@ export function OperacaoContasPendentesPage() {
               <FiltroButton active={filtro === 'MAIOR_VALOR'} icon="ordenar" onClick={() => setFiltro('MAIOR_VALOR')}>Maior valor</FiltroButton>
             </div>
           </section>
-          {contasVisiveis.length === 0 ? (
+          {gruposVisiveis.length === 0 ? (
             <EmptyState icon="⌕" title="Nenhuma conta encontrada" description="Tente mudar a busca ou o filtro selecionado." />
           ) : (
             <section className="space-y-3" aria-label="Lista de contas pendentes">
-              {contasVisiveis.map((conta) => {
-                const expanded = contaExpandida?.id === conta.id;
-                const dias = diasEmAberto(conta);
-                const observacoes = conta.comanda.itens.flatMap((item) => item.observacao?.trim() ? [item.observacao.trim()] : []);
-                const totalPendurado = conta.pagamentos.reduce((soma, pagamento) => pagamento.sessaoCaixaId ? soma : soma + pagamento.valor, 0);
+              {gruposVisiveis.map((grupo) => {
+                const expanded = grupoExpandido?.clienteId === grupo.clienteId;
+                const dias = diasEmAbertoDesde(grupo.createdAtMaisAntigo);
+                const turnoSelecionado = contaParaReceber(grupo);
+                const previewItens = grupo.contas.flatMap((conta) => conta.comanda.itens).slice(0, 3);
+                const totalItens = grupo.contas.reduce((soma, conta) => soma + conta.comanda.itens.length, 0);
                 return (
-                  <article key={conta.id} className={'overflow-hidden rounded-2xl border bg-surface shadow-sm transition-colors ' + (expanded ? 'border-line' : 'border-line/80 hover:border-brand-600/50')}>
+                  <article key={grupo.clienteId} className={'overflow-hidden rounded-2xl border bg-surface shadow-sm transition-colors ' + (expanded ? 'border-line' : 'border-line/80 hover:border-brand-600/50')}>
                     <div className={expanded ? 'p-4 sm:p-5' : 'p-3 sm:px-5 sm:py-3'}>
                       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-                        <button type="button" className="flex min-w-0 items-start gap-3 text-left" aria-expanded={expanded} onClick={() => setContaExpandidaId(expanded ? null : conta.id)}>
+                        <button type="button" className="flex min-w-0 items-start gap-3 text-left" aria-expanded={expanded} onClick={() => setGrupoExpandidoId(expanded ? null : grupo.clienteId)}>
                           <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-600/15 text-brand-600 sm:flex"><Icon nome="pessoa" className="h-6 w-6" /></span>
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-2 sm:gap-3">
-                              <strong className="truncate text-base font-bold text-ink sm:text-lg">{conta.cliente.nome}</strong>
+                              <strong className="truncate text-base font-bold text-ink sm:text-lg">{grupo.cliente.nome}</strong>
                               <StatusPill>◷&nbsp; Pendente</StatusPill>
+                              {grupo.contas.length > 1 && <StatusPill>{grupo.contas.length} turnos</StatusPill>}
                               {dias >= 3 && <StatusPill overdue>◷&nbsp; {dias} dias em aberto</StatusPill>}
                             </span>
                             <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-muted">
-                              <span>{formatPhone(conta.cliente.telefone ?? '')}</span><span className="hidden sm:inline">·</span>
-                              <span>{conta.comanda.pontoVenda?.nome ?? 'Ponto de venda'}</span><span className="hidden sm:inline">·</span>
-                              <span>Consumo em {new Date(conta.comanda.fechadaEm ?? conta.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
+                              <span>{formatPhone(grupo.cliente.telefone ?? '')}</span>
+                              <span className="hidden sm:inline">·</span>
+                              <span>{grupo.contas.length === 1 ? `Consumo em ${dataTurnoLabel(grupo.contas[0])}` : `${grupo.contas.length} turnos · desde ${dataTurnoLabel(grupo.contas[0])}`}</span>
                             </span>
                             {!expanded && (
                               <span className="mt-2 flex flex-wrap gap-1.5">
-                                {conta.comanda.itens.slice(0, 3).map((item, index) => <span key={conta.id + '-' + index} className="rounded-full border border-line bg-surface-lighter px-2.5 py-1 text-xs text-ink-soft">{item.quantidade}× {item.nome ?? 'Item'}</span>)}
-                                {conta.comanda.itens.length > 3 && <span className="rounded-full border border-line bg-surface-lighter px-2.5 py-1 text-xs text-ink-muted">+ {conta.comanda.itens.length - 3} itens</span>}
+                                {previewItens.map((item, index) => <span key={grupo.clienteId + '-' + index} className="rounded-full border border-line bg-surface-lighter px-2.5 py-1 text-xs text-ink-soft">{item.quantidade}× {item.nome ?? 'Item'}</span>)}
+                                {totalItens > 3 && <span className="rounded-full border border-line bg-surface-lighter px-2.5 py-1 text-xs text-ink-muted">+ {totalItens - 3} itens</span>}
                               </span>
                             )}
                           </span>
                         </button>
                         <div className="flex items-center justify-between gap-3 lg:flex-col lg:items-end">
-                          <span className="text-xs text-ink-muted lg:text-right">Valor pendente<strong className="mt-0.5 block text-xl font-bold tabular-nums text-orange-dark sm:text-2xl">{formatCurrency(conta.saldo)}</strong></span>
-                          {!expanded && <button type="button" className="icon-btn-ghost text-ink-muted" aria-label={'Ver detalhes de ' + conta.cliente.nome} onClick={() => setContaExpandidaId(conta.id)}><Icon nome="olho" /></button>}
+                          <span className="text-xs text-ink-muted lg:text-right">Valor pendente<strong className="mt-0.5 block text-xl font-bold tabular-nums text-orange-dark sm:text-2xl">{formatCurrency(grupo.saldo)}</strong></span>
+                          {!expanded && <button type="button" className="icon-btn-ghost text-ink-muted" aria-label={'Ver detalhes de ' + grupo.cliente.nome} onClick={() => setGrupoExpandidoId(grupo.clienteId)}><Icon nome="olho" /></button>}
                         </div>
                       </div>
                       {expanded && (
                         <>
-                          <div className="mt-4 grid gap-4 border-y border-line py-3 sm:grid-cols-[minmax(0,1.15fr)_minmax(220px,1fr)] sm:py-2.5">
-                            <div className="min-w-0">
-                              <button type="button" className="touch-btn-orange inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 py-1 text-left text-xs" aria-label={'Ver todos os itens da comanda de ' + conta.cliente.nome} onClick={() => setContaItensAbertos(conta)}>
-                                <Icon nome="itens" className="h-3.5 w-3.5 shrink-0" />
-                                <span className="font-semibold">Itens da comanda</span>
-                              </button>
-                                <div className="mt-2 flex flex-wrap gap-1.5 pl-8">
-                                  {conta.comanda.itens.slice(0, 3).map((item, index) => <span key={conta.id + '-item-' + index} className="rounded-xl border border-line bg-surface-lighter px-2.5 py-1.5 text-xs text-ink">{item.quantidade}× {item.nome ?? 'Item'}</span>)}
-                                  {conta.comanda.itens.length > 3 && <span className="rounded-xl border border-line bg-surface-lighter px-2.5 py-1.5 text-xs text-ink-muted">+ {conta.comanda.itens.length - 3} itens</span>}
+                          <div className="mt-4 space-y-3 border-y border-line py-3">
+                            {grupo.contas.map((conta) => {
+                              const observacoes = conta.comanda.itens.flatMap((item) => item.observacao?.trim() ? [item.observacao.trim()] : []);
+                              const totalPendurado = conta.pagamentos.reduce((soma, pagamento) => pagamento.sessaoCaixaId ? soma : soma + pagamento.valor, 0);
+                              const selecionado = turnoReceberId[grupo.clienteId] === conta.id || (grupo.contas.length === 1);
+                              return (
+                                <div key={conta.id} className={'rounded-xl border p-3 ' + (selecionado && grupo.contas.length > 1 ? 'border-brand-600/50 bg-brand-600/5' : 'border-line bg-surface-lighter')}>
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-ink">Turno {dataTurnoLabel(conta)} · {conta.comanda.pontoVenda?.nome ?? 'Ponto de venda'}</p>
+                                      <p className="mt-0.5 text-xs text-ink-muted">{rotuloConta(conta)} · Original: {formatCurrency(conta.valorOriginal)}{conta.recebido > 0 ? ' · Recebido: ' + formatCurrency(conta.recebido) : ''}{totalPendurado > 0 ? ' · Pendurado: ' + formatCurrency(totalPendurado) : ''}</p>
+                                    </div>
+                                    <strong className="tabular-nums text-orange-dark">{formatCurrency(conta.saldo)}</strong>
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {conta.comanda.itens.slice(0, 4).map((item, index) => (
+                                      <span key={conta.id + '-item-' + index} className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs text-ink">{item.quantidade}× {item.nome ?? 'Item'}</span>
+                                    ))}
+                                    {conta.comanda.itens.length > 4 && <span className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs text-ink-muted">+ {conta.comanda.itens.length - 4}</span>}
+                                  </div>
+                                  {observacoes.length > 0 && <p className="mt-2 text-xs text-ink-muted">Obs: {observacoes.join(' · ')}</p>}
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <button type="button" className="touch-btn-orange inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs" onClick={() => setContaItensAbertos(conta)}>
+                                      <Icon nome="itens" className="h-3.5 w-3.5 shrink-0" />
+                                      Itens
+                                    </button>
+                                    {grupo.contas.length > 1 && (
+                                      <button
+                                        type="button"
+                                        className={'inline-flex min-h-8 items-center rounded-lg border px-2.5 text-xs font-medium ' + (selecionado ? 'border-brand-600 bg-brand-600/15 text-ink' : 'border-line text-ink-muted')}
+                                        onClick={() => setTurnoReceberId((prev) => ({ ...prev, [grupo.clienteId]: conta.id }))}
+                                      >
+                                        Receber este turno
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                            </div>
-                            <div className="flex items-start gap-3 sm:border-l sm:border-line sm:pl-4">
-                              <span className="text-xl leading-none text-brand-600" aria-hidden="true">“</span>
-                              <div className="min-w-0"><p className="text-sm font-medium text-ink-soft">Observação</p><p className="mt-1 text-sm text-ink-muted">{observacoes.length ? observacoes.join(' · ') : 'Nenhuma observação informada.'}</p></div>
-                            </div>
+                              );
+                            })}
                           </div>
                           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex min-w-0 items-start gap-3 text-ink-muted">
                               <span className="text-xl leading-none text-brand-600" aria-hidden="true">↗</span>
-                              <div className="min-w-0"><p className="text-sm font-medium text-ink-soft">Próximas ações</p><p className="mt-0.5 truncate text-xs">{rotuloConta(conta)} · Original: {formatCurrency(conta.valorOriginal)}{conta.recebido > 0 ? ' · Recebido: ' + formatCurrency(conta.recebido) : ''}{totalPendurado > 0 ? ' · Pendurado: ' + formatCurrency(totalPendurado) : ''}</p></div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-ink-soft">Próximas ações</p>
+                                <p className="mt-0.5 text-xs">
+                                  {grupo.contas.length > 1
+                                    ? (turnoSelecionado ? `Receber turno ${dataTurnoLabel(turnoSelecionado)} · ${formatCurrency(turnoSelecionado.saldo)}` : 'Selecione um turno para receber')
+                                    : `${rotuloConta(grupo.contas[0])} · ${formatCurrency(grupo.saldo)}`}
+                                </p>
+                              </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2 sm:flex">
-                              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500" onClick={() => enviarCobranca(conta)}><Icon nome="whatsapp" className="h-4 w-4" /><span>Enviar cobrança</span></button>
-                              {podeReceberConta && <button type="button" className="touch-btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-3 text-sm" disabled={!pontoAtivo} onClick={() => abrirRecebimento(conta)}><Icon nome="cartao" className="h-4 w-4" /><span>Receber pagamento</span></button>}
+                              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500" onClick={() => enviarCobranca(grupo)}>
+                                <Icon nome="whatsapp" className="h-4 w-4" /><span>Enviar cobrança</span>
+                              </button>
+                              {podeReceberConta && (
+                                <button
+                                  type="button"
+                                  className="touch-btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-3 text-sm"
+                                  disabled={!pontoAtivo || !turnoSelecionado}
+                                  onClick={() => turnoSelecionado && abrirRecebimento(turnoSelecionado)}
+                                >
+                                  <Icon nome="cartao" className="h-4 w-4" /><span>Receber pagamento</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         </>
@@ -343,7 +375,7 @@ export function OperacaoContasPendentesPage() {
         headerExtra={contaSelecionada ? (
           <div className="rounded-xl border border-line bg-surface-lighter p-3 text-sm">
             <strong>{contaSelecionada.cliente.nome}</strong>
-            <p className="text-ink-muted">{formatPhone(contaSelecionada.cliente.telefone ?? '')} · {rotuloConta(contaSelecionada)}</p>
+            <p className="text-ink-muted">{formatPhone(contaSelecionada.cliente.telefone ?? '')} · Turno {dataTurnoLabel(contaSelecionada)} · {rotuloConta(contaSelecionada)}</p>
           </div>
         ) : undefined}
       />
