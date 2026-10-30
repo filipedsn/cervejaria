@@ -99,7 +99,6 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const [erro, setErro] = useState('');
   const [cardapioForm, setCardapioForm] = useState<TurnoCardapioFormState>(defaultTurnoCardapioForm);
   const [painelSuprimido, setPainelSuprimido] = useState(compacto);
-  const [montagemTapsAberta, setMontagemTapsAberta] = useState(false);
   const [trailerId, setTrailerId] = useState('');
   const [ocorrenciaEscolha, setOcorrenciaEscolha] = useState<{ contexto: string; id: string; origem: 'sugestao' | 'explicita' | 'invalidada' } | null>(null);
   const [aberturaPendente, setAberturaPendente] = useState<{
@@ -518,13 +517,6 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
         </div>
       )}
 
-      {sessao?.status === 'ABERTO' && compacto && contexto.tapsEnabled && canPermission('taps.operate') && (
-        <section className="card flex flex-wrap items-center justify-between gap-3" aria-label="Montagem de chope">
-          <div><h2 className="font-semibold">Montagem de chope</h2><p className="text-sm text-ink-muted">Escolha o chope de cada Tap para este caixa.</p></div>
-          <button type="button" className="touch-btn-secondary" onClick={() => setMontagemTapsAberta(true)}>Montar chope nas Taps</button>
-        </section>
-      )}
-
       {sessao?.status === 'ABERTO' && exibeValoresCaixa && compacto && painelSuprimido && (
         <div className="card flex min-h-14 items-center justify-between gap-3 border-brand-600/30 bg-gradient-to-br from-surface via-surface to-brand-900/20 px-4 py-2">
           <span className="text-sm font-semibold text-ink">Caixa aberto <span className="font-normal text-ink-muted">· Em operação</span></span>
@@ -912,15 +904,6 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
             {encerrarAdministrativamente.isPending ? 'Encerrando...' : 'Confirmar encerramento administrativo'}
           </button>
         </form>
-      </Modal>
-
-      <Modal
-        open={montagemTapsAberta && compacto && sessao?.status === 'ABERTO' && contexto.tapsEnabled && canPermission('taps.operate')}
-        onClose={() => setMontagemTapsAberta(false)}
-        title="Montagem de chope nas Taps"
-        wide
-      >
-        <OperacaoTurnoTapsPanel pontoVendaId={pontoVendaId} />
       </Modal>
 
       <Modal
