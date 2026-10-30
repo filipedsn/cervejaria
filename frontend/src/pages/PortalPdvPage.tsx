@@ -28,9 +28,17 @@ type PdvProduct = {
   gruposOpcionais?: Array<{ id: string; nome: string; opcoes: Array<{ id: string; nome: string; precoAdicional: number }> }>;
 };
 
+type PdvChope = {
+  tapId: string;
+  tapNumero: number;
+  tapNome?: string | null;
+  produto: { id: string; nome: string; precos: Array<{ volumeMl: number; preco: number }> };
+};
+
 type PdvCardapio = {
   produtos: PdvProduct[];
-  ordemCategorias: string[];
+  chopes?: PdvChope[];
+  ordemCategorias?: string[];
 };
 
 type PdvCardapioResponse = PdvCardapio | PdvProduct[];
@@ -61,7 +69,18 @@ function rotuloStatusPortal(status: string): string {
   }
 }
 
-type PdvCartItem = { chave: string; produtoId: string; volumeMl?: number; nome: string; quantidade: number; preco: number; paraViagem: boolean; observacao?: string; opcionais: Array<{ opcionalId: string; quantidade: number; nome: string; precoAdicional: number }> };
+type PdvCartItem = {
+  chave: string;
+  produtoId: string;
+  tapId?: string;
+  volumeMl?: number;
+  nome: string;
+  quantidade: number;
+  preco: number;
+  paraViagem: boolean;
+  observacao?: string;
+  opcionais: Array<{ opcionalId: string; quantidade: number; nome: string; precoAdicional: number }>;
+};
 
 /** Chope comes once per volume with the same product id. */
 const chaveProduto = (product: PdvProduct) => `${product.id}:${product.volumeMl ?? 0}`;
@@ -193,6 +212,7 @@ export function PortalPdvPage() {
           produtoId: item.produtoId,
           quantidade: item.quantidade,
           ...(item.volumeMl ? { volumeMl: item.volumeMl } : {}),
+          ...(item.tapId ? { tapId: item.tapId } : {}),
           paraViagem: item.paraViagem,
           observacao: item.observacao,
           opcionais: item.opcionais.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
@@ -270,6 +290,7 @@ export function PortalPdvPage() {
   const cartTotal = cart.reduce((total, item) => total + item.preco * item.quantidade, 0);
 
   const produtosCardapio = Array.isArray(cardapio.data) ? cardapio.data : (cardapio.data?.produtos ?? []);
+  const chopesCardapio = Array.isArray(cardapio.data) ? [] : (cardapio.data?.chopes ?? []);
   const ordemCategorias = categoriasCardapio.data?.ordemCategorias
     ?? (Array.isArray(cardapio.data) ? CATEGORIAS_PRODUTO_OPERACAO : (cardapio.data?.ordemCategorias ?? CATEGORIAS_PRODUTO_OPERACAO));
 
@@ -279,11 +300,36 @@ export function PortalPdvPage() {
       const categoria = categoriasCardapio.data?.catalogoCanonico
         ? product.categoria?.trim() || 'Outros'
         : normalizeCategoriaProduto(product.categoria);
+      if (categoria.trim().toLocaleLowerCase('pt-BR') === 'chope') continue;
       grupos.set(categoria, [...(grupos.get(categoria) ?? []), product]);
     }
     const prioridade = new Map<string, number>(ordemCategorias.map((categoria, index) => [categoria, index]));
     return [...grupos.entries()].sort(([a], [b]) => (prioridade.get(a) ?? Infinity) - (prioridade.get(b) ?? Infinity));
   })();
+
+  const addChopeVolume = (chope: PdvChope, volumeMl: number, preco: number) => {
+    const nome = `${chope.produto.nome} · Tap ${String(chope.tapNumero).padStart(2, '0')} · ${volumeMl} ml`;
+    const chave = `chope:${chope.tapId}:${chope.produto.id}:${volumeMl}`;
+    setCart((current) => {
+      const existing = current.find((item) => item.chave === chave);
+      if (existing) {
+        return current.map((item) =>
+          item.chave === chave ? { ...item, quantidade: item.quantidade + 1 } : item,
+        );
+      }
+      return [...current, {
+        chave,
+        produtoId: chope.produto.id,
+        tapId: chope.tapId,
+        volumeMl,
+        nome,
+        quantidade: 1,
+        preco,
+        paraViagem: false,
+        opcionais: [],
+      }];
+    });
+  };
 
   const buscarCliente = useMutation({
     mutationFn: (phone: string) =>
@@ -382,6 +428,43 @@ export function PortalPdvPage() {
                   </div>
                 )}
                 <h3>Escolha seus itens</h3>
+                {chopesCardapio.length > 0 && (
+                  <section className="portal-pdv-category" aria-label="Chopes">
+                    <h4>Chopes</h4>
+                    <div className="space-y-3">
+                      {chopesCardapio.map((chope) => (
+                        <article key={chope.tapId} className="rounded-xl border border-line bg-surface p-3 space-y-2">
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-[3px] border-amber-500 bg-amber-400/10 text-lg font-bold text-ink">
+                              {String(chope.tapNumero).padStart(2, '0')}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="font-semibold leading-tight">{chope.produto.nome}</p>
+                              <p className="text-sm text-ink-muted">
+                                Tap {chope.tapNumero}{chope.tapNome ? ` — ${chope.tapNome}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {chope.produto.precos.map((preco) => (
+                              <button
+                                key={`${chope.tapId}-${preco.volumeMl}`}
+                                type="button"
+                                className="rounded-xl border border-line bg-canvas px-3 py-3 text-center"
+                                onClick={() => addChopeVolume(chope, preco.volumeMl, preco.preco)}
+                              >
+                                <strong className="block">{preco.volumeMl} ml</strong>
+                                <span className="text-sm text-brand-600">
+                                  + R$ {preco.preco.toFixed(2).replace('.', ',')}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
                 {produtosPorCategoria.map(([categoria, produtos]) => (
                   <section className="portal-pdv-category" key={categoria}>
                     <h4>{categoria}</h4>
@@ -396,7 +479,9 @@ export function PortalPdvPage() {
                   </section>
                 ))}
                 {cardapio.isLoading && <p className="text-sm text-ink-muted">Carregando cardápio...</p>}
-                {!cardapio.isLoading && !produtosCardapio.length && <p className="text-sm text-ink-muted">Nenhum item disponível neste caixa.</p>}
+                {!cardapio.isLoading && !produtosCardapio.length && !chopesCardapio.length && (
+                  <p className="text-sm text-ink-muted">Nenhum item disponível neste caixa.</p>
+                )}
               </div>
             )}
             {menuTab === 'resumo' && (

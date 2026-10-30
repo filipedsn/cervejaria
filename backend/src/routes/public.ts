@@ -6,7 +6,9 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma.js';
 import { isUniqueViolation } from '../lib/prisma-errors.js';
-import { filterPortalCategories, isPortalCategoryAllowed } from '../lib/portal-catalog.js';
+import { isPortalCategoryAllowed } from '../lib/portal-catalog.js';
+import { buildPublicPdvCardapio } from '../lib/portal-pdv-cardapio.js';
+import { filtrarCategoriaChopeSeTapsDesligados } from '../lib/operacao/categoria-chope-torneiras.js';
 import { resolveLogoVersion } from '../lib/cervejaria-branding.js';
 
 import {
@@ -18,7 +20,6 @@ import { normalizePhone } from '../lib/phone.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../lib/operacao/caixa.js';
 import { atribuirTapMontado, diaOperacional, CAIXA_VENDA_TX, criarPedidos, resolverItens, resumoComanda } from '../lib/operacao/venda.js';
 import { INCLUDE_COMANDA_OPERACAO, recalcComandaTotalOperacao, whereComandaOperacao } from '../lib/operacao/comanda-adapter.js';
-import { listProdutosOperacionaisTurno } from '../lib/operacao/sessao-cardapio.js';
 import { CATEGORIAS_PRODUTO_OPERACAO, normalizarOrdemCategoriasProduto } from '../lib/operacao/categorias.js';
 import { catalogoCategoriasCanonicoAtivo } from '../lib/operacao/catalogo-categorias.js';
 import {
@@ -380,17 +381,17 @@ export async function publicRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
     }
     const profile = await getOperationalProfile(session.cervejariaId);
-    const produtos = await listProdutosOperacionaisTurno(
-      session.cervejariaId,
-      session.pontoVendaId,
-      comanda.diaOperacional ?? diaOperacional(),
-      profile?.capabilities.taps ?? false,
-    );
     const settings = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { portalCategoriasPermitidas: true } });
     const allowed = Array.isArray(settings?.portalCategoriasPermitidas)
       ? settings.portalCategoriasPermitidas.filter((value): value is string => typeof value === 'string')
       : null;
-    return filterPortalCategories(produtos, allowed);
+    return buildPublicPdvCardapio({
+      cervejariaId: session.cervejariaId,
+      pontoVendaId: session.pontoVendaId,
+      dia: comanda.diaOperacional ?? diaOperacional(),
+      tapsEnabled: profile?.capabilities.taps ?? false,
+      allowedCategories: allowed,
+    });
   });
 
   app.get('/cervejarias/:slug/pontos-venda/:pontoVendaId/cardapio/categorias', async (request, reply) => {
@@ -398,12 +399,14 @@ export async function publicRoutes(app: FastifyInstance) {
     if (session.pontoVendaId !== (request.params as { pontoVendaId: string }).pontoVendaId) {
       return reply.status(403).send({ error: 'Sessão inválida para este ponto de venda' });
     }
+    const profile = await getOperationalProfile(session.cervejariaId);
+    const tapsEnabled = profile?.capabilities.taps ?? false;
     if (catalogoCategoriasCanonicoAtivo()) {
       const categories = await prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: session.cervejariaId }, select: { nome: true }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }] });
       const cervejaria = await prisma.cervejaria.findUnique({ where: { id: session.cervejariaId }, select: { operacaoCategoriasOrdem: true } });
       const config = cervejaria?.operacaoCategoriasOrdem;
       const raw = config && typeof config === 'object' && !Array.isArray(config) ? (config as Record<string, unknown>).catalogo : config;
-      const names = categories.map((category) => category.nome);
+      const names = filtrarCategoriaChopeSeTapsDesligados(categories.map((category) => category.nome), tapsEnabled);
       const saved = Array.isArray(raw) ? raw.filter((name): name is string => typeof name === 'string' && names.includes(name)) : [];
       return { ordemCategorias: [...new Set(saved), ...names.filter((name) => !saved.includes(name))], catalogoCanonico: true };
     }
@@ -414,7 +417,7 @@ export async function publicRoutes(app: FastifyInstance) {
     return {
       ordemCategorias: normalizarOrdemCategoriasProduto(
         cervejaria?.operacaoCategoriasOrdem ?? CATEGORIAS_PRODUTO_OPERACAO,
-        true,
+        tapsEnabled,
       ),
       catalogoCanonico: false,
     };
