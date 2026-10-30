@@ -230,11 +230,15 @@ export function OperacaoDashboardPage() {
         <p className="page-subtitle">{modo === 'periodo' ? 'Performance no período selecionado' : 'Performance mensal do operacao'}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(16rem,24rem)_minmax(0,1fr)] items-start">
+      <div className="space-y-3">
         <div className="min-w-0 space-y-2">
           <span className="section-label block">Per&#237;odo</span>
-          <div className="rounded-2xl border border-line bg-surface p-1.5 space-y-1.5">
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-lighter p-1" role="tablist" aria-label="Tipo de período">
+          <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-1.5 sm:flex-row sm:items-stretch">
+            <div
+              className="grid w-full shrink-0 grid-cols-2 gap-1 rounded-xl bg-surface-lighter p-1 sm:w-44"
+              role="tablist"
+              aria-label="Tipo de período"
+            >
               <button
                 type="button"
                 role="tab"
@@ -258,88 +262,103 @@ export function OperacaoDashboardPage() {
                 Intervalo
               </button>
             </div>
+
             {modo === 'mes' ? (
-            <div className="flex w-full items-center justify-between gap-2 px-0.5 py-0.5">
-            <button
-              type="button"
-              onClick={() => goMonth(-1)}
-              className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0"
-              aria-label="Mês anterior"
-            >
-              ◀
-            </button>
-            <p className="min-w-[9rem] flex-1 text-center font-bold text-sm sm:text-base tabular-nums whitespace-nowrap">
-              {MESES[mesSelecionadoIdx]}/{ano}
-            </p>
-            <button
-              type="button"
-              onClick={() => goMonth(1)}
-              disabled={!canGoNext}
-              className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0 disabled:opacity-30"
-              aria-label="Próximo mês"
-            >
-              ▶
-            </button>
-            </div>
-            ) : (
-            <div className="space-y-2 px-0.5 pb-0.5">
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-xs text-ink-muted">De<input type="date" className="input mt-1 min-h-10" value={deDraft} max={isoToday()} onChange={(e) => setDeDraft(e.target.value)} /></label>
-                <label className="text-xs text-ink-muted">Até<input type="date" className="input mt-1 min-h-10" value={ateDraft} max={isoToday()} onChange={(e) => setAteDraft(e.target.value)} /></label>
+              <div className="flex min-w-0 flex-1 items-center gap-2 px-0.5">
+                <button
+                  type="button"
+                  onClick={() => goMonth(-1)}
+                  className="touch-btn-secondary min-h-9 min-w-9 shrink-0 px-0 text-base"
+                  aria-label="Mês anterior"
+                >
+                  ◀
+                </button>
+                <p className="min-w-0 flex-1 text-center text-sm font-bold tabular-nums whitespace-nowrap sm:text-base">
+                  {MESES[mesSelecionadoIdx]}/{ano}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => goMonth(1)}
+                  disabled={!canGoNext}
+                  className="touch-btn-secondary min-h-9 min-w-9 shrink-0 px-0 text-base disabled:opacity-30"
+                  aria-label="Próximo mês"
+                >
+                  ▶
+                </button>
+                {!isCurrentMonth && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchParams({ modo: 'mes' })}
+                    className="touch-btn-secondary touch-btn-sm ml-1 shrink-0 px-3"
+                  >
+                    Mês atual
+                  </button>
+                )}
               </div>
-              <button type="button" className="touch-btn-orange w-full min-h-10 text-sm" onClick={aplicarPeriodo}>Aplicar período</button>
-            </div>
+            ) : (
+              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="min-w-0 flex-1 text-xs text-ink-muted">
+                  De
+                  <input
+                    type="date"
+                    className="input mt-1 min-h-10"
+                    value={deDraft}
+                    max={isoToday()}
+                    onChange={(e) => setDeDraft(e.target.value)}
+                  />
+                </label>
+                <label className="min-w-0 flex-1 text-xs text-ink-muted">
+                  Até
+                  <input
+                    type="date"
+                    className="input mt-1 min-h-10"
+                    value={ateDraft}
+                    max={isoToday()}
+                    onChange={(e) => setAteDraft(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="touch-btn-orange min-h-10 shrink-0 px-4 text-sm sm:self-end"
+                  onClick={aplicarPeriodo}
+                >
+                  Aplicar
+                </button>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-          {showPontoFilter && (
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="section-label shrink-0">Ponto</span>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPontoVendaId('all')}
-                  className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors ${
-                    pontoVendaId === 'all'
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-surface border border-line text-ink-muted'
-                  }`}
-                >
-                  Todos
-                </button>
-                {pontos.map((ponto) => (
-                  <button
-                    key={ponto.id}
-                    type="button"
-                    onClick={() => setPontoVendaId(ponto.id)}
-                    className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors truncate max-w-full ${
-                      pontoVendaId === ponto.id
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-surface border border-line text-ink-muted'
-                    }`}
-                  >
-                    {ponto.nome}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          </div>
-
-          {modo === 'mes' && !isCurrentMonth && (
+        {showPontoFilter && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="section-label shrink-0">Ponto</span>
             <button
               type="button"
-              onClick={() => setSearchParams({ modo: 'mes' })}
-              className="touch-btn-secondary touch-btn-sm px-4"
+              onClick={() => setPontoVendaId('all')}
+              className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                pontoVendaId === 'all'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-surface border border-line text-ink-muted'
+              }`}
             >
-              Mês atual
+              Todos
             </button>
-          )}
-        </div>
+            {pontos.map((ponto) => (
+              <button
+                key={ponto.id}
+                type="button"
+                onClick={() => setPontoVendaId(ponto.id)}
+                className={`min-h-9 max-w-full truncate rounded-xl px-3 text-sm font-semibold transition-colors ${
+                  pontoVendaId === ponto.id
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-surface border border-line text-ink-muted'
+                }`}
+              >
+                {ponto.nome}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
