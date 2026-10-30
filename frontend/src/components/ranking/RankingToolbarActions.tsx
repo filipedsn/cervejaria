@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 function ExitIcon() {
@@ -33,11 +34,12 @@ function FullscreenIcon({ active }: { active: boolean }) {
 }
 
 interface RankingToolbarActionsProps {
-  exitTo: string;
+  exitTo?: string;
   tvTo?: string;
   exitLabel?: string;
   isNativeFullscreen?: boolean;
   onToggleNativeFullscreen?: () => void;
+  leading?: ReactNode;
 }
 
 export function RankingToolbarActions({
@@ -46,9 +48,11 @@ export function RankingToolbarActions({
   exitLabel = 'Sair da tela cheia',
   isNativeFullscreen = false,
   onToggleNativeFullscreen,
+  leading,
 }: RankingToolbarActionsProps) {
   return (
     <div className="tap-champions-stats-actions">
+      {leading}
       {tvTo && (
         <Link to={tvTo} className="tap-champions-icon-btn" aria-label="Abrir modo TV" title="Modo TV">
           <TvIcon />
@@ -65,14 +69,16 @@ export function RankingToolbarActions({
           <FullscreenIcon active={isNativeFullscreen} />
         </button>
       )}
-      <Link
-        to={exitTo}
-        className="tap-champions-icon-btn"
-        aria-label={exitLabel}
-        title={exitLabel}
-      >
-        <ExitIcon />
-      </Link>
+      {exitTo && (
+        <Link
+          to={exitTo}
+          className="tap-champions-icon-btn"
+          aria-label={exitLabel}
+          title={exitLabel}
+        >
+          <ExitIcon />
+        </Link>
+      )}
     </div>
   );
 }

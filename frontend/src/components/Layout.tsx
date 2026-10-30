@@ -180,6 +180,7 @@ export function Layout() {
   const rankingEntryParams = new URLSearchParams({ pontoVendaId: pontoVendaQrId ?? '' });
   const caixaRankingSession = caixaRankingQuery.data?.sessao;
   if (caixaRankingSession?.status === 'ABERTO') {
+    rankingEntryParams.set('sessaoCaixaId', caixaRankingSession.id);
     rankingEntryParams.set('dia', caixaRankingSession.ocorrencia?.data ?? caixaRankingSession.diaOperacional);
     if (caixaRankingSession.ocorrenciaId) rankingEntryParams.set('ocorrenciaId', caixaRankingSession.ocorrenciaId);
   }
@@ -307,7 +308,7 @@ export function Layout() {
                   )}
                   {onOperacaoComandasPage && pontoVendaQrId && operacao.tapsEnabled && canPermission('command.read') && (
                     <Link
-                      to={`/operacao/ranking?${rankingEntryParams.toString()}`}
+                      to={`/operacao/ranking/tv?${rankingEntryParams.toString()}`}
                       title="Ranking de chope"
                       aria-label="Ranking de chope"
                       className="icon-btn-ghost h-11 w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
