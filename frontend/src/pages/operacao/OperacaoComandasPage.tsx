@@ -507,7 +507,7 @@ export function OperacaoComandasPage() {
                   abrirComanda();
                 }}
                 className={`card-touch @container w-full !min-h-16 !p-2.5 ${livre ? 'border-dashed border-green-300 bg-green-50/30' : ''} ${mesaOcupada ? 'operacao-mesa-ocupada' : ''} ${
-                  !livre && comanda && temPendente(comanda.id) ? 'border-sky-400 bg-sky-50/50 ring-1 ring-sky-300' : ''
+                  !livre && comanda && temPendente(comanda.id) ? 'comanda-servir-alerta' : ''
                 } ${
                   selectMode
                     ? isSelected

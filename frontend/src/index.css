@@ -479,6 +479,11 @@ body.auth-screen {
   animation: caixa-contas-pendentes-piscar 1.2s ease-in-out infinite;
 }
 
+/* Mesmo piscar das contas pendentes; sem forçar cor do texto no card da comanda. */
+.comanda-servir-alerta {
+  animation: caixa-contas-pendentes-piscar 1.2s ease-in-out infinite;
+}
+
 @keyframes caixa-contas-pendentes-piscar {
   0%, 100% {
     background-color: var(--color-surface-lighter);
@@ -493,7 +498,8 @@ body.auth-screen {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .caixa-contas-pendentes-alerta {
+  .caixa-contas-pendentes-alerta,
+  .comanda-servir-alerta {
     animation: none;
     background-color: var(--color-orange-soft);
     border-color: var(--color-orange);
