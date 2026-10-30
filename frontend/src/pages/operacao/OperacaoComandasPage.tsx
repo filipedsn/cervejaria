@@ -21,6 +21,7 @@ import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import { connectSocket, getSocket } from '../../lib/socket';
+import { useAtendimentoBalcao } from '../../hooks/useAtendimentoBalcao';
 import {
   mesasOperacionais,
   ordenarComandasParaOperacao,
@@ -48,6 +49,7 @@ export function OperacaoComandasPage() {
   const exibirKpis = cervejaria?.exibirKpisComanda ?? true;
   const colunaUnica = cervejaria?.comandasColunaUnica ?? true;
   const { contexto } = useOperacaoContexto();
+  const { temPendente } = useAtendimentoBalcao();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
   const [searchParams, setSearchParams] = useSearchParams();
   const pontoVendaSelecionadoId = searchParams.get('pontoVendaId') ?? '';
@@ -505,6 +507,8 @@ export function OperacaoComandasPage() {
                   abrirComanda();
                 }}
                 className={`card-touch @container w-full !min-h-16 !p-2.5 ${livre ? 'border-dashed border-green-300 bg-green-50/30' : ''} ${mesaOcupada ? 'operacao-mesa-ocupada' : ''} ${
+                  !livre && comanda && temPendente(comanda.id) ? 'comanda-servir-alerta' : ''
+                } ${
                   selectMode
                     ? isSelected
                       ? 'border-brand-500 bg-brand-50/40'
@@ -532,6 +536,14 @@ export function OperacaoComandasPage() {
                     <h3 className={`flex min-w-0 flex-1 items-center whitespace-nowrap font-bold leading-tight ${colunaUnica ? 'text-[clamp(0.75rem,5cqi,1rem)]' : 'text-[clamp(0.875rem,5.5cqi,1.05rem)]'}`}>
                       {comanda?.numero != null && <span className="mr-1 shrink-0 text-orange-dark">{comanda.numero} —</span>}
                       <span className="min-w-0 truncate">{titulo}</span>
+                      {comanda && temPendente(comanda.id) && (
+                        <span
+                          className="ml-2 shrink-0 rounded-full bg-sky-100 px-2 py-1 text-xs font-bold text-sky-950"
+                          title="Cliente pediu pelo portal — servir no balcão"
+                        >
+                          Servir
+                        </span>
+                      )}
                       {comanda?.solicitacaoPagamentoEm && <span className="ml-2 shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900" title="Cliente solicitou atendimento para pagamento">Solicitou pagamento</span>}
                     </h3>
                   </button>

@@ -25,6 +25,7 @@ export function ConfigPortalCategoriasPanel() {
       queryClient.setQueryData(['portal-categories-config'], saved);
       setMode(saved.categoriasPermitidas === null ? 'all' : 'selected');
       setSelected(saved.categoriasPermitidas ?? []);
+      void queryClient.invalidateQueries({ queryKey: ['portal-balcao-alert-config'] });
       setError('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Não foi possível salvar as categorias.'),

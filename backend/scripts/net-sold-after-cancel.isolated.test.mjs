@@ -329,7 +329,14 @@ test('indicadores de vendidos usam venda líquida após cancelamento total, parc
     45,
   );
 
-  const dashboard = await buildOperacaoDashboard(f.tenantId, 2026, 10, f.pointId);
+  const dashboard = await buildOperacaoDashboard(f.tenantId, {
+    tipo: 'mes',
+    ano: 2026,
+    mes: 10,
+    inicio: new Date(2026, 9, 1, 0, 0, 0, 0),
+    fim: new Date(2026, 9, 31, 23, 59, 59, 999),
+    label: 'Out 2026',
+  }, f.pointId);
   const porProduto = Object.fromEntries(dashboard.porProduto.map((row) => [row.nome, row]));
 
   assert.equal(
@@ -475,7 +482,14 @@ test('Thiago/churrasquinho: 3 lançados, 1 cancelado após entrega → 2 vendido
 
   await closeCommandAndSession(f, [churras.command.id], 28);
 
-  const dashboard = await buildOperacaoDashboard(f.tenantId, 2026, 10, f.pointId);
+  const dashboard = await buildOperacaoDashboard(f.tenantId, {
+    tipo: 'mes',
+    ano: 2026,
+    mes: 10,
+    inicio: new Date(2026, 9, 1, 0, 0, 0, 0),
+    fim: new Date(2026, 9, 31, 23, 59, 59, 999),
+    label: 'Out 2026',
+  }, f.pointId);
   const produto = dashboard.porProduto.find((row) => row.nome === 'Churrasquinho de boi');
   assert.equal(dashboard.resumo.itensVendidos, 2, `bruto antigo seria 3; líquido=${dashboard.resumo.itensVendidos}`);
   assert.equal(produto?.quantidade, 2);
