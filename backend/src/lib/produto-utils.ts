@@ -37,6 +37,30 @@ export function isChopeConfiguravelNaTapOperacao(produto: {
   return produto.formato == null && produto.categoria?.trim().toLocaleLowerCase('pt-BR') === 'chope';
 }
 
+/** Rótulo sintético quando o chope existe só por torneira/formato, sem categoria PDV. */
+export const CATEGORIA_CHOPE = 'Chope';
+
+/** Categoria usada no gate do alerta de balcão (null + chope → "Chope"). */
+export function categoriaParaAlertaBalcao(produto: {
+  categoria?: string | null;
+  tipo?: string | null;
+  formato?: string | null;
+}): string {
+  const named = produto.categoria?.trim();
+  if (named) return named;
+  if (
+    produto.tipo &&
+    isChopeConfiguravelNaTapOperacao({
+      tipo: produto.tipo,
+      formato: produto.formato,
+      categoria: produto.categoria,
+    })
+  ) {
+    return CATEGORIA_CHOPE;
+  }
+  return 'Outros';
+}
+
 export function isVendaUnitaria(tipo: ProdutoTipo, formato: FormatoBebida | null | undefined): boolean {
   return tipo === 'COMIDA' || (tipo === 'BEBIDA' && !isBebidaChope(tipo, formato));
 }

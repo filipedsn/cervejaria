@@ -130,6 +130,37 @@ describe('filtrarItensAtendimentoBalcao', () => {
       { nome: 'IPA', quantidade: 1, volumeMl: 500 },
     ]);
   });
+
+  it('trata chope sem categoria cadastrada como Chope pelo formato', () => {
+    assert.deepEqual(
+      filtrarItensAtendimentoBalcao(
+        [
+          {
+            nome: 'Pilsen',
+            quantidade: 1,
+            volumeMl: 300,
+            exigePreparo: false,
+            canceladoEm: null,
+            categoria: null,
+            tipo: 'BEBIDA',
+            formato: 'CHOPE',
+          },
+          {
+            nome: 'Espeto',
+            quantidade: 1,
+            volumeMl: 1,
+            exigePreparo: false,
+            canceladoEm: null,
+            categoria: null,
+            tipo: 'COMIDA',
+            formato: null,
+          },
+        ],
+        ['Chope'],
+      ),
+      [{ nome: 'Pilsen', quantidade: 1, volumeMl: 300 }],
+    );
+  });
 });
 
 describe('resumoPedidoCozinha', () => {

@@ -14,6 +14,7 @@ import { buildCervejariaDashboard } from '../lib/cervejaria-dashboard.js';
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
+import { listCategoriasEstabelecimento } from '../lib/portal-categorias.js';
 
 const ALLOWED_LOGO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const ALLOWED_BACKGROUND_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -71,12 +72,10 @@ export async function cervejariaRoutes(app: FastifyInstance) {
 
   app.get('/configuracao-portal-categorias', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
-    const [brewery, categories, legacyCategories] = await Promise.all([
+    const [brewery, names] = await Promise.all([
       prisma.cervejaria.findUniqueOrThrow({ where: { id: user.cervejariaId! }, select: { portalCategoriasPermitidas: true } }),
-      prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId! }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }], select: { nome: true } }),
-      prisma.produto.findMany({ where: { cervejariaId: user.cervejariaId!, ativo: true, categoria: { not: null } }, distinct: ['categoria'], select: { categoria: true } }),
+      listCategoriasEstabelecimento(user.cervejariaId!),
     ]);
-    const names = [...new Set([...categories.map((category) => category.nome), ...legacyCategories.map((category) => category.categoria).filter((name): name is string => Boolean(name)), 'Outros'])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return {
       categorias: names,
       categoriasPermitidas: Array.isArray(brewery.portalCategoriasPermitidas) ? brewery.portalCategoriasPermitidas : null,
@@ -86,11 +85,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
   app.put('/configuracao-portal-categorias', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = z.object({ categoriasPermitidas: z.array(z.string().trim().min(1).max(100)).max(200).nullable() }).parse(request.body);
-    const [existing, legacyCategories] = await Promise.all([
-      prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId! }, select: { nome: true } }),
-      prisma.produto.findMany({ where: { cervejariaId: user.cervejariaId!, ativo: true, categoria: { not: null } }, distinct: ['categoria'], select: { categoria: true } }),
-    ]);
-    const names = [...new Set([...existing.map((category) => category.nome), ...legacyCategories.map((category) => category.categoria).filter((name): name is string => Boolean(name)), 'Outros'])];
+    const names = await listCategoriasEstabelecimento(user.cervejariaId!);
     const known = new Set(names);
     if (body.categoriasPermitidas?.some((name) => !known.has(name))) throw badRequest('Uma ou mais categorias não pertencem a este estabelecimento');
     const categories = body.categoriasPermitidas === null ? null : [...new Set(body.categoriasPermitidas)];
@@ -100,12 +95,10 @@ export async function cervejariaRoutes(app: FastifyInstance) {
 
   app.get('/configuracao-portal-alerta-balcao', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
-    const [brewery, categories, legacyCategories] = await Promise.all([
+    const [brewery, names] = await Promise.all([
       prisma.cervejaria.findUniqueOrThrow({ where: { id: user.cervejariaId! }, select: { portalAlertaBalcaoCategorias: true } }),
-      prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId! }, orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }], select: { nome: true } }),
-      prisma.produto.findMany({ where: { cervejariaId: user.cervejariaId!, ativo: true, categoria: { not: null } }, distinct: ['categoria'], select: { categoria: true } }),
+      listCategoriasEstabelecimento(user.cervejariaId!),
     ]);
-    const names = [...new Set([...categories.map((category) => category.nome), ...legacyCategories.map((category) => category.categoria).filter((name): name is string => Boolean(name)), 'Outros'])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return {
       categorias: names,
       categoriasAlertaBalcao: Array.isArray(brewery.portalAlertaBalcaoCategorias)
@@ -117,11 +110,7 @@ export async function cervejariaRoutes(app: FastifyInstance) {
   app.put('/configuracao-portal-alerta-balcao', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = z.object({ categoriasAlertaBalcao: z.array(z.string().trim().min(1).max(100)).max(200).nullable() }).parse(request.body);
-    const [existing, legacyCategories] = await Promise.all([
-      prisma.categoriaProdutoPdv.findMany({ where: { cervejariaId: user.cervejariaId! }, select: { nome: true } }),
-      prisma.produto.findMany({ where: { cervejariaId: user.cervejariaId!, ativo: true, categoria: { not: null } }, distinct: ['categoria'], select: { categoria: true } }),
-    ]);
-    const names = [...new Set([...existing.map((category) => category.nome), ...legacyCategories.map((category) => category.categoria).filter((name): name is string => Boolean(name)), 'Outros'])];
+    const names = await listCategoriasEstabelecimento(user.cervejariaId!);
     const known = new Set(names);
     if (body.categoriasAlertaBalcao?.some((name) => !known.has(name))) throw badRequest('Uma ou mais categorias não pertencem a este estabelecimento');
     const categories = body.categoriasAlertaBalcao === null ? null : [...new Set(body.categoriasAlertaBalcao)];

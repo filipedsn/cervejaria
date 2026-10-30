@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma, StatusPedidoOperacao, ComandaTipo } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { emitToCervejaria } from '../realtime.js';
+import { categoriaParaAlertaBalcao } from '../produto-utils.js';
 import { toNumber } from '../utils.js';
 
 type TxClient = Prisma.TransactionClient;
@@ -260,13 +261,10 @@ export type AtendimentoBalcaoPayload = {
   }>;
 };
 
-function categoriaItemBalcao(categoria: string | null | undefined): string {
-  return categoria?.trim() || 'Outros';
-}
-
 /**
  * Itens de balcão: sem preparo, não cancelados e cuja categoria está na lista
  * configurada. `categoriasAlerta` null/vazia = feature desligada (não alerta).
+ * Chope sem categoria cadastrada resolve para "Chope" via tipo/formato.
  */
 export function filtrarItensAtendimentoBalcao(
   itens: Array<{
@@ -276,6 +274,8 @@ export function filtrarItensAtendimentoBalcao(
     exigePreparo: boolean;
     canceladoEm: Date | null;
     categoria?: string | null;
+    tipo?: string | null;
+    formato?: string | null;
   }>,
   categoriasAlerta: string[] | null,
 ): AtendimentoBalcaoPayload['itens'] {
@@ -284,7 +284,7 @@ export function filtrarItensAtendimentoBalcao(
   if (allowed.size === 0) return [];
 
   return itens
-    .filter((item) => !item.exigePreparo && !item.canceladoEm && allowed.has(categoriaItemBalcao(item.categoria)))
+    .filter((item) => !item.exigePreparo && !item.canceladoEm && allowed.has(categoriaParaAlertaBalcao(item)))
     .map((item) => ({
       nome: item.nome ?? 'Item',
       quantidade: item.quantidade,
@@ -322,7 +322,7 @@ export async function notificarAtendimentoBalcaoPortal(
           volumeMl: true,
           exigePreparo: true,
           canceladoEm: true,
-          produto: { select: { categoria: true } },
+          produto: { select: { categoria: true, tipo: true, formato: true } },
         },
       },
       comanda: {
@@ -341,6 +341,8 @@ export async function notificarAtendimentoBalcaoPortal(
       pedido.itensComanda.map((item) => ({
         ...item,
         categoria: item.produto?.categoria ?? null,
+        tipo: item.produto?.tipo ?? null,
+        formato: item.produto?.formato ?? null,
       })),
     ),
     categoriasAlerta,
