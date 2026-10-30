@@ -2669,6 +2669,15 @@ button[title="Excluir"].icon-btn-danger {
   gap: 2px;
 }
 
+.tap-champions-stats-actions .ranking-tv-scopes {
+  margin-right: 4px;
+}
+
+.tap-champions-stats-actions .ranking-operational-scope-btn {
+  font-size: 0.72rem;
+  padding: 5px 9px;
+}
+
 .ranking-operational-scope-btn {
   appearance: none;
   border: 0;

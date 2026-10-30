@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { computeRankingStats } from '../lib/ranking-tv-stats';
 import type { RankingEntry } from '../types';
@@ -28,6 +28,8 @@ export interface RankingTvViewProps {
   autoScroll?: boolean;
   breweryName?: string | null;
   breweryLogoUrl?: string | null;
+  toolbarLeading?: ReactNode;
+  exitLabel?: string;
 }
 
 function EmptyIcon() {
@@ -56,6 +58,8 @@ export function RankingTvView({
   autoScroll = true,
   breweryName: breweryNameProp,
   breweryLogoUrl: breweryLogoUrlProp,
+  toolbarLeading,
+  exitLabel = 'Sair da tela cheia',
 }: RankingTvViewProps) {
   const { cervejaria } = useAuth();
   const socketConnected = useRankingSocketConnected(!isDemo && updateMode === 'socket');
@@ -105,8 +109,10 @@ export function RankingTvView({
       <RankingStatsBar
         stats={stats}
         exitTo={exitTo}
+        exitLabel={exitLabel}
         isNativeFullscreen={isNativeFullscreen}
         onToggleNativeFullscreen={toggleNativeFullscreen}
+        toolbarLeading={toolbarLeading}
       />
 
       <main className="tap-champions-main">

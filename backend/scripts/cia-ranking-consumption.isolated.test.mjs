@@ -307,7 +307,7 @@ try {
       await context.addInitScript((key) => localStorage.setItem(key, '1'), `tap-quiver:onboarding-dismissed:${company.id}:${owner.id}`);
       await context.addCookies([{ name: AUTH_COOKIE_NAME, value: ownerToken, url: frontendOrigin, httpOnly: true, sameSite: 'Lax' }]);
       const page = await context.newPage();
-      const rankingUrl = (params) => `${frontendOrigin}/operacao/ranking?${new URLSearchParams({ pontoVendaId: point.id, ...params })}`;
+      const rankingUrl = (params) => `${frontendOrigin}/operacao/ranking/tv?${new URLSearchParams({ pontoVendaId: point.id, ...params })}`;
       const volumeLabel = (totalMl) => {
         const liters = totalMl / 1000;
         const digits = liters >= 10 ? 1 : 2;
@@ -587,9 +587,9 @@ try {
           await waitForSuccessfulRefresh(page);
           assert.equal(await page.locator('.tap-champions-podium-volume').first().innerText(), volumeLabel(expectedMl), 'reload does not duplicate consumption');
           const screenshotPath = path.join(screenshots, `ranking-${name}-daily-desktop.png`);
-          await page.locator('.ranking-operational').screenshot({ path: screenshotPath });
+          await page.locator('.qt-tv .tap-champions').screenshot({ path: screenshotPath });
           await page.setViewportSize({ width: 390, height: 844 });
-          await page.locator('.ranking-operational').screenshot({ path: path.join(screenshots, `ranking-${name}-daily-mobile.png`) });
+          await page.locator('.qt-tv .tap-champions').screenshot({ path: path.join(screenshots, `ranking-${name}-daily-mobile.png`) });
           await page.setViewportSize({ width: 1440, height: 1000 });
         }
         const renameAgenda = await app.inject({ method: 'PATCH', url: `/api/operacao/agenda/agendas/${salesIgarapeAgenda.id}`, headers: auth(owner), payload: { nome: `Igarape QA renamed ${suffix}` } });
@@ -656,13 +656,13 @@ try {
         if (count === 12) {
           assert.equal(await page.locator('.ranking-client-link').count(), 12, 'owner can open customer history');
           await page.addStyleTag({ content: '.app-bottom-nav,.app-shell-header,.fixed.top-0.left-0.right-0.z-50{display:none!important}' });
-          await page.locator('.ranking-operational').screenshot({ path: path.join(screenshots, 'desktop.png') });
+          await page.locator('.qt-tv .tap-champions').screenshot({ path: path.join(screenshots, 'desktop.png') });
         }
       }
 
       await check('socket invalidation and visibility reconnection refresh launches and cancellations', async () => {
         await page.goto(rankingUrl({ dia: '2026-12-06', ocorrenciaId: oneOffRows.get('2026-12-06').id }), { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => document.querySelector('.ranking-operational-state')?.textContent?.includes('consumo registrado'));
+        await page.waitForFunction(() => document.querySelector('.tap-champions-empty-title')?.textContent?.includes('consumo registrado'));
         await waitForCommandsSocket();
         const launched = await sale({ client: cardinalityDays.get(12).clients[0], origin: 'CAIXA', occurrence: oneOffRows.get('2026-12-06'), operationalDate: '2026-12-06', volume: 450 });
         emitToCervejaria(app.io, company.id, { type: 'operacao:comanda-atualizada', data: { comandaId: launched.id } });
@@ -673,7 +673,7 @@ try {
         await prisma.itemComanda.updateMany({ where: { comandaId: launched.id }, data: { canceladoEm: day('2026-12-06') } });
         await prisma.comanda.update({ where: { id: launched.id }, data: { status: 'CANCELADA' } });
         emitToCervejaria(app.io, company.id, { type: 'operacao:comanda-atualizada', data: { comandaId: launched.id } });
-        await page.waitForFunction(() => document.querySelector('.ranking-operational-state')?.textContent?.includes('consumo registrado'));
+        await page.waitForFunction(() => document.querySelector('.tap-champions-empty-title')?.textContent?.includes('consumo registrado'));
         assert.equal(await page.locator('.tap-champions-podium-card').count(), 0);
         assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), 0);
         const afterReconnect = await sale({ client: cardinalityDays.get(12).clients[0], origin: 'CAIXA', occurrence: oneOffRows.get('2026-12-06'), operationalDate: '2026-12-06', volume: 750 });
@@ -693,18 +693,18 @@ try {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile layout has no horizontal overflow');
       assert.ok(await page.getByText(/nome extenso para testar quebra/i).isVisible());
       await page.addStyleTag({ content: '.app-bottom-nav,.app-shell-header,.fixed.top-0.left-0.right-0.z-50{display:none!important}' });
-      await page.locator('.ranking-operational').screenshot({ path: path.join(screenshots, 'mobile.png') });
+      await page.locator('.qt-tv .tap-champions').screenshot({ path: path.join(screenshots, 'mobile.png') });
 
       const monthly = new URLSearchParams({ pontoVendaId: point.id, escopo: 'mensal', mes: '2026-10', dia: '2026-10-01', agendaId: agenda.id });
-      await page.goto(`${frontendOrigin}/operacao/ranking?${monthly}`, { waitUntil: 'domcontentloaded' });
-      await page.locator('.ranking-operational').waitFor();
+      await page.goto(`${frontendOrigin}/operacao/ranking/tv?${monthly}`, { waitUntil: 'domcontentloaded' });
+      await page.locator('.qt-tv .tap-champions').waitFor();
       const agendaUiResponse = await page.evaluate(async (id) => { const response = await fetch(`/api/ranking/pdv/${id}/ocorrencias`, { credentials: 'include' }); return { status: response.status, body: await response.json() }; }, point.id);
       assert.equal(agendaUiResponse.status, 200, JSON.stringify(agendaUiResponse));
       assert.ok(agendaUiResponse.body.agendas.some((item) => item.id === agenda.id && item.nome === 'Itatiaia QA editada'), JSON.stringify(agendaUiResponse.body.agendas));
       await page.waitForTimeout(500);
-      const agendaContextUi = await page.locator('.ranking-operational').innerText();
+      const agendaContextUi = await page.locator('.qt-tv .tap-champions').innerText();
       assert.match(agendaContextUi, /Agenda · Itatiaia QA editada · Mensal · outubro de 2026/i, `agenda UI context missing; url=${page.url()} body=${agendaContextUi}`);
-      const monthlyUiText = await page.locator('.ranking-operational').innerText();
+      const monthlyUiText = await page.locator('.qt-tv .tap-champions').innerText();
       assert.match(monthlyUiText, /Agenda · Itatiaia QA editada · Mensal · outubro de 2026/i, `Unexpected monthly ranking context: ${monthlyUiText.slice(0, 800)}`);
       const monthApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}&mes=2026-10`);
       await waitForSuccessfulRefresh(page);
@@ -733,14 +733,14 @@ try {
       assert.equal(new URL(page.url()).searchParams.get('escopo'), 'geral', 'browser forward restores the general scope');
 
       const general = new URLSearchParams({ pontoVendaId: point.id, escopo: 'geral', dia: '2026-10-01', agendaId: agenda.id });
-      await page.goto(`${frontendOrigin}/operacao/ranking?${general}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${frontendOrigin}/operacao/ranking/tv?${general}`, { waitUntil: 'domcontentloaded' });
       await page.getByText('Agenda · Itatiaia QA editada · Geral · todo o histórico').waitFor();
       const generalApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?agendaId=${agenda.id}`);
       await waitForSuccessfulRefresh(page);
       assert.equal(Number(await page.locator('.tap-champions-stat-value').nth(0).innerText()), generalApi.entries.length);
       assert.equal(await page.locator('.tap-champions-stat-value').nth(1).innerText(), volumeLabel(generalApi.entries.reduce((sum, row) => sum + row.totalMl, 0)));
 
-      await page.getByLabel('Agenda').selectOption(agendaIgarape.id);
+      await page.goto(`${frontendOrigin}/operacao/ranking/tv?${new URLSearchParams({ pontoVendaId: point.id, escopo: 'geral', agendaId: agendaIgarape.id, dia: '2026-10-01' })}`, { waitUntil: 'domcontentloaded' });
       assert.equal(new URL(page.url()).searchParams.get('agendaId'), agendaIgarape.id, 'changing the agenda updates the URL context');
       await page.getByText('Agenda · Igarapé QA · Geral · todo o histórico').waitFor();
       const agendaApi = await page.evaluate(async (url) => (await fetch(url, { credentials: 'include' })).json(), `/api/ranking/pdv/${point.id}/periodo?agendaId=${agendaIgarape.id}`);
@@ -752,24 +752,16 @@ try {
       const byPosition = (a, b) => Number(a.match(/^\d+/)[0]) - Number(b.match(/^\d+/)[0]);
       assert.deepEqual([...agendaCards].sort(byPosition), [...expectedAgendaCards].sort(byPosition), 'pódio e lista do acumulado coincidem com a API');
       assert.ok(await page.getByText('Exclusivo Igarapé QA', { exact: false }).isVisible());
-      await page.getByRole('link', { name: 'Abrir modo TV' }).click();
-      await page.locator('.qt-tv .tap-champions').waitFor();
+      assert.equal(new URL(page.url()).pathname, '/operacao/ranking/tv');
       assert.equal(new URL(page.url()).searchParams.get('escopo'), 'geral');
       assert.equal(new URL(page.url()).searchParams.get('agendaId'), agendaIgarape.id);
       const tvCards = await page.locator('.qt-tv .tap-champions-podium-card,.qt-tv .tap-champions-rest-card').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')));
       assert.deepEqual([...tvCards].sort(byPosition), agendaApi.entries.map((row) => `${row.posicao}º lugar: ${row.nome}`).sort(byPosition), 'TV usa o mesmo conjunto filtrado da API');
-      await page.getByRole('link', { name: 'Sair da tela cheia' }).click();
-      assert.equal(new URL(page.url()).searchParams.get('escopo'), 'geral');
-      assert.equal(new URL(page.url()).searchParams.get('agendaId'), agendaIgarape.id);
 
       await page.setViewportSize({ width: 1920, height: 1080 });
       await page.goto(rankingUrl({ dia: '2026-12-05', ocorrenciaId: oneOffRows.get('2026-12-05').id }), { waitUntil: 'domcontentloaded' });
-      await page.locator('.ranking-operational').waitFor();
-      const originalSearch = new URL(page.url()).search;
-      await page.getByRole('link', { name: 'Abrir modo TV' }).click();
       await page.locator('.qt-tv .tap-champions').waitFor();
       assert.equal(new URL(page.url()).pathname, '/operacao/ranking/tv');
-      assert.equal(new URL(page.url()).search, originalSearch, 'TV navigation preserves all ranking filters');
       assert.equal(await page.getByText('AO VIVO', { exact: true }).count(), 0, 'polling status is not mislabeled as live socket');
       await page.getByText('Atualiza a cada minuto').waitFor();
       assert.equal(await page.locator('.tap-champions-podium-card').count(), 3);
@@ -779,11 +771,10 @@ try {
       assert.equal(tvBody.includes('@qa.test'), false, 'TV contains no email or personal contact details');
       await page.screenshot({ path: path.join(screenshots, 'tv.png'), fullPage: true });
       const fullscreenButton = page.getByRole('button', { name: 'Tela cheia do navegador' });
-      await page.keyboard.press('Tab');
+      await fullscreenButton.focus();
       assert.equal(await fullscreenButton.evaluate((el) => el.matches(':focus-visible')), true, 'fullscreen action has visible keyboard focus');
-      await page.getByRole('link', { name: 'Sair da tela cheia' }).click();
-      assert.equal(new URL(page.url()).pathname, '/operacao/ranking');
-      assert.equal(new URL(page.url()).search, originalSearch, 'TV exit returns to the exact ranking context');
+      await page.getByRole('link', { name: 'Voltar para Comandas' }).click();
+      assert.equal(new URL(page.url()).pathname, '/operacao/comandas');
 
       await page.setViewportSize({ width: 1440, height: 1000 });
       await page.goto(`${frontendOrigin}/operacao/comandas?pontoVendaId=${encodeURIComponent(point.id)}`, { waitUntil: 'domcontentloaded' });
@@ -825,7 +816,7 @@ try {
       await prisma.sessaoCaixaOperacao.create({ data: { cervejariaId: company.id, pontoVendaId: point.id, diaOperacional: day('2026-10-01'), status: 'ABERTO', trocoInicial: 0, abertoPorId: owner.id, ocorrenciaId: occurrenceRows[1].id } });
       await page.reload({ waitUntil: 'domcontentloaded' });
       await trophy.click();
-      assert.equal(new URL(page.url()).pathname, '/operacao/ranking');
+      assert.equal(new URL(page.url()).pathname, '/operacao/ranking/tv');
       assert.equal(new URL(page.url()).searchParams.get('pontoVendaId'), point.id, 'ranking link preserves the selected PDV');
       assert.ok(new URL(page.url()).searchParams.get('sessaoCaixaId'), 'ranking link carries the open cash session');
       assert.equal(new URL(page.url()).searchParams.get('ocorrenciaId'), occurrenceRows[1].id, 'turno aberto preselects its linked occurrence');
@@ -833,10 +824,21 @@ try {
       assert.equal(new URL(page.url()).searchParams.get('agendaId'), agenda.id, 'linked occurrence supplies the agenda context');
       await page.getByRole('button', { name: 'Turno', exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: 'Turno', exact: true }).getAttribute('aria-pressed'), 'true');
-      assert.equal(await page.getByRole('link', { name: 'Voltar para Comandas', exact: true }).count(), 0, 'textual back link stays off the ranking viewport');
-      assert.equal(await page.locator('.tap-champions-stats-actions .ranking-operational-scope-btn, .tap-champions-stats-actions .ranking-operational-scopes-quiet').count(), 0, 'scope controls stay out of the stats actions');
+      assert.ok(await page.locator('.tap-champions-stats-actions .ranking-tv-scopes').count() > 0, 'scope controls live in the TV stats actions');
       assert.equal(await page.locator('#ranking-pdv-day, #ranking-pdv-occurrence, .ranking-operational-month').count(), 0, 'day/occurrence/month filters stay off the ranking viewport');
-      assert.equal(await page.getByText('Desenvolvido por Quiver Cloud - (27) 98128-3526', { exact: true }).count(), 1);
+      assert.equal(await page.getByRole('link', { name: 'Abrir modo TV' }).count(), 0, 'intermediate Abrir modo TV control is gone');
+      assert.equal(await page.getByText('Desenvolvido por Quiver : (27) 98128-3526', { exact: true }).count(), 1);
+      const redirectQuery = new URLSearchParams({
+        pontoVendaId: point.id,
+        sessaoCaixaId: new URL(page.url()).searchParams.get('sessaoCaixaId') ?? '',
+        ocorrenciaId: occurrenceRows[1].id,
+        dia: '2026-10-01',
+      });
+      await page.goto(`${frontendOrigin}/operacao/ranking?${redirectQuery}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForURL((url) => url.pathname === '/operacao/ranking/tv');
+      assert.equal(new URL(page.url()).pathname, '/operacao/ranking/tv', 'legacy /operacao/ranking redirects to TV');
+      assert.equal(new URL(page.url()).searchParams.get('pontoVendaId'), point.id, 'redirect preserves PDV query');
+      assert.equal(new URL(page.url()).searchParams.get('ocorrenciaId'), occurrenceRows[1].id, 'redirect preserves occurrence query');
       await context.close();
 
       const staffContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });

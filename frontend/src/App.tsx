@@ -304,6 +304,11 @@ function RankingPeriodoTvEntry() {
   );
 }
 
+function RankingPdvRedirectToTv() {
+  const location = useLocation();
+  return <Navigate to={{ pathname: '/operacao/ranking/tv', search: location.search }} replace />;
+}
+
 function RankingPdvTvEntry() {
   const { isAuthenticated, isLoading: authLoading, isAdmin, canPermission } = useAuth();
   const { contexto, isLoading: operationLoading, isResolved } = useOperacaoContexto();
@@ -433,7 +438,11 @@ const router = createBrowserRouter([
                               { path: 'comandas/nova', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoNovaComandaPage /> }] },
                               { path: 'comandas/venda-avulsa', element: <RequirePermissionRoute permission="command.operate" />, children: [{ index: true, element: <OperacaoVendaAvulsaPage /> }] },
                               { path: 'comandas/:id', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <OperacaoComandaDetailPage /> }] },
-                              { path: 'ranking', element: <RequirePermissionRoute permission="command.read" />, children: [{ index: true, element: <RankingPdvPage /> }] },
+                              {
+                                path: 'ranking',
+                                element: <RequirePermissionRoute permission="command.read" />,
+                                children: [{ index: true, element: <RankingPdvRedirectToTv /> }],
+                              },
                               { path: 'caixa', element: <OperacaoCaixaPage /> },
                             ],
                           },

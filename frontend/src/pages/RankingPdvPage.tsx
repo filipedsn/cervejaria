@@ -7,15 +7,9 @@ import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 import { usePollInterval } from '../hooks/usePollInterval';
 import { connectSocket, getSocket } from '../lib/socket';
 import { currentMesKey, formatMesLabel } from '../lib/month-key';
-import { computeRankingStats } from '../lib/ranking-tv-stats';
 import type { RankingEntry, RankingPdvPeriodoResponse, RankingPdvResponse } from '../types';
 import { EmptyState } from '../components/EmptyState';
 import { Loading } from '../components/Loading';
-import { RankingPodium } from '../components/ranking/RankingPodium';
-import { RankingRestGrid } from '../components/ranking/RankingRestGrid';
-import { RankingHeader } from '../components/ranking/RankingHeader';
-import { RankingStatsBar } from '../components/ranking/RankingStatsBar';
-import { RankingUpdatedAt } from '../components/ranking/RankingUpdatedAt';
 import { RankingTvView } from '../components/RankingTvView';
 
 type Escopo = 'turno' | 'dia' | 'mensal' | 'geral';
@@ -42,19 +36,9 @@ function queryText(error: unknown): string {
   return error instanceof ApiError ? error.message : 'Não foi possível carregar o ranking. Tente novamente.';
 }
 
-function rankingTvPath(search: URLSearchParams): string {
-  const query = search.toString();
-  return `/operacao/ranking/tv${query ? `?${query}` : ''}`;
-}
-
-function rankingPath(search: URLSearchParams): string {
-  const query = search.toString();
-  return `/operacao/ranking${query ? `?${query}` : ''}`;
-}
-
-export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
+export function RankingPdvPage({ tv: _tv = true }: { tv?: boolean }) {
   const { contexto, isResolved, isError: contextoError } = useOperacaoContexto();
-  const { cervejaria, canPermission } = useAuth();
+  const { cervejaria } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get('sessaoCaixaId') ?? '';
   const occurrenceId = searchParams.get('ocorrenciaId') ?? '';
@@ -190,7 +174,7 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
     setSearchParams(params, { replace: true });
   }, [availableScopesKey, escopo, searchParams, setSearchParams]);
 
-  const updateParams = (next: { escopo?: Escopo; dia?: string; ocorrenciaId?: string | null; agendaId?: string | null; sessaoCaixaId?: string | null; pontoVendaId?: string }) => {
+  const updateParams = (next: { escopo?: Escopo }) => {
     const params = new URLSearchParams(searchParams);
     if (next.escopo) {
       if (next.escopo === 'turno') params.delete('escopo');
@@ -198,21 +182,7 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
       if (next.escopo === 'mensal') params.set('mes', currentMesKey());
       else params.delete('mes');
     }
-    if (next.dia) params.set('dia', next.dia);
-    if (next.ocorrenciaId === null) params.delete('ocorrenciaId');
-    else if (next.ocorrenciaId !== undefined) next.ocorrenciaId ? params.set('ocorrenciaId', next.ocorrenciaId) : params.delete('ocorrenciaId');
-    if (next.agendaId !== undefined) next.agendaId ? params.set('agendaId', next.agendaId) : params.delete('agendaId');
-    if (next.sessaoCaixaId === null) params.delete('sessaoCaixaId');
-    else if (next.sessaoCaixaId !== undefined) next.sessaoCaixaId ? params.set('sessaoCaixaId', next.sessaoCaixaId) : params.delete('sessaoCaixaId');
-    if (next.pontoVendaId) {
-      params.set('pontoVendaId', next.pontoVendaId);
-      params.delete('ocorrenciaId');
-      params.delete('agendaId');
-      params.delete('sessaoCaixaId');
-      params.delete('escopo');
-      params.delete('mes');
-    }
-    if (pointId && !next.pontoVendaId) params.set('pontoVendaId', pointId);
+    if (pointId) params.set('pontoVendaId', pointId);
     setSearchParams(params);
   };
 
@@ -236,9 +206,6 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
       ? `${formatDateOnly(responseDay)}${occurrenceLabel ? ` · ${occurrenceLabel}` : ''}`
       : `${selectedAgenda ? `Agenda · ${selectedAgenda.nome} · ` : ''}${escopo === 'mensal' ? `Mensal · ${formatMesLabel(mes)}` : 'Geral · todo o histórico'}`;
   const title = `${point.nome} · ${contextLabel}`;
-  const tvPath = rankingTvPath(searchParams);
-  const returnPath = rankingPath(searchParams);
-  const canOpenClientHistory = canPermission('clients.manage');
   const lastUpdatedAt = activeQuery.dataUpdatedAt || undefined;
   const error = activeQuery.isError ? queryText(activeQuery.error) : null;
   const agendaOptionsError = (escopo === 'mensal' || escopo === 'geral') && occurrencesQuery.isError
@@ -251,12 +218,29 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
     ? `Ainda não há consumo registrado na agenda ${selectedAgenda.nome} para este período.`
     : `Ainda não há consumo registrado em ${contextLabel}.`;
 
-  if (tv) {
-    return <RankingTvView
+  const toolbarLeading = availableScopes.length > 0 ? (
+    <div className="ranking-operational-scopes-quiet ranking-tv-scopes" role="group" aria-label="Período do ranking">
+      {availableScopes.map((scope) => (
+        <button
+          key={scope}
+          type="button"
+          aria-pressed={escopo === scope}
+          className={`ranking-operational-scope-btn ${escopo === scope ? 'is-active' : ''}`}
+          onClick={() => updateParams({ escopo: scope })}
+        >
+          {scope === 'turno' ? 'Turno' : scope === 'dia' ? 'Dia' : scope === 'mensal' ? 'Mensal' : 'Geral'}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  return (
+    <RankingTvView
       kicker="Consumo no PDV"
       title="Ranking de chope"
       subtitle={title}
-      exitTo={returnPath}
+      exitTo="/operacao/comandas"
+      exitLabel="Voltar para Comandas"
       entries={rows}
       lastUpdatedAt={lastUpdatedAt}
       breweryName={cervejaria?.nome}
@@ -267,79 +251,7 @@ export function RankingPdvPage({ tv = false }: { tv?: boolean }) {
       onRetry={() => void (occurrencesQuery.isError ? occurrencesQuery.refetch() : activeQuery.refetch())}
       emptyMessage={sessionRequired ? 'Abra o caixa para consultar o ranking do turno.' : selectionRequired ? 'Selecione uma agenda com ocorrência vinculada para consultar o acumulado.' : dailySelectionRequired ? 'Abra o ranking a partir de um caixa com agendamento para consultar o consumo do dia.' : emptyMessage}
       autoScroll
-    />;
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="ranking-operational">
-        <RankingHeader
-          kicker="Consumo de chope"
-          title="Ranking de chope"
-          subtitle={title}
-          breweryName={cervejaria?.nome}
-          breweryLogoUrl={cervejaria?.logoUrl}
-          breweryLogoVersion={cervejaria?.logoVersion ?? cervejaria?.updatedAt}
-          isLive={false}
-          badge="Atualiza a cada minuto"
-        />
-
-        {availableScopes.length > 0 && (
-          <div className="ranking-operational-scopes-strip">
-            <div className="ranking-operational-scopes-quiet" role="group" aria-label="Período do ranking">
-              {availableScopes.map((scope) => (
-                <button
-                  key={scope}
-                  type="button"
-                  aria-pressed={escopo === scope}
-                  className={`ranking-operational-scope-btn ${escopo === scope ? 'is-active' : ''}`}
-                  onClick={() => updateParams({ escopo: scope })}
-                >
-                  {scope === 'turno' ? 'Turno' : scope === 'dia' ? 'Dia' : scope === 'mensal' ? 'Mensal' : 'Geral'}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <RankingStatsBar
-          stats={computeRankingStats(rows)}
-          tvTo={tvPath}
-        />
-
-        <main className="tap-champions-main ranking-operational-main">
-          {activeQuery.isLoading || ((escopo === 'mensal' || escopo === 'geral') && occurrencesQuery.isLoading) ? (
-            <div className="ranking-operational-state" role="status"><Loading /></div>
-          ) : agendaOptionsError ? (
-            <div className="ranking-operational-state" role="alert"><p>{agendaOptionsError}</p><button className="touch-btn-secondary touch-btn-sm mt-3" type="button" onClick={() => void occurrencesQuery.refetch()}>Tentar novamente</button></div>
-          ) : error ? (
-            <div className="ranking-operational-state" role="alert"><p>{error}</p><button className="touch-btn-secondary touch-btn-sm mt-3" type="button" onClick={() => void activeQuery.refetch()}>Tentar novamente</button></div>
-          ) : sessionRequired ? (
-            <div className="ranking-operational-state">
-              <p>Abra o caixa para consultar o ranking do turno.</p>
-              <p className="mt-2 text-sm text-ink-muted">O ranking do turno soma o chope lançado nesta sessão de caixa, com ou sem agendamento.</p>
-              <Link className="touch-btn-secondary touch-btn-sm mt-3 inline-block" to="/operacao/comandas">Voltar para Comandas</Link>
-            </div>
-          ) : selectionRequired ? (
-            <div className="ranking-operational-state"><p>Este turno não tem agenda vinculada para acumulados mensal/geral.</p></div>
-          ) : dailySelectionRequired ? (
-            <div className="ranking-operational-state"><p>Abra o ranking a partir de um caixa com agendamento para consultar o consumo do dia.</p></div>
-          ) : rows.length === 0 ? (
-            <div className="ranking-operational-state"><p className="tap-champions-empty-title">{emptyMessage}</p></div>
-          ) : (
-            <>
-              <RankingPodium entries={rows} leaderMl={rows[0]?.totalMl ?? 0} linkToClientHistory={canOpenClientHistory} />
-              <RankingRestGrid entries={rows} leaderMl={rows[0]?.totalMl ?? 0} linkToClientHistory={canOpenClientHistory} autoScroll={false} />
-            </>
-          )}
-        </main>
-
-        <footer className="ranking-operational-footer">
-          <RankingUpdatedAt lastUpdatedAt={lastUpdatedAt} />
-          <span>Atualização automática a cada minuto</span>
-          <p className="ranking-operational-credit">Desenvolvido por Quiver Cloud - (27) 98128-3526</p>
-        </footer>
-      </div>
-    </div>
+      toolbarLeading={toolbarLeading}
+    />
   );
 }
