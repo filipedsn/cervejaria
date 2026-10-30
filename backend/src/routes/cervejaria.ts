@@ -11,6 +11,7 @@ import {
   updateBrandingColors,
 } from '../lib/cervejaria-branding.js';
 import { buildCervejariaDashboard } from '../lib/cervejaria-dashboard.js';
+import { parseCervejariaDashboardPeriodo } from '../lib/cervejaria-dashboard-periodo.js';
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
@@ -154,22 +155,20 @@ export async function cervejariaRoutes(app: FastifyInstance) {
 
   app.get('/dashboard', { preHandler: [requirePermissaoOuDono(app, 'dashboard.read')] }, async (request, reply) => {
     const user = getAuthUser(request);
-    const now = new Date();
-    const query = request.query as { ano?: string; mes?: string; trailerId?: string; tipo?: string };
-    const ano = query.ano ? Number.parseInt(query.ano, 10) : now.getFullYear();
-    const mes = query.mes ? Number.parseInt(query.mes, 10) : now.getMonth() + 1;
+    const query = request.query as { modo?: string; ano?: string; mes?: string; de?: string; ate?: string; trailerId?: string; tipo?: string };
     const trailerId = query.trailerId?.trim() || undefined;
     const tipoRaw = query.tipo?.trim();
     const tipo = tipoRaw === 'agendado' || tipoRaw === 'avulso' || tipoRaw === 'caixa' ? tipoRaw : 'todos';
-
-    if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
-      return reply.status(400).send({ error: 'Período inválido' });
+    const parsed = parseCervejariaDashboardPeriodo(query);
+    if (!parsed.ok) {
+      return reply.status(400).send({
+        error: parsed.error === 'Período futuro indisponível'
+          ? 'Não é possível consultar períodos futuros'
+          : parsed.error,
+      });
     }
-    if (ano > now.getFullYear() || (ano === now.getFullYear() && mes > now.getMonth() + 1)) {
-      return reply.status(400).send({ error: 'Não é possível consultar períodos futuros' });
-    }
 
-    return buildCervejariaDashboard(user.cervejariaId!, ano, mes, trailerId, tipo);
+    return buildCervejariaDashboard(user.cervejariaId!, parsed.periodo, trailerId, tipo);
   });
 
   app.get('/branding', { preHandler: [app.requireDono] }, async (request) => {
