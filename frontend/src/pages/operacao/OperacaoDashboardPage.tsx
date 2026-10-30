@@ -33,14 +33,30 @@ const MESES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
+function isoToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
 function parsePeriod(searchParams: URLSearchParams) {
   const now = new Date();
+  const modo = searchParams.get('modo') === 'periodo' ? 'periodo' as const : 'mes' as const;
   const ano = Number.parseInt(searchParams.get('ano') ?? String(now.getFullYear()), 10);
   const mes = Number.parseInt(searchParams.get('mes') ?? String(now.getMonth() + 1), 10);
-  if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
-    return { ano: now.getFullYear(), mes: now.getMonth() + 1 };
+  const de = searchParams.get('de') ?? '';
+  const ate = searchParams.get('ate') ?? '';
+  if (modo === 'periodo') {
+    return {
+      modo,
+      ano: Number.isFinite(ano) ? ano : now.getFullYear(),
+      mes: Number.isFinite(mes) && mes >= 1 && mes <= 12 ? mes : now.getMonth() + 1,
+      de: /^\d{4}-\d{2}-\d{2}$/.test(de) ? de : isoToday(),
+      ate: /^\d{4}-\d{2}-\d{2}$/.test(ate) ? ate : isoToday(),
+    };
   }
-  return { ano, mes };
+  if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
+    return { modo: 'mes' as const, ano: now.getFullYear(), mes: now.getMonth() + 1, de: '', ate: '' };
+  }
+  return { modo: 'mes' as const, ano, mes, de: '', ate: '' };
 }
 
 function KpiCard({
@@ -89,23 +105,35 @@ export function OperacaoDashboardPage() {
   const { cervejaria } = useAuth();
   const { contexto } = useOperacaoContexto();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { ano, mes } = useMemo(() => parsePeriod(searchParams), [searchParams]);
+  const { modo, ano, mes, de, ate } = useMemo(() => parsePeriod(searchParams), [searchParams]);
   const [pontoVendaId, setPontoVendaId] = useState<string>('all');
+  const [deDraft, setDeDraft] = useState(de);
+  const [ateDraft, setAteDraft] = useState(ate);
+
+  useEffect(() => {
+    setDeDraft(de);
+    setAteDraft(ate);
+  }, [de, ate]);
 
   const pontos = contexto.ativo ? contexto.pontosVenda : [];
   const showPontoFilter = pontos.length > 1;
   const pontoParam = showPontoFilter && pontoVendaId !== 'all' ? pontoVendaId : undefined;
 
   const now = new Date();
-  const isCurrentMonth = ano === now.getFullYear() && mes === now.getMonth() + 1;
+  const isCurrentMonth = modo === 'mes' && ano === now.getFullYear() && mes === now.getMonth() + 1;
   const canGoNext =
-    ano < now.getFullYear() || (ano === now.getFullYear() && mes < now.getMonth() + 1);
+    modo === 'mes'
+    && (ano < now.getFullYear() || (ano === now.getFullYear() && mes < now.getMonth() + 1));
+
+  const dashboardQuery = modo === 'periodo'
+    ? `modo=periodo&de=${encodeURIComponent(de)}&ate=${encodeURIComponent(ate)}`
+    : `modo=mes&ano=${ano}&mes=${mes}`;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['operacao-dashboard', ano, mes, pontoParam],
+    queryKey: ['operacao-dashboard', modo, ano, mes, de, ate, pontoParam],
     queryFn: () =>
       api.get<OperacaoDashboard>(
-        `/api/operacao/dashboard?ano=${ano}&mes=${mes}${
+        `/api/operacao/dashboard?${dashboardQuery}${
           pontoParam ? `&pontoVendaId=${encodeURIComponent(pontoParam)}` : ''
         }`,
       ),
@@ -134,7 +162,17 @@ export function OperacaoDashboardPage() {
     if (newAno > now.getFullYear() || (newAno === now.getFullYear() && newMes > now.getMonth() + 1)) {
       return;
     }
-    setSearchParams({ ano: String(newAno), mes: String(newMes) });
+    setSearchParams({ modo: 'mes', ano: String(newAno), mes: String(newMes) });
+  };
+
+  const setModoMes = () => setSearchParams({ modo: 'mes', ano: String(ano), mes: String(mes) });
+  const setModoPeriodo = () => {
+    const hoje = isoToday();
+    setSearchParams({ modo: 'periodo', de: de || hoje, ate: ate || hoje });
+  };
+  const aplicarPeriodo = () => {
+    if (!deDraft || !ateDraft) return;
+    setSearchParams({ modo: 'periodo', de: deDraft, ate: ateDraft });
   };
 
   const weeklyChart = useMemo(() => {
@@ -189,12 +227,17 @@ export function OperacaoDashboardPage() {
       <div>
         <p className="page-eyebrow">Visão geral</p>
         <h1 className="page-title">{cervejaria?.nome ?? 'Quadro'}</h1>
-        <p className="page-subtitle">Performance mensal do operacao</p>
+        <p className="page-subtitle">{modo === 'periodo' ? 'Performance no período selecionado' : 'Performance mensal do operacao'}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(16rem,24rem)_minmax(0,1fr)] items-start">
         <div className="min-w-0 space-y-2">
           <span className="section-label block">Per&#237;odo</span>
+          <div className="mb-2 flex gap-2">
+            <button type="button" onClick={setModoMes} className={`min-h-9 rounded-xl px-3 text-sm font-semibold ${modo === 'mes' ? 'bg-brand-600 text-white' : 'bg-surface border border-line text-ink-muted'}`}>Mês</button>
+            <button type="button" onClick={setModoPeriodo} className={`min-h-9 rounded-xl px-3 text-sm font-semibold ${modo === 'periodo' ? 'bg-brand-600 text-white' : 'bg-surface border border-line text-ink-muted'}`}>Intervalo</button>
+          </div>
+          {modo === 'mes' ? (
           <div className="flex w-full items-center justify-between gap-2 rounded-2xl border border-line bg-surface px-1.5 py-1.5">
           <button
             type="button"
@@ -217,6 +260,15 @@ export function OperacaoDashboardPage() {
             ▶
           </button>
           </div>
+          ) : (
+          <div className="space-y-2 rounded-2xl border border-line bg-surface p-2">
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs text-ink-muted">De<input type="date" className="input mt-1 min-h-10" value={deDraft} max={isoToday()} onChange={(e) => setDeDraft(e.target.value)} /></label>
+              <label className="text-xs text-ink-muted">Até<input type="date" className="input mt-1 min-h-10" value={ateDraft} max={isoToday()} onChange={(e) => setAteDraft(e.target.value)} /></label>
+            </div>
+            <button type="button" className="touch-btn-orange w-full min-h-10 text-sm" onClick={aplicarPeriodo}>Aplicar período</button>
+          </div>
+          )}
         </div>
 
         <div className="min-w-0 space-y-2">
@@ -256,10 +308,10 @@ export function OperacaoDashboardPage() {
 
           </div>
 
-          {!isCurrentMonth && (
+          {modo === 'mes' && !isCurrentMonth && (
             <button
               type="button"
-              onClick={() => setSearchParams({})}
+              onClick={() => setSearchParams({ modo: 'mes' })}
               className="touch-btn-secondary touch-btn-sm px-4"
             >
               Mês atual
@@ -298,14 +350,16 @@ export function OperacaoDashboardPage() {
       {resumo.receitaTotal === 0 && resumo.totalRecebido === 0 && turnosRecentes.length === 0 ? (
         <div className="card text-center py-16">
           <p className="text-4xl mb-3">📊</p>
-          <p className="text-ink-muted">Nenhuma venda fechada em {MESES[mesSelecionadoIdx]} {ano}</p>
+          <p className="text-ink-muted">
+            Nenhuma venda fechada {modo === 'periodo' ? `em ${data.periodo.label}` : `em ${MESES[mesSelecionadoIdx]} ${ano}`}
+          </p>
         </div>
       ) : (
         <>
           {turnosRecentes.length > 0 && (
             <section className="space-y-4">
               <div className="card p-4 sm:p-5">
-                <h2 className="section-label mb-4">Turnos encerrados no mês</h2>
+                <h2 className="section-label mb-4">{modo === 'periodo' ? 'Turnos encerrados no período' : 'Turnos encerrados no mês'}</h2>
                 <div className="h-52 sm:h-60 -mx-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={turnosChart} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
@@ -419,7 +473,7 @@ export function OperacaoDashboardPage() {
           )}
 
           <section className="card p-4 sm:p-5">
-            <h2 className="section-label mb-4">Evolução semanal</h2>
+            <h2 className="section-label mb-4">{modo === 'periodo' ? 'Evolução diária' : 'Evolução semanal'}</h2>
             <div className="h-60 sm:h-72 -mx-1">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={weeklyChart} margin={{ top: 20, right: 4, left: 0, bottom: 0 }}>
@@ -525,6 +579,7 @@ export function OperacaoDashboardPage() {
         </>
       )}
 
+      {modo === 'mes' && (
       <section className="card p-4 sm:p-5">
         <h2 className="section-label mb-4">Receita mês a mês · {data.anoVigente}</h2>
         <div className="h-64 sm:h-72 -mx-1">
@@ -561,6 +616,7 @@ export function OperacaoDashboardPage() {
           </ResponsiveContainer>
         </div>
       </section>
+      )}
     </div>
   );
 }
