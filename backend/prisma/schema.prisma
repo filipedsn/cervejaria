@@ -169,6 +169,8 @@ model Cervejaria {
   portalBackgroundUrl String?
   /// NULL keeps the legacy public catalog; [] explicitly hides every portal category.
   portalCategoriasPermitidas Json?
+  /// NULL/[] = sem alerta de balcão no portal; lista = categorias sem preparo que disparam Servir.
+  portalAlertaBalcaoCategorias Json?
   operacaoCategoriasOrdem Json?
   corPrimaria String?
   corPaleta   Json?
