@@ -27,6 +27,7 @@ export type RealtimeEvent =
   | { type: 'operacao:pedido-novo'; data: unknown }
   | { type: 'operacao:pedido-atualizado'; data: unknown }
   | { type: 'operacao:comanda-atualizada'; data: { comandaId: string } }
+  | { type: 'operacao:atendimento-pedido'; data: unknown }
   | { type: 'portal:session-expired'; data: { eventoId: string; reason: string } };
 
 export const realtimeRoomTenant = (id: string) => `cervejaria:${id}`;
@@ -112,6 +113,10 @@ function emitScoped(
   }
   if (event.type === 'operacao:pedido-novo' || event.type === 'operacao:pedido-atualizado') {
     io.to(kitchenRoom).emit(event.type, operationalPayload(event));
+    return;
+  }
+  if (event.type === 'operacao:atendimento-pedido') {
+    io.to(commandsRoom).emit(event.type, event.data);
     return;
   }
   if (event.type.startsWith('comanda:') || event.type.startsWith('item:') || event.type.startsWith('pedido:') || event.type === 'operacao:comanda-atualizada') {

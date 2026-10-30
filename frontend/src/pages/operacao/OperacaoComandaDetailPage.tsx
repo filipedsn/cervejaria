@@ -23,6 +23,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { connectSocket, getSocket } from '../../lib/socket';
+import { useAtendimentoBalcao } from '../../hooks/useAtendimentoBalcao';
+import { resumoItensBalcao } from '../../lib/atendimento-balcao';
 import { linkWhatsAppNumeroComanda, linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../../lib/whatsapp';
 import {
   isChopeOperacao,
@@ -68,6 +70,8 @@ export function OperacaoComandaDetailPage() {
   const queryClient = useQueryClient();
   const { cervejaria, podeDarDescontoOperacao, canPermission } = useAuth();
   const { contexto, isResolved: contextoResolvido, isError: contextoErro } = useOperacaoContexto();
+  const { getPendente, marcarAtendido } = useAtendimentoBalcao();
+  const atendimentoPendente = id ? getPendente(id) : null;
   const avisoWhatsAppStorageKey = `quiver:aviso-whatsapp:comanda:${id}`;
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const [showAddItem, setShowAddItem] = useState(false);
@@ -203,13 +207,19 @@ export function OperacaoComandaDetailPage() {
     };
     const onSocketConnected = () => invalidar();
 
+    const onAtendimento = (payload: { comandaId?: string }) => {
+      if (payload?.comandaId === id) invalidar();
+    };
+
     socket.on('operacao:comanda-atualizada', onComandaAtualizada);
     socket.on('operacao:pedido-atualizado', onPedidoAtualizado);
+    socket.on('operacao:atendimento-pedido', onAtendimento);
     socket.on('connect', onSocketConnected);
 
     return () => {
       socket.off('operacao:comanda-atualizada', onComandaAtualizada);
       socket.off('operacao:pedido-atualizado', onPedidoAtualizado);
+      socket.off('operacao:atendimento-pedido', onAtendimento);
       socket.off('connect', onSocketConnected);
     };
   }, [cervejaria?.id, id, queryClient]);
@@ -556,6 +566,21 @@ export function OperacaoComandaDetailPage() {
           </div>
           <p className="ml-auto text-2xl sm:text-3xl font-bold text-brand-600 tabular-nums whitespace-nowrap">{formatCurrency(totalParcialComanda)}</p>
         </div>
+        {aberta && atendimentoPendente && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-300 bg-sky-50 p-3 text-sky-950">
+            <div className="min-w-0">
+              <strong>Servir pedido do portal</strong>
+              <p className="mt-1 text-sm">{resumoItensBalcao(atendimentoPendente.itens)}</p>
+            </div>
+            <button
+              type="button"
+              className="touch-btn-secondary touch-btn-sm"
+              onClick={() => marcarAtendido(id)}
+            >
+              Atendido
+            </button>
+          </div>
+        )}
         {aberta && comanda.solicitacaoPagamentoEm && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950"><strong>Cliente solicitou atendimento para pagamento</strong><button type="button" className="touch-btn-secondary touch-btn-sm" disabled={resolverSolicitacao.isPending} onClick={() => resolverSolicitacao.mutate()}>{resolverSolicitacao.isPending ? 'Resolvendo...' : 'Resolver solicitação'}</button></div>}
         {totalPendente > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(totalPendente)}</p>}
         {!aberta && comanda.desconto > 0 && (

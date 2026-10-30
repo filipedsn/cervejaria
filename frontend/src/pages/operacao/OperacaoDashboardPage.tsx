@@ -33,14 +33,30 @@ const MESES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
+function isoToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
 function parsePeriod(searchParams: URLSearchParams) {
   const now = new Date();
+  const modo = searchParams.get('modo') === 'periodo' ? 'periodo' as const : 'mes' as const;
   const ano = Number.parseInt(searchParams.get('ano') ?? String(now.getFullYear()), 10);
   const mes = Number.parseInt(searchParams.get('mes') ?? String(now.getMonth() + 1), 10);
-  if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
-    return { ano: now.getFullYear(), mes: now.getMonth() + 1 };
+  const de = searchParams.get('de') ?? '';
+  const ate = searchParams.get('ate') ?? '';
+  if (modo === 'periodo') {
+    return {
+      modo,
+      ano: Number.isFinite(ano) ? ano : now.getFullYear(),
+      mes: Number.isFinite(mes) && mes >= 1 && mes <= 12 ? mes : now.getMonth() + 1,
+      de: /^\d{4}-\d{2}-\d{2}$/.test(de) ? de : isoToday(),
+      ate: /^\d{4}-\d{2}-\d{2}$/.test(ate) ? ate : isoToday(),
+    };
   }
-  return { ano, mes };
+  if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
+    return { modo: 'mes' as const, ano: now.getFullYear(), mes: now.getMonth() + 1, de: '', ate: '' };
+  }
+  return { modo: 'mes' as const, ano, mes, de: '', ate: '' };
 }
 
 function KpiCard({
@@ -89,23 +105,35 @@ export function OperacaoDashboardPage() {
   const { cervejaria } = useAuth();
   const { contexto } = useOperacaoContexto();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { ano, mes } = useMemo(() => parsePeriod(searchParams), [searchParams]);
+  const { modo, ano, mes, de, ate } = useMemo(() => parsePeriod(searchParams), [searchParams]);
   const [pontoVendaId, setPontoVendaId] = useState<string>('all');
+  const [deDraft, setDeDraft] = useState(de);
+  const [ateDraft, setAteDraft] = useState(ate);
+
+  useEffect(() => {
+    setDeDraft(de);
+    setAteDraft(ate);
+  }, [de, ate]);
 
   const pontos = contexto.ativo ? contexto.pontosVenda : [];
   const showPontoFilter = pontos.length > 1;
   const pontoParam = showPontoFilter && pontoVendaId !== 'all' ? pontoVendaId : undefined;
 
   const now = new Date();
-  const isCurrentMonth = ano === now.getFullYear() && mes === now.getMonth() + 1;
+  const isCurrentMonth = modo === 'mes' && ano === now.getFullYear() && mes === now.getMonth() + 1;
   const canGoNext =
-    ano < now.getFullYear() || (ano === now.getFullYear() && mes < now.getMonth() + 1);
+    modo === 'mes'
+    && (ano < now.getFullYear() || (ano === now.getFullYear() && mes < now.getMonth() + 1));
+
+  const dashboardQuery = modo === 'periodo'
+    ? `modo=periodo&de=${encodeURIComponent(de)}&ate=${encodeURIComponent(ate)}`
+    : `modo=mes&ano=${ano}&mes=${mes}`;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['operacao-dashboard', ano, mes, pontoParam],
+    queryKey: ['operacao-dashboard', modo, ano, mes, de, ate, pontoParam],
     queryFn: () =>
       api.get<OperacaoDashboard>(
-        `/api/operacao/dashboard?ano=${ano}&mes=${mes}${
+        `/api/operacao/dashboard?${dashboardQuery}${
           pontoParam ? `&pontoVendaId=${encodeURIComponent(pontoParam)}` : ''
         }`,
       ),
@@ -134,7 +162,17 @@ export function OperacaoDashboardPage() {
     if (newAno > now.getFullYear() || (newAno === now.getFullYear() && newMes > now.getMonth() + 1)) {
       return;
     }
-    setSearchParams({ ano: String(newAno), mes: String(newMes) });
+    setSearchParams({ modo: 'mes', ano: String(newAno), mes: String(newMes) });
+  };
+
+  const setModoMes = () => setSearchParams({ modo: 'mes', ano: String(ano), mes: String(mes) });
+  const setModoPeriodo = () => {
+    const hoje = isoToday();
+    setSearchParams({ modo: 'periodo', de: de || hoje, ate: ate || hoje });
+  };
+  const aplicarPeriodo = () => {
+    if (!deDraft || !ateDraft) return;
+    setSearchParams({ modo: 'periodo', de: deDraft, ate: ateDraft });
   };
 
   const weeklyChart = useMemo(() => {
@@ -189,83 +227,138 @@ export function OperacaoDashboardPage() {
       <div>
         <p className="page-eyebrow">Visão geral</p>
         <h1 className="page-title">{cervejaria?.nome ?? 'Quadro'}</h1>
-        <p className="page-subtitle">Performance mensal do operacao</p>
+        <p className="page-subtitle">{modo === 'periodo' ? 'Performance no período selecionado' : 'Performance mensal do operacao'}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(16rem,24rem)_minmax(0,1fr)] items-start">
+      <div className="space-y-3">
         <div className="min-w-0 space-y-2">
           <span className="section-label block">Per&#237;odo</span>
-          <div className="flex w-full items-center justify-between gap-2 rounded-2xl border border-line bg-surface px-1.5 py-1.5">
-          <button
-            type="button"
-            onClick={() => goMonth(-1)}
-            className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0"
-            aria-label="Mês anterior"
-          >
-            ◀
-          </button>
-          <p className="min-w-[9rem] flex-1 text-center font-bold text-sm sm:text-base tabular-nums whitespace-nowrap">
-            {MESES[mesSelecionadoIdx]}/{ano}
-          </p>
-          <button
-            type="button"
-            onClick={() => goMonth(1)}
-            disabled={!canGoNext}
-            className="touch-btn-secondary min-h-9 min-w-9 px-0 text-base shrink-0 disabled:opacity-30"
-            aria-label="Próximo mês"
-          >
-            ▶
-          </button>
-          </div>
-        </div>
+          <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-1.5 sm:flex-row sm:items-stretch">
+            <div
+              className="grid w-full shrink-0 grid-cols-2 gap-1 rounded-xl bg-surface-lighter p-1 sm:w-44"
+              role="tablist"
+              aria-label="Tipo de período"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={modo === 'mes'}
+                onClick={setModoMes}
+                className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+                  modo === 'mes' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                Mês
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={modo === 'periodo'}
+                onClick={setModoPeriodo}
+                className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+                  modo === 'periodo' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                Intervalo
+              </button>
+            </div>
 
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-          {showPontoFilter && (
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="section-label shrink-0">Ponto</span>
-              <div className="flex flex-wrap gap-2">
+            {modo === 'mes' ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2 px-0.5">
                 <button
                   type="button"
-                  onClick={() => setPontoVendaId('all')}
-                  className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors ${
-                    pontoVendaId === 'all'
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-surface border border-line text-ink-muted'
-                  }`}
+                  onClick={() => goMonth(-1)}
+                  className="touch-btn-secondary min-h-9 min-w-9 shrink-0 px-0 text-base"
+                  aria-label="Mês anterior"
                 >
-                  Todos
+                  ◀
                 </button>
-                {pontos.map((ponto) => (
+                <p className="min-w-0 flex-1 text-center text-sm font-bold tabular-nums whitespace-nowrap sm:text-base">
+                  {MESES[mesSelecionadoIdx]}/{ano}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => goMonth(1)}
+                  disabled={!canGoNext}
+                  className="touch-btn-secondary min-h-9 min-w-9 shrink-0 px-0 text-base disabled:opacity-30"
+                  aria-label="Próximo mês"
+                >
+                  ▶
+                </button>
+                {!isCurrentMonth && (
                   <button
-                    key={ponto.id}
                     type="button"
-                    onClick={() => setPontoVendaId(ponto.id)}
-                    className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors truncate max-w-full ${
-                      pontoVendaId === ponto.id
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-surface border border-line text-ink-muted'
-                    }`}
+                    onClick={() => setSearchParams({ modo: 'mes' })}
+                    className="touch-btn-secondary touch-btn-sm ml-1 shrink-0 px-3"
                   >
-                    {ponto.nome}
+                    Mês atual
                   </button>
-                ))}
+                )}
               </div>
-            </div>
-          )}
-
+            ) : (
+              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="min-w-0 flex-1 text-xs text-ink-muted">
+                  De
+                  <input
+                    type="date"
+                    className="input mt-1 min-h-10"
+                    value={deDraft}
+                    max={isoToday()}
+                    onChange={(e) => setDeDraft(e.target.value)}
+                  />
+                </label>
+                <label className="min-w-0 flex-1 text-xs text-ink-muted">
+                  Até
+                  <input
+                    type="date"
+                    className="input mt-1 min-h-10"
+                    value={ateDraft}
+                    max={isoToday()}
+                    onChange={(e) => setAteDraft(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="touch-btn-orange min-h-10 shrink-0 px-4 text-sm sm:self-end"
+                  onClick={aplicarPeriodo}
+                >
+                  Aplicar
+                </button>
+              </div>
+            )}
           </div>
+        </div>
 
-          {!isCurrentMonth && (
+        {showPontoFilter && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="section-label shrink-0">Ponto</span>
             <button
               type="button"
-              onClick={() => setSearchParams({})}
-              className="touch-btn-secondary touch-btn-sm px-4"
+              onClick={() => setPontoVendaId('all')}
+              className={`min-h-9 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                pontoVendaId === 'all'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-surface border border-line text-ink-muted'
+              }`}
             >
-              Mês atual
+              Todos
             </button>
-          )}
-        </div>
+            {pontos.map((ponto) => (
+              <button
+                key={ponto.id}
+                type="button"
+                onClick={() => setPontoVendaId(ponto.id)}
+                className={`min-h-9 max-w-full truncate rounded-xl px-3 text-sm font-semibold transition-colors ${
+                  pontoVendaId === ponto.id
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-surface border border-line text-ink-muted'
+                }`}
+              >
+                {ponto.nome}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -298,14 +391,16 @@ export function OperacaoDashboardPage() {
       {resumo.receitaTotal === 0 && resumo.totalRecebido === 0 && turnosRecentes.length === 0 ? (
         <div className="card text-center py-16">
           <p className="text-4xl mb-3">📊</p>
-          <p className="text-ink-muted">Nenhuma venda fechada em {MESES[mesSelecionadoIdx]} {ano}</p>
+          <p className="text-ink-muted">
+            Nenhuma venda fechada {modo === 'periodo' ? `em ${data.periodo.label}` : `em ${MESES[mesSelecionadoIdx]} ${ano}`}
+          </p>
         </div>
       ) : (
         <>
           {turnosRecentes.length > 0 && (
             <section className="space-y-4">
               <div className="card p-4 sm:p-5">
-                <h2 className="section-label mb-4">Turnos encerrados no mês</h2>
+                <h2 className="section-label mb-4">{modo === 'periodo' ? 'Turnos encerrados no período' : 'Turnos encerrados no mês'}</h2>
                 <div className="h-52 sm:h-60 -mx-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={turnosChart} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
@@ -419,7 +514,7 @@ export function OperacaoDashboardPage() {
           )}
 
           <section className="card p-4 sm:p-5">
-            <h2 className="section-label mb-4">Evolução semanal</h2>
+            <h2 className="section-label mb-4">{modo === 'periodo' ? 'Evolução diária' : 'Evolução semanal'}</h2>
             <div className="h-60 sm:h-72 -mx-1">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={weeklyChart} margin={{ top: 20, right: 4, left: 0, bottom: 0 }}>
@@ -525,6 +620,7 @@ export function OperacaoDashboardPage() {
         </>
       )}
 
+      {modo === 'mes' && (
       <section className="card p-4 sm:p-5">
         <h2 className="section-label mb-4">Receita mês a mês · {data.anoVigente}</h2>
         <div className="h-64 sm:h-72 -mx-1">
@@ -561,6 +657,7 @@ export function OperacaoDashboardPage() {
           </ResponsiveContainer>
         </div>
       </section>
+      )}
     </div>
   );
 }

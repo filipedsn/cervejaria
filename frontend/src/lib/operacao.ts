@@ -917,7 +917,14 @@ export const TIPOS_SAIDA_ESTOQUE: Array<{ valor: TipoSaidaEstoque; label: string
 ];
 
 export interface OperacaoDashboard {
-  periodo: { ano: number; mes: number; label: string };
+  periodo: {
+    tipo?: 'mes' | 'periodo';
+    ano: number;
+    mes: number;
+    label: string;
+    de?: string;
+    ate?: string;
+  };
   resumo: {
     receitaTotal: number;
     totalRecebido: number;

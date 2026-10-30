@@ -18,6 +18,7 @@ import { ConfigChavePixPanel } from '../../components/ConfigChavePixPanel';
 import { OnboardingManualEntry } from '../../components/OnboardingManualEntry';
 import { CozinhaVisualSettingsPanel } from '../../components/operacao/CozinhaVisualSettingsPanel';
 import { ConfigPortalCategoriasPanel } from '../../components/ConfigPortalCategoriasPanel';
+import { ConfigPortalAlertaBalcaoPanel } from '../../components/ConfigPortalAlertaBalcaoPanel';
 
 const TABS = [
   { id: 'equipe', label: 'Equipe' },
@@ -105,6 +106,7 @@ export function OperacaoConfiguracoesPage() {
           <p className="text-sm text-ink-muted">QR Code, link e categorias disponíveis usam este estabelecimento.</p>
           <PdvPortalQrButton pontoVendaId={pdv.id} />
           <ConfigPortalCategoriasPanel />
+          <ConfigPortalAlertaBalcaoPanel />
         </ConfigurationGroup>
         {isDono && contexto.tapsEnabled === true && <ConfigurationGroup title="Torneiras">
           <PdvTapsSection key={pdv.id} pontoVendaId={pdv.id} />
