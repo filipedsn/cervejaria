@@ -42,7 +42,7 @@ export function ConfigPortalAlertaBalcaoPanel() {
       <div>
         <h3 className="font-semibold">Alertar o balcão nestas categorias</h3>
         <p className="mt-1 text-sm text-ink-muted">
-          Marque as categorias e salve. Itens sem preparo dessas categorias (ex.: Chope) destacam Servir na comanda. Itens com preparo seguem só na cozinha. Sem marcações, o alerta fica desligado.
+          Só categorias liberadas no portal do cliente podem ser marcadas. Itens sem preparo dessas categorias (ex.: Chope) destacam Servir na comanda. Itens com preparo seguem só na cozinha. Sem marcações, o alerta fica desligado.
         </p>
       </div>
       {isLoading && <p className="text-sm text-ink-faint">Carregando categorias…</p>}
@@ -74,7 +74,9 @@ export function ConfigPortalAlertaBalcaoPanel() {
         </div>
       ) : null}
       {!isLoading && !isError && data && data.categorias.length === 0 ? (
-        <p className="text-sm text-ink-faint">Cadastre categorias no catálogo para configurar o alerta.</p>
+        <p className="text-sm text-ink-faint">
+          Nenhuma categoria está disponível no portal do cliente. Libere ao menos uma em “Categorias disponíveis no portal” acima para configurar o alerta.
+        </p>
       ) : null}
       {error && <div className="alert-error" role="alert">{error}</div>}
       {saveMutation.isSuccess && <div className="alert-success" role="status">Alerta do balcão salvo.</div>}
@@ -82,7 +84,7 @@ export function ConfigPortalAlertaBalcaoPanel() {
         <button
           type="button"
           className="touch-btn-primary"
-          disabled={saveMutation.isPending || !data || isError}
+          disabled={saveMutation.isPending || !data || isError || data.categorias.length === 0}
           onClick={() => saveMutation.mutate()}
         >
           {saveMutation.isPending ? 'Salvando…' : 'Salvar alerta do balcão'}

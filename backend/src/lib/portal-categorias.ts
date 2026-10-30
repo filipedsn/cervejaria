@@ -2,6 +2,10 @@ import { prisma } from './prisma.js';
 import { CATEGORIA_CHOPE } from './produto-utils.js';
 
 export { CATEGORIA_CHOPE, categoriaParaAlertaBalcao } from './produto-utils.js';
+export {
+  categoriasElegiveisAlertaBalcao,
+  categoriasVisiveisNoPortal,
+} from './portal-categorias-policy.js';
 
 /**
  * Categorias selecionáveis no portal / alerta de balcão.

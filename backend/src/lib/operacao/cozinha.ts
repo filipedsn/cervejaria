@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma, StatusPedidoOperacao, ComandaTipo } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { emitToCervejaria } from '../realtime.js';
+import { listCategoriasEstabelecimento } from '../portal-categorias.js';
+import { categoriasElegiveisAlertaBalcao } from '../portal-categorias-policy.js';
 import { categoriaParaAlertaBalcao } from '../produto-utils.js';
 import { toNumber } from '../utils.js';
 
@@ -304,13 +306,18 @@ export async function notificarAtendimentoBalcaoPortal(
 ): Promise<AtendimentoBalcaoPayload | null> {
   if (pedidoIds.length === 0) return null;
 
-  const brewery = await prisma.cervejaria.findUnique({
-    where: { id: cervejariaId },
-    select: { portalAlertaBalcaoCategorias: true },
-  });
-  const categoriasAlerta = Array.isArray(brewery?.portalAlertaBalcaoCategorias)
-    ? brewery.portalAlertaBalcaoCategorias.filter((value): value is string => typeof value === 'string')
-    : null;
+  const [brewery, categoriasEstabelecimento] = await Promise.all([
+    prisma.cervejaria.findUnique({
+      where: { id: cervejariaId },
+      select: { portalAlertaBalcaoCategorias: true, portalCategoriasPermitidas: true },
+    }),
+    listCategoriasEstabelecimento(cervejariaId),
+  ]);
+  const { alertaAtivo: categoriasAlerta } = categoriasElegiveisAlertaBalcao(
+    categoriasEstabelecimento,
+    brewery?.portalCategoriasPermitidas,
+    brewery?.portalAlertaBalcaoCategorias,
+  );
 
   const pedidos = await prisma.pedidoOperacao.findMany({
     where: { id: { in: pedidoIds }, cervejariaId, comandaId },
