@@ -16,8 +16,10 @@ export default defineConfig({  plugins: [
       filename: 'sw.ts',
       registerType: 'autoUpdate',
       injectRegister: null,
+      // Em DEV o SW do PWA costuma segurar bundle antigo e esconder mudanças de HMR
+      // (ex.: filtro Mês|Intervalo no Quadro). Teste de PWA fica no build/serve.
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module',
       },
       includeAssets: ['logo.png', 'icons/pwa-192.png', 'icons/pwa-512.png', 'icons/apple-touch-icon.png'],

@@ -105,6 +105,8 @@ const fecharSchema = z.object({
   contadoCartaoDebito: z.number({ required_error: 'Informe o valor contado em cartão de débito' }).min(0, 'O valor contado em cartão de débito não pode ser negativo'),
   contadoCartaoCredito: z.number({ required_error: 'Informe o valor contado em cartão de crédito' }).min(0, 'O valor contado em cartão de crédito não pode ser negativo'),
   observacaoFechamento: z.string().trim().max(500).optional(),
+  /** Instantâneo real do encerramento operacional (ISO). Omitido = agora. */
+  fechadoEm: z.string().datetime({ offset: true }).optional(),
 });
 
 const encerramentoAdministrativoSchema = z.object({
@@ -644,6 +646,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       contadoCartaoDebito: body.contadoCartaoDebito,
       contadoCartaoCredito: body.contadoCartaoCredito,
       observacaoFechamento: body.observacaoFechamento,
+      fechadoEm: body.fechadoEm ? new Date(body.fechadoEm) : undefined,
       fechadoPorId: user.sub,
     });
     const dif = resumo.diferencas;

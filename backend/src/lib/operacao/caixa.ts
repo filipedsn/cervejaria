@@ -15,6 +15,7 @@ import { lockAgendaResource } from './agenda.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 import { lockCaixaEmTx } from './caixa-lock.js';
 import { resolveUniqueOpenCashSession } from './cash-session-resolution.js';
+import { FechadoEmCaixaInvalidoError, resolverFechadoEmInformado } from './fechado-em-caixa.js';
 export { lockCaixaEmTx } from './caixa-lock.js';
 
 export class CaixaInvalidoError extends Error {
@@ -632,6 +633,7 @@ export async function fecharCaixa(params: {
   contadoCartaoDebito: number;
   contadoCartaoCredito: number;
   observacaoFechamento?: string;
+  fechadoEm?: Date | null;
   fechadoPorId: string;
 }) {
   for (const forma of FORMAS) {
@@ -653,13 +655,44 @@ export async function fecharCaixa(params: {
     await assertSemComandasAbertas(params.cervejariaId, params.pontoVendaId, tx);
     await assertSemPedidosCozinhaPendentes(params.cervejariaId, params.pontoVendaId, tx);
 
+    const ultimaComanda = await tx.comanda.findFirst({
+      where: {
+        pontoVendaId: params.pontoVendaId,
+        status: 'FECHADA',
+        OR: [
+          { sessaoCaixaRealizacaoId: sessao.id },
+          {
+            AND: [
+              { sessaoCaixaRealizacaoId: null },
+              { diaOperacional: sessao.diaOperacional },
+              { fechadaEm: { gte: sessao.abertoEm } },
+            ],
+          },
+        ],
+      },
+      orderBy: { fechadaEm: 'desc' },
+      select: { fechadaEm: true },
+    });
+
+    let fechadoEm: Date;
+    try {
+      fechadoEm = resolverFechadoEmInformado({
+        informado: params.fechadoEm,
+        abertoEm: sessao.abertoEm,
+        ultimaComandaFechadaEm: ultimaComanda?.fechadaEm ?? null,
+      });
+    } catch (err) {
+      if (err instanceof FechadoEmCaixaInvalidoError) throw new CaixaInvalidoError(err.message);
+      throw err;
+    }
+
     return tx.sessaoCaixaOperacao.update({
       where: { id: sessao.id },
       data: {
         status: 'FECHADO',
         tipoEncerramento: 'FINANCEIRO',
         fechadoPorId: params.fechadoPorId,
-        fechadoEm: new Date(),
+        fechadoEm,
         contadoDinheiro: params.contadoDinheiro,
         contadoPix: params.contadoPix,
         contadoCartaoDebito: params.contadoCartaoDebito,
