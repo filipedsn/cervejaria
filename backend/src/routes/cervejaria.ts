@@ -14,6 +14,7 @@ import { buildCervejariaDashboard } from '../lib/cervejaria-dashboard.js';
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { readOperationalConfig, updateOperationalConfig, updateOperationalConfigSchema } from '../lib/operational-config.js';
+import { syncCategoriaChopeComTorneiras } from '../lib/operacao/categoria-chope-torneiras.js';
 import {
   categoriasElegiveisAlertaBalcao,
   categoriasVisiveisNoPortal,
@@ -232,7 +233,13 @@ export async function cervejariaRoutes(app: FastifyInstance) {
   app.patch('/configuracao-operacional', { preHandler: [app.requireDono] }, async (request) => {
     const user = getAuthUser(request);
     const body = updateOperationalConfigSchema.parse(request.body);
-    return prisma.$transaction((tx) => updateOperationalConfig(tx, user.cervejariaId!, body, { userId: user.sub, role: 'DONO' }));
+    const updated = await prisma.$transaction((tx) =>
+      updateOperationalConfig(tx, user.cervejariaId!, body, { userId: user.sub, role: 'DONO' }),
+    );
+    if (body.tapsEnabled !== undefined) {
+      await syncCategoriaChopeComTorneiras(user.cervejariaId!, body.tapsEnabled);
+    }
+    return updated;
   });
 
   app.post('/branding/reextract', { preHandler: [app.requireDono] }, async (request) => {

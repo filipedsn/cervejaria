@@ -30,12 +30,22 @@ export function OperationalCapabilitiesPanel({ section = 'all' }: OperationalCap
   const showNotifications = section === 'all' || section === 'notifications';
   const showMode = section === 'all';
   const titleId = `operational-capabilities-title-${section}`;
-  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['operational-configuration'] }), queryClient.invalidateQueries({ queryKey: ['operacao-contexto'] })]);
+  const refresh = (capability?: CapabilityKey) => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['operational-configuration'] }),
+    queryClient.invalidateQueries({ queryKey: ['operacao-contexto'] }),
+    ...(capability === 'tapsEnabled'
+      ? [
+          queryClient.invalidateQueries({ queryKey: ['operacao-categorias'] }),
+          queryClient.invalidateQueries({ queryKey: ['portal-categories-config'] }),
+          queryClient.invalidateQueries({ queryKey: ['portal-balcao-alert-config'] }),
+        ]
+      : []),
+  ]);
   async function toggle(key: CapabilityKey) {
     if (!data) return;
     const enabled = !data.enablements[ENABLEMENT_BY_KEY[key]];
     setSaving(key); setError('');
-    try { await api.patch('/api/cervejaria/configuracao-operacional', { [key]: enabled, ...(key === 'inventoryEnabled' ? { confirmacaoEstoque: true } : {}) }); await refresh(); }
+    try { await api.patch('/api/cervejaria/configuracao-operacional', { [key]: enabled, ...(key === 'inventoryEnabled' ? { confirmacaoEstoque: true } : {}) }); await refresh(key); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar a configuração'); }
     finally { setSaving(null); }
   }

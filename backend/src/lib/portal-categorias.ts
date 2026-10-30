@@ -1,5 +1,8 @@
 import { prisma } from './prisma.js';
-import { CATEGORIA_CHOPE } from './produto-utils.js';
+import {
+  filtrarCategoriaChopeSeTapsDesligados,
+  tapsEnabledDaCervejaria,
+} from './operacao/categoria-chope-torneiras.js';
 
 export { CATEGORIA_CHOPE, categoriaParaAlertaBalcao } from './produto-utils.js';
 export {
@@ -9,11 +12,10 @@ export {
 
 /**
  * Categorias selecionáveis no portal / alerta de balcão.
- * Inclui "Chope" quando há produto de chope ativo (formato CHOPE ou categoria Chope),
- * mesmo sem linha em categoriaProdutoPdv — caso típico de PDV só com torneiras.
+ * "Chope" só aparece com torneiras habilitadas (a categoria é criada no toggle).
  */
 export async function listCategoriasEstabelecimento(cervejariaId: string): Promise<string[]> {
-  const [categories, legacyCategories, chopeCount] = await Promise.all([
+  const [categories, legacyCategories, tapsEnabled] = await Promise.all([
     prisma.categoriaProdutoPdv.findMany({
       where: { cervejariaId },
       orderBy: [{ nomeNormalizado: 'asc' }, { nome: 'asc' }],
@@ -24,17 +26,7 @@ export async function listCategoriasEstabelecimento(cervejariaId: string): Promi
       distinct: ['categoria'],
       select: { categoria: true },
     }),
-    prisma.produto.count({
-      where: {
-        cervejariaId,
-        ativo: true,
-        tipo: 'BEBIDA',
-        OR: [
-          { formato: 'CHOPE' },
-          { formato: null, categoria: { equals: CATEGORIA_CHOPE, mode: 'insensitive' } },
-        ],
-      },
-    }),
+    tapsEnabledDaCervejaria(cervejariaId),
   ]);
 
   const names = new Set<string>([
@@ -44,6 +36,7 @@ export async function listCategoriasEstabelecimento(cervejariaId: string): Promi
       .filter((name): name is string => Boolean(name)),
     'Outros',
   ]);
-  if (chopeCount > 0) names.add(CATEGORIA_CHOPE);
-  return [...names].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return filtrarCategoriaChopeSeTapsDesligados([...names], tapsEnabled).sort((a, b) =>
+    a.localeCompare(b, 'pt-BR'),
+  );
 }
