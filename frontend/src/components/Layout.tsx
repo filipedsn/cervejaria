@@ -12,6 +12,7 @@ import { AccountMenu, UserAvatarButton } from './AccountMenu';
 import { BackToEventosLink } from './BackToEventosLink';
 import { PortalQrButton } from './PortalQrButton';
 import { PdvPortalQrButton } from './PdvPortalQrButton';
+import { OperacaoMontagemChopeHeaderButton } from './OperacaoMontagemChopeHeaderButton';
 import { VerRankingButton } from './VerRankingButton';
 import { EventoTapMontagemPanel } from './EventoTapMontagemPanel';
 import { TrailerSwitcher } from './TrailerSwitcher';
@@ -301,6 +302,9 @@ export function Layout() {
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {onOperacaoComandasPage && pontoVendaQrId && <PdvPortalQrButton pontoVendaId={pontoVendaQrId} iconOnly className="icon-btn-ghost" />}
+                  {onOperacaoComandasPage && pontoVendaQrId && (
+                    <OperacaoMontagemChopeHeaderButton pontoVendaId={pontoVendaQrId} />
+                  )}
                   {onOperacaoComandasPage && pontoVendaQrId && operacao.tapsEnabled && canPermission('command.read') && (
                     <Link
                       to={`/operacao/ranking?${rankingEntryParams.toString()}`}

@@ -54,6 +54,18 @@ export function IconBell({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProp
   );
 }
 
+/** Torneira / montagem de chope no header. */
+export function IconBeerTap({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M8 4h8v3H8z" />
+      <path d="M10 7v13M14 7v3" />
+      <path d="M14 10h4a2 2 0 0 1 0 4h-1" />
+      <path d="M7 20h6" />
+    </svg>
+  );
+}
+
 export function IconTv({ className = 'w-5 h-5', strokeWidth = 1.75 }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
