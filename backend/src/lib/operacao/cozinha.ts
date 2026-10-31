@@ -5,6 +5,7 @@ import { emitToCervejaria } from '../realtime.js';
 import { listCategoriasEstabelecimento } from '../portal-categorias.js';
 import { categoriasElegiveisAlertaBalcao } from '../portal-categorias-policy.js';
 import { categoriaParaAlertaBalcao } from '../produto-utils.js';
+import { normalizeCategoriaProduto } from './categorias.js';
 import { toNumber } from '../utils.js';
 
 type TxClient = Prisma.TransactionClient;
@@ -276,13 +277,18 @@ export function filtrarItensAtendimentoBalcao(
     exigePreparo: boolean;
     canceladoEm: Date | null;
     categoria?: string | null;
+    categoriaPdvNome?: string | null;
     tipo?: string | null;
     formato?: string | null;
   }>,
   categoriasAlerta: string[] | null,
 ): AtendimentoBalcaoPayload['itens'] {
   if (!Array.isArray(categoriasAlerta) || categoriasAlerta.length === 0) return [];
-  const allowed = new Set(categoriasAlerta.map((name) => name.trim()).filter(Boolean));
+  const allowed = new Set(
+    categoriasAlerta
+      .map((name) => normalizeCategoriaProduto(name.trim()))
+      .filter(Boolean),
+  );
   if (allowed.size === 0) return [];
 
   return itens
@@ -329,7 +335,14 @@ export async function notificarAtendimentoBalcaoPortal(
           volumeMl: true,
           exigePreparo: true,
           canceladoEm: true,
-          produto: { select: { categoria: true, tipo: true, formato: true } },
+          produto: {
+            select: {
+              categoria: true,
+              tipo: true,
+              formato: true,
+              categoriaPdv: { select: { nome: true } },
+            },
+          },
         },
       },
       comanda: {
@@ -348,6 +361,7 @@ export async function notificarAtendimentoBalcaoPortal(
       pedido.itensComanda.map((item) => ({
         ...item,
         categoria: item.produto?.categoria ?? null,
+        categoriaPdvNome: item.produto?.categoriaPdv?.nome ?? null,
         tipo: item.produto?.tipo ?? null,
         formato: item.produto?.formato ?? null,
       })),
