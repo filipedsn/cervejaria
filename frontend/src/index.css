@@ -3541,6 +3541,167 @@ button[title="Excluir"].icon-btn-danger {
   color: #b9e8ff;
 }
 
+/* Modal de item no portal — Night Tap (evita sheet branco no autoatendimento) */
+.modal-tone-night {
+  background: linear-gradient(160deg, #121c27 0%, #0b121a 55%, #040a12 100%);
+  color: #f8fafc;
+  box-shadow: 0 -0.8rem 2rem rgba(0, 0, 0, 0.45);
+}
+.modal-tone-night-footer {
+  background: rgba(11, 18, 26, 0.98);
+}
+.portal-product-modal {
+  display: grid;
+  gap: 1.35rem;
+  padding: 0.25rem 0 0.5rem;
+}
+.portal-product-modal-title {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(1.45rem, 4.5vw, 1.85rem);
+  font-weight: 800;
+  line-height: 1.15;
+}
+.portal-product-modal-price {
+  margin: 0.35rem 0 0;
+  color: #7dd3fc;
+  font-size: 0.95rem;
+}
+.portal-product-modal-section {
+  padding-bottom: 1.15rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+.portal-product-modal-section:last-child { border-bottom: 0; padding-bottom: 0; }
+.portal-product-modal-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.portal-product-modal-heading--inline { margin-bottom: 0; }
+.portal-product-modal-heading h3 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.portal-product-modal-heading p {
+  margin: 0.15rem 0 0;
+  color: #8ca5ba;
+  font-size: 0.85rem;
+}
+.portal-product-modal-icon {
+  display: flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  border-radius: 0.85rem;
+  background: rgba(14, 165, 233, 0.12);
+  color: #7dd3fc;
+}
+.portal-product-modal-options {
+  display: grid;
+  gap: 0.65rem;
+}
+.portal-product-modal-option {
+  display: flex;
+  min-height: 3.5rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(16, 29, 43, 0.72);
+  color: #e2e8f0;
+}
+.portal-product-modal-option:has(:checked) {
+  border-color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.14);
+}
+.portal-product-modal-option-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.portal-product-modal-option-copy input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #0ea5e9;
+}
+.portal-product-modal-option-copy span { font-weight: 700; }
+.portal-product-modal-option > span:last-child { color: #8ca5ba; font-size: 0.85rem; }
+.portal-product-modal-qty-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.portal-product-modal-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 1rem;
+  background: rgba(11, 18, 26, 0.78);
+}
+.portal-product-modal-qty button {
+  width: 2.75rem;
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: rgba(51, 65, 85, 0.9);
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.portal-product-modal-qty button:last-child { background: #0ea5e9; }
+.portal-product-modal-qty strong {
+  min-width: 1.75rem;
+  color: #fff;
+  font-size: 1.35rem;
+  text-align: center;
+}
+.portal-product-modal-check {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(16, 29, 43, 0.72);
+  color: #e2e8f0;
+  font-weight: 700;
+}
+.portal-product-modal-check input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #0ea5e9;
+}
+.portal-product-modal-note {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 1rem;
+  background: rgba(11, 18, 26, 0.78);
+  color: #f8fafc;
+  resize: vertical;
+}
+.portal-product-modal-note::placeholder { color: #70869b; }
+.portal-product-modal-note:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+}
+
 @container (max-width: 285px) {
   .comanda-card-duas-colunas {
     flex-wrap: wrap;

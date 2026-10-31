@@ -388,6 +388,7 @@ export function PortalPdvPage() {
   }
 
   const cartDockVisible = Boolean(result && menuTab === 'pedidos' && cart.length > 0);
+  const opcoesProdutoSelecionado = produtoSelecionado?.gruposOpcionais?.flatMap((group) => group.opcoes) ?? [];
 
   return (
     <main className="portal-background-host portal-shell min-h-screen px-4 py-8 safe-area-pt safe-area-pb">
@@ -704,6 +705,7 @@ export function PortalPdvPage() {
         onClose={closeProductModal}
         title=""
         hideHeaderClose
+        tone="night"
         footer={(
           <>
             <button type="button" className="touch-btn-primary w-full flex items-center justify-center gap-2" onClick={confirmProduct}>
@@ -716,74 +718,70 @@ export function PortalPdvPage() {
           </>
         )}
       >
-        {produtoSelecionado && (
-          <div className="space-y-6 rounded-2xl border border-line bg-surface-lighter p-5 sm:p-7">
+        {produtoSelecionado ? (
+          <div className="portal-product-modal">
             <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-ink">{nomeProduto(produtoSelecionado)}</h2>
-              <p className="mt-1 text-sm text-ink-muted">{formatCurrency(produtoSelecionado.precoEfetivo ?? 0)} por unidade</p>
+              <h2 className="portal-product-modal-title">{nomeProduto(produtoSelecionado)}</h2>
+              <p className="portal-product-modal-price">{formatCurrency(produtoSelecionado.precoEfetivo ?? 0)} por unidade</p>
             </div>
 
-            <section className="space-y-3 border-b border-line pb-5">
-              <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
-                  <IconChefHat className="h-6 w-6" />
-                </span>
-                <div>
-                  <h3 className="text-lg font-bold">Opcionais</h3>
-                  <p className="text-sm text-ink-muted">Selecione os opcionais que desejar</p>
+            {opcoesProdutoSelecionado.length > 0 ? (
+              <section className="portal-product-modal-section">
+                <div className="portal-product-modal-heading">
+                  <span className="portal-product-modal-icon">
+                    <IconChefHat className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h3>Opcionais</h3>
+                    <p>Selecione os opcionais que desejar</p>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {produtoSelecionado.gruposOpcionais?.flatMap((group) => group.opcoes).map((option) => (
-                  <label
-                    key={option.id}
-                    className="flex min-h-16 cursor-pointer items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10"
-                  >
-                    <span className="flex items-center gap-3">
-                      <input
-                        className="h-5 w-5 accent-brand-500"
-                        type="checkbox"
-                        checked={Boolean(opcionais[option.id])}
-                        onChange={() => setOpcionais((current) => (
-                          current[option.id]
-                            ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== option.id))
-                            : { ...current, [option.id]: 1 }
-                        ))}
-                      />
-                      <span className="font-semibold">{option.nome}</span>
-                    </span>
-                    <span className="text-sm text-ink-muted">
-                      {option.precoAdicional > 0 ? `+${formatCurrency(option.precoAdicional)}` : 'Grátis'}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </section>
+                <div className="portal-product-modal-options">
+                  {opcoesProdutoSelecionado.map((option) => (
+                    <label key={option.id} className="portal-product-modal-option">
+                      <span className="portal-product-modal-option-copy">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(opcionais[option.id])}
+                          onChange={() => setOpcionais((current) => (
+                            current[option.id]
+                              ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== option.id))
+                              : { ...current, [option.id]: 1 }
+                          ))}
+                        />
+                        <span>{option.nome}</span>
+                      </span>
+                      <span>
+                        {option.precoAdicional > 0 ? `+${formatCurrency(option.precoAdicional)}` : 'Grátis'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
-            <section className="flex items-center justify-between gap-4 border-b border-line pb-5">
-              <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
+            <section className="portal-product-modal-section portal-product-modal-qty-row">
+              <div className="portal-product-modal-heading portal-product-modal-heading--inline">
+                <span className="portal-product-modal-icon">
                   <IconPackage className="h-6 w-6" />
                 </span>
                 <div>
-                  <h3 className="text-lg font-bold">Quantidade</h3>
-                  <p className="text-sm text-ink-muted">Escolha a quantidade deste item</p>
+                  <h3>Quantidade</h3>
+                  <p>Escolha a quantidade deste item</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface px-3 py-2">
+              <div className="portal-product-modal-qty">
                 <button
                   type="button"
                   aria-label="Diminuir quantidade"
-                  className="min-h-10 min-w-10 rounded-xl bg-surface-lighter text-xl font-bold"
                   onClick={() => setQuantidadeItem((value) => Math.max(1, value - 1))}
                 >
                   −
                 </button>
-                <span className="min-w-8 text-center text-2xl font-bold">{quantidadeItem}</span>
+                <strong>{quantidadeItem}</strong>
                 <button
                   type="button"
                   aria-label="Aumentar quantidade"
-                  className="min-h-10 min-w-10 rounded-xl bg-brand-600 text-xl font-bold text-white"
                   onClick={() => setQuantidadeItem((value) => value + 1)}
                 >
                   <IconPlus className="mx-auto h-5 w-5" />
@@ -791,35 +789,34 @@ export function PortalPdvPage() {
               </div>
             </section>
 
-            <section>
-              <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
+            <section className="portal-product-modal-section">
+              <div className="portal-product-modal-heading">
+                <span className="portal-product-modal-icon">
                   <IconChefHat className="h-6 w-6" />
                 </span>
                 <div>
-                  <h3 className="text-lg font-bold">Para viagem</h3>
-                  <p className="text-sm text-ink-muted">A cozinha deve embalar este item</p>
+                  <h3>Para viagem</h3>
+                  <p>A cozinha deve embalar este item</p>
                 </div>
               </div>
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-4 py-3">
+              <label className="portal-product-modal-check">
                 <input
                   type="checkbox"
-                  className="h-5 w-5 accent-brand-500"
                   checked={paraViagem}
                   onChange={(event) => setParaViagem(event.target.checked)}
                 />
-                <span className="font-semibold">Marcar item para viagem</span>
+                <span>Marcar item para viagem</span>
               </label>
             </section>
 
-            <section>
-              <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400">
+            <section className="portal-product-modal-section">
+              <div className="portal-product-modal-heading">
+                <span className="portal-product-modal-icon">
                   <IconClipboard className="h-6 w-6" />
                 </span>
                 <div>
-                  <h3 className="text-lg font-bold">Observação do item</h3>
-                  <p className="text-sm text-ink-muted">Adicione alguma observação, se necessário</p>
+                  <h3>Observação do item</h3>
+                  <p>Adicione alguma observação, se necessário</p>
                 </div>
               </div>
               <textarea
@@ -828,11 +825,11 @@ export function PortalPdvPage() {
                 maxLength={280}
                 rows={2}
                 placeholder="Ex.: sem cebola"
-                className="w-full rounded-2xl border border-line bg-surface px-4 py-3"
+                className="portal-product-modal-note"
               />
             </section>
           </div>
-        )}
+        ) : null}
       </Modal>
     </main>
   );
