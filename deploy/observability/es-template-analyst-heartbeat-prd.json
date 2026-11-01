@@ -1,0 +1,27 @@
+{
+  "index_patterns": ["logs-support_analyst.heartbeat-*"],
+  "data_stream": {},
+  "priority": 600,
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "lifecycle": { "data_retention": "30d" },
+    "mappings": {
+      "dynamic": "strict",
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "event": { "properties": { "dataset": { "type": "keyword" } } },
+        "service": { "properties": { "name": { "type": "keyword" } } },
+        "analyst": {
+          "properties": {
+            "environment": { "type": "keyword" },
+            "firing": { "type": "integer" },
+            "skipped": { "type": "boolean" },
+            "quiet": { "type": "boolean" },
+            "release_sha": { "type": "keyword" }
+          }
+        }
+      }
+    }
+  },
+  "_meta": { "owner": "quiver-tap", "purpose": "batimento do Support Analyst local (TAP-169)" }
+}

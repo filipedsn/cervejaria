@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-analyst-heartbeat-missing-prd",
+  "tags": ["quiver-tap", "observability", "production", "infra", "support-analyst"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "index": ["logs-support_analyst.heartbeat-prd"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"match_all\":{}}}",
+    "size": 0,
+    "timeWindowSize": 15,
+    "timeWindowUnit": "m",
+    "thresholdComparator": "<",
+    "threshold": [1],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

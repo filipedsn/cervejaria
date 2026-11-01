@@ -101,6 +101,7 @@ jobs:
         run: |
           (cd backend && npx --no-install tsc --noEmit -p tsconfig.json)
           (cd frontend && npx --no-install tsc --noEmit -p tsconfig.json)
+          (cd frontend && npx --no-install tsc --noEmit -p tsconfig.node.json)
 
       - name: Backend typecheck/build
         run: npm run build:deploy --prefix backend

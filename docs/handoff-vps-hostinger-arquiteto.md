@@ -167,6 +167,8 @@ Se for equalizar DEV em Docker, proponha PR pequeno (compose dev) sem tocar PRD.
 
 80/443 aceitam apenas as faixas publicadas em [cloudflare.com/ips](https://www.cloudflare.com/ips/) (15 IPv4 + 7 IPv6, uma regra TCP `80:443` por faixa, desde 2026-11-01, TAP-164). Acesso direto ao IP de origem com o Host do site **não responde**, então WAF/DDoS da Cloudflare não podem ser contornados. Se a Cloudflare publicar faixa nova, acrescentar a regra no firewall e sincronizar (`vps_firewall_create-rule` + `vps_firewall_sync-to-all-assigned-v-ms`), senão parte do tráfego da borda falha com 52x.
 
+**Vigilância das faixas (TAP-165):** a lista canônica fica em `docs/infra/cloudflare-ips.txt` (igual às regras do firewall). O workflow `.github/workflows/cloudflare-ips.yml` compara todo dia com `https://api.cloudflare.com/client/v4/ips` e, havendo diferença, manda `[MONITOR EXTERNO] SEV3 — Faixas da Cloudflare mudaram` no Telegram com as faixas novas/retiradas (repete diariamente e o run fica vermelho até resolver). A aplicação é manual e aprovada: criar/remover as regras `80:443` no firewall `quiver-vps`, sincronizar (leva ~1 min), conferir que o site responde via Cloudflare e atualizar o arquivo canônico por PR. Teste do aviso: "Run workflow" com `simular_divergencia`.
+
 ---
 
 ## 2. Cloudflare — configuração atual
@@ -403,8 +405,9 @@ branch → PR → CI remoto obrigatório (build-and-unit) → merge main
 1. [x] Backup Postgres no VPS (cron 01:00 BRT, 30 dumps) + rclone OneDrive PRD.  
 2. [x] Restore ensaiado (2026-10-26, TAP-129).  
 3. [x] Alertas no Telegram (bot `@Tap_Quiver_Bot`, desde 2026-11-01), em três camadas independentes:
-   - **Kibana PRD** (21 regras: uptime, API, Postgres, 5xx, disco, contêineres, SSH, nginx, backup, SLO) → índice `quiver-tap-alert-events` → `quiver-tap-alert-poller` → Telegram. Regras ligadas por `scripts/observability/wire-alert-actions.ps1`.
-   - **Analista local** (PC, tarefa `QuiverTap-SupportAnalyst-Watch-PRD`, chave somente leitura): site visto de fora, Elastic inacessível/chave recusada, telemetria parada, surto de erros e **caminho de alertas parado** (`alert-path-unhealthy`, lê o estado do poller no `docker_state`). Manda direto ao Telegram, sem passar pelo poller.
+   - **Kibana PRD** (23 regras: uptime, API, latência p95, Postgres, 5xx, disco, contêineres, SSH, nginx, backup, SLO, batimento do analista) → índice `quiver-tap-alert-events` → `quiver-tap-alert-poller` → Telegram. Regras ligadas por `scripts/observability/wire-alert-actions.ps1`.
+   - **Analista local** (PC, tarefa `QuiverTap-SupportAnalyst-Watch-PRD`, chave somente leitura): site visto de fora, Elastic inacessível/chave recusada, telemetria parada, surto de erros e **caminho de alertas parado** (`alert-path-unhealthy`, lê o estado do poller no `docker_state`). Manda direto ao Telegram, sem passar pelo poller. Grava um batimento por ciclo (chave só-escrita própria); a regra `quiver-tap-analyst-heartbeat-missing-prd` avisa uma vez quando ele some por 15 min (PC desligado ou analista parado) — TAP-169.
+   - **Latência:** `quiver-tap-api-latency-p95-prd` (ES|QL nos spans de servidor): p95 > 1 s em 15 min com ≥ 20 requisições; base de 7 dias em 01/11: p95 26 ms, pior janela 53 ms — TAP-168.
    - **Monitor externo** (`.github/workflows/uptime-external.yml`, GitHub Actions a cada 5 min): `/api/ready` público; Telegram só na mudança de estado. Cobre VPS inteiro fora com o PC desligado. Teste manual: *Run workflow* com `teste_telegram`.
 4. [x] Rollback: automático no `deploy-prd.sh` (imagem `quiver-tap-api:rollback` se falhar depois do sync) e manual pela esteira com um SHA antigo da `main` (painel Ops).  
 5. [x] EDOT collector PRD ativo (logs do host, traces a 100%); Elastic PRD 9.5.5 desde 2026-11-01, heap 4 GB, repositório de snapshot `quiver-fs` em disco (`docs/observability/upgrade-elastic-9.md`).
@@ -459,6 +462,8 @@ push na main (ou "Run workflow" manual)
 **`deploy-prd.sh` (ordem):** lock (`flock`) → SHA ∈ `main` (e, no modo `head-only`, = HEAD da main) → **guard de migrations** desde o `RELEASE_SHA` atual (destrutiva sem `allow-destructive` ou migration alterada = recusa, código 6, nada muda) → **backup Postgres** (`backup-postgres.sh`, mesmo do cron, inclui off-site) → imagem atual vira `quiver-tap-api:rollback` → `git checkout` em `/opt/cervejaria-git` + `rsync --delete` para `/opt/quiver-tap` **preservando** `.env.staging`, `.env.observability`, `.env.alert-poller`, `backup-postgres.env*` e `backups/` (o `backup-postgres.sh` é versionado desde TAP-164) → `RELEASE_SHA` → `docker compose build api` (tag `:<sha>`) → **se houver migrations:** build do `migrator` → **ensaio** (restaura o backup recém-feito num Postgres descartável em `127.0.0.1:55432` e roda `prisma migrate deploy` nele; o contêiner sai com o volume, `docker rm -f -v`) → `prisma migrate deploy` em PRD → `up -d --no-build --force-recreate api` → espera `/api/ready` + `releaseSha`. **Falha depois do sync = rollback automático** do código/imagem; o schema não é revertido (§7.1.G). Mantém as 5 últimas imagens `:<sha>` de api e migrator.
 
 **Modos:** push na main = `head-only` (se um run antigo for aprovado depois de um merge mais novo, ele é ignorado com aviso — o run mais novo publica o HEAD). `workflow_dispatch` com `sha` = `allow-older` (rollback intencional).
+
+**Push sem efeito em runtime (TAP-166):** o `paths-ignore` do workflow não abre run quando o push só altera `docs/**`, `*.md`, `.cursor/**` ou os workflows `ci.yml`, `uptime-external.yml` e `cloudflare-ips.yml`. No `head-only`, o `deploy-prd.sh` aceita publicar um SHA atrás do HEAD quando os commits à frente só tocam esses caminhos (a mesma lista em `NO_RUNTIME_PATHS`; mudou uma, mude a outra). `deploy/**` e `scripts/**` nunca entram na lista: o deploy sincroniza esses diretórios no VPS.
 
 **DEV antes de PRD:** a esteira não publica o DEV (que é o PC). Só aprove o deploy depois de validar o mesmo SHA no DEV local (`:3002`/`:5202`).
 

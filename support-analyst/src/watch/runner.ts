@@ -2,6 +2,7 @@ import type { WatchConfig } from '../config.js';
 import { formatDigest, formatFiring, formatInfo, formatReminder, formatResolved } from '../notify/format.js';
 import type { AnalystIndices } from '../sources/constants.js';
 import { ElasticSourceError } from '../sources/elastic.js';
+import type { HeartbeatResult, HeartbeatSender } from './heartbeat.js';
 import { probeUrl, readReleaseSha, type FetchLike } from './probes.js';
 import { inBootQuietWindow } from './startup.js';
 import type { WatchStateStore } from './state.js';
@@ -18,7 +19,7 @@ export type WatchElasticReader = {
 };
 export type WatchNotifications = { send(kind: string, text: string, detectorId?: string): Promise<void>; flushPending(): Promise<void> };
 export type WatchEvent = { kind: 'FIRING' | 'RESOLVED'; detectorId: DetectorId };
-export type WatchCycleResult = { skipped: boolean; quiet: boolean; observations: Observation[]; events: WatchEvent[]; notified: string[] };
+export type WatchCycleResult = { skipped: boolean; quiet: boolean; observations: Observation[]; events: WatchEvent[]; notified: string[]; heartbeat?: HeartbeatResult };
 export type WatchRunnerDependencies = {
   config: WatchConfig;
   elastic: WatchElasticReader;
@@ -27,6 +28,8 @@ export type WatchRunnerDependencies = {
   environment?: 'dev' | 'prd';
   /** Machine boot time; notifications are held during config.bootQuietMinutes after it. */
   bootTime?: Date;
+  /** Remote proof of life for the Kibana "analyst silent" rule; failures never break the cycle. */
+  heartbeat?: HeartbeatSender;
   fetchImpl?: FetchLike;
   now?: () => Date;
 };
@@ -157,7 +160,9 @@ export class WatchRunner {
     }
 
     await this.deps.store.save(state);
-    return { skipped: false, quiet, observations, events, notified };
+    const firingCount = (Object.keys(DETECTOR_RULES) as DetectorId[]).filter((id) => state.detectors[id]?.status === 'FIRING').length;
+    const heartbeat = await this.deps.heartbeat?.send({ firing: firingCount, skipped: false, quiet, releaseSha: state.lastReleaseSha }, now);
+    return { skipped: false, quiet, observations, events, notified, ...(heartbeat ? { heartbeat } : {}) };
   }
 
   private apply(state: WatchState, observation: Observation, now: Date, events: WatchEvent[], resolved: Resolved[]): void {

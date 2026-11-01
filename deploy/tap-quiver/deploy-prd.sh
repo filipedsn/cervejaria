@@ -53,8 +53,12 @@ git -C "$REPO_DIR" fetch --quiet origin main
 MAIN_HEAD="$(git -C "$REPO_DIR" rev-parse origin/main)"
 git -C "$REPO_DIR" cat-file -e "${SHA}^{commit}" 2>/dev/null || die "SHA não encontrado no repositório" 3
 git -C "$REPO_DIR" merge-base --is-ancestor "$SHA" origin/main || die "SHA não pertence à main" 3
+# Mesma lista do paths-ignore do deploy-vps.yml: commits só nesses caminhos não abrem run.
+NO_RUNTIME_PATHS='^(docs/|\.cursor/|\.github/workflows/(ci|uptime-external|cloudflare-ips)\.yml$)|\.md$'
 if [[ "$MODE" == "head-only" && "$SHA" != "$MAIN_HEAD" ]]; then
-  die "SHA não é mais o HEAD da main ($MAIN_HEAD). Rode o workflow manualmente com o SHA desejado para publicar outro commit." 5
+  RUNTIME_AHEAD="$(git -C "$REPO_DIR" diff --name-only "$SHA" "$MAIN_HEAD" | grep -Ev "$NO_RUNTIME_PATHS" || true)"
+  [[ -z "$RUNTIME_AHEAD" ]] || die "SHA não é mais o HEAD da main ($MAIN_HEAD). Rode o workflow manualmente com o SHA desejado para publicar outro commit." 5
+  log "HEAD da main ($MAIN_HEAD) só tem docs/workflows depois de $SHA; publicando $SHA."
 fi
 
 PREV_SHA="$(sed -n 's/^RELEASE_SHA=//p' "$ENV_FILE" | tail -n1)"

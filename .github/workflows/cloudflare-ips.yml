@@ -1,0 +1,66 @@
+# O firewall do VPS só aceita 80/443 vindos da Cloudflare. Se a Cloudflare publicar ou retirar uma
+# faixa, este job avisa no Telegram (todo dia, enquanto houver divergência). A aplicação no firewall
+# da Hostinger continua manual e aprovada (decisão TAP-165); o procedimento está no handoff §1.2.
+name: Faixas Cloudflare x firewall
+
+on:
+  schedule:
+    - cron: '17 12 * * *'
+  workflow_dispatch:
+    inputs:
+      simular_divergencia:
+        description: "Testar o aviso: finge que a última faixa da lista canônica é nova na Cloudflare."
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs/infra/cloudflare-ips.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Comparar com a API pública da Cloudflare
+        id: diff
+        env:
+          SIMULAR: ${{ github.event_name == 'workflow_dispatch' && inputs.simular_divergencia }}
+        run: |
+          set -euo pipefail
+          body=$(curl -fsS --retry 3 --max-time 20 https://api.cloudflare.com/client/v4/ips)
+          [ "$(jq -r '.success' <<<"$body")" = true ] || { echo "::error::API da Cloudflare respondeu success=false"; exit 1; }
+          jq -r '.result.ipv4_cidrs[], .result.ipv6_cidrs[]' <<<"$body" | sort -u > cloudflare.txt
+          [ -s cloudflare.txt ] || { echo "::error::lista vazia da Cloudflare"; exit 1; }
+          grep -Ev '^\s*(#|$)' docs/infra/cloudflare-ips.txt | sort -u > canonical.txt
+          if [ "$SIMULAR" = true ]; then tail -n 1 docs/infra/cloudflare-ips.txt > simulated.txt; grep -vxFf simulated.txt canonical.txt > c.tmp; mv c.tmp canonical.txt; fi
+          added=$(comm -23 cloudflare.txt canonical.txt | paste -sd ' ' -)
+          removed=$(comm -13 cloudflare.txt canonical.txt | paste -sd ' ' -)
+          echo "Cloudflare: $(wc -l < cloudflare.txt) faixas | canônica: $(wc -l < canonical.txt)"
+          echo "novas: ${added:-nenhuma} | retiradas: ${removed:-nenhuma}"
+          { echo "added=$added"; echo "removed=$removed"; echo "simulated=$SIMULAR"; } >> "$GITHUB_OUTPUT"
+
+      - name: Avisar no Telegram
+        if: steps.diff.outputs.added != '' || steps.diff.outputs.removed != ''
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADDED: ${{ steps.diff.outputs.added }}
+          REMOVED: ${{ steps.diff.outputs.removed }}
+          SIMULATED: ${{ steps.diff.outputs.simulated }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$CHAT" ]; then echo "::error::secrets TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes"; exit 1; fi
+          prefix="[MONITOR EXTERNO] SEV3"
+          [ "$SIMULATED" = true ] && prefix="[MONITOR EXTERNO] TESTE (simulação)"
+          text="${prefix} — Faixas da Cloudflare mudaram. Novas: ${ADDED:-nenhuma}. Retiradas: ${REMOVED:-nenhuma}. Visitantes vindos de faixa nova são bloqueados pelo firewall do VPS. Próximo passo: atualizar as regras 80:443 do firewall quiver-vps na Hostinger e docs/infra/cloudflare-ips.txt (handoff §1.2)."
+          curl -fsS -o /dev/null -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=${text}"
+
+      - name: Falhar enquanto houver divergência
+        if: steps.diff.outputs.simulated != 'true' && (steps.diff.outputs.added != '' || steps.diff.outputs.removed != '')
+        run: exit 1

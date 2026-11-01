@@ -2,6 +2,9 @@
 #
 # - Todo push na main dispara CI + build e para no gate do environment "production"
 #   (required reviewer). Nada chega ao VPS sem aprovação explícita no GitHub.
+#   Exceção: push que só mexe em documentação, regras do Cursor ou workflows sem
+#   efeito em runtime não dispara (paths-ignore). Nunca ignore deploy/** ou scripts/**:
+#   o deploy sincroniza esses diretórios no VPS.
 # - Execução manual (workflow_dispatch) publica o HEAD da main ou um SHA específico
 #   da main (rollback intencional).
 # - Acesso ao VPS só pela tailnet (tag:ci); a porta 22 continua fechada na internet.
@@ -13,6 +16,13 @@ name: Deploy PRD (VPS)
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".cursor/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/uptime-external.yml"
+      - ".github/workflows/cloudflare-ips.yml"
   workflow_dispatch:
     inputs:
       sha:

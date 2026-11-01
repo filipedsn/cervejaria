@@ -263,6 +263,31 @@ const RULE_COPY: Record<string, AlertCopy> = {
       'Rode o backup manualmente e confirme a copia off-site.',
     ],
   },
+  'quiver-tap-api-latency-p95-prd': {
+    title: 'API lenta (producao)',
+    severity: 'high',
+    category: 'app',
+    summary:
+      'O p95 das requisicoes da API passou de 1 segundo nos ultimos 15 minutos (normal: abaixo de 60 ms).',
+    impact: 'Caixa, comandas e cozinha respondem devagar; a equipe sente travamento no atendimento.',
+    actions: [
+      'Abra o ops-panel (npm run ops:open) e confira CPU, memoria e disco do VPS.',
+      'No Kibana, abra traces-*.otel-prd ordenado por duration e veja quais url.path estao lentos.',
+      'Se comecou apos um deploy, avalie rollback no ops-panel.',
+    ],
+  },
+  'quiver-tap-analyst-heartbeat-missing-prd': {
+    title: 'Analista local sem sinal',
+    severity: 'medium',
+    category: 'infra',
+    summary: 'O Support Analyst do PC nao manda batimento ha mais de 15 minutos.',
+    impact:
+      'A camada local de vigilancia esta fora (PC desligado, sem internet ou analista parado); Kibana e o monitor externo seguem ativos.',
+    actions: [
+      'Se o PC esta ligado: confira a tarefa QuiverTap-SupportAnalyst-Watch-PRD no Agendador de Tarefas.',
+      'Veja o log do dia em deploy/runtime/support-analyst-prd/logs.',
+    ],
+  },
   'quiver-tap-slo-availability-burn-prd': {
     title: 'Meta de disponibilidade em risco (SLO)',
     severity: 'high',

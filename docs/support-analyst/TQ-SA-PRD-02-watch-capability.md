@@ -22,7 +22,7 @@ Continuam negados: `*otel-dev*`, `quiver-tap-alert-events-dev`, curingas amplos 
 ## Travas de execução
 
 - PRD exige `SUPPORT_ANALYST_ALLOW_PRD=true`, `SUPPORT_ANALYST_CREDENTIAL_ENV=prd`, `SUPPORT_ANALYST_ENDPOINT_ENV=prd` e URL fora de loopback; DEV aceita só loopback.
-- O runtime só faz `POST <índice>/_search` limitado; não existe caminho de escrita. O validador (`validate-elastic-readonly.mjs`) também usa `_security/_authenticate`, `_resolve/index`, `_field_caps` e `_has_privileges`, todos de leitura.
+- Com a chave de leitura, o runtime só faz `POST <índice>/_search` limitado. A única escrita é o batimento (abaixo), com outra chave. O validador (`validate-elastic-readonly.mjs`) também usa `_security/_authenticate`, `_resolve/index`, `_field_caps` e `_has_privileges`, todos de leitura.
 - Credenciais ficam em `deploy/runtime/support-analyst-<env>.env` (ignorado pelo Git, ACL restrita). Modelo sem segredo: `support-analyst/support-analyst-prd.env.example`.
 
 ## Detectores (ciclo de 60 s)
@@ -35,9 +35,16 @@ Continuam negados: `*otel-dev*`, `quiver-tap-alert-events-dev`, curingas amplos 
 | Chave do analyst recusada (expirada?) | SEV2 | 1 | 1 | sim |
 | Telemetria da API parou | SEV2 | 2 | 2 | sim |
 | Collector PRD parou de enviar | SEV2 | 2 | 2 | sim |
+| Caminho de alertas parado (poller não healthy) | SEV2 | 3 | 2 | sim (segurado se o collector estiver parado) |
 | Surto de logs ERROR na API | SEV3 | 1 | 3 | sim |
 
 Há lembrete a cada 60 min enquanto o alerta continua ativo, resumo diário às 8h (prova de vida) e um aviso INFO quando a versão no ar muda. O limite padrão é de 20 mensagens por hora.
+
+## Batimento externo (TAP-169)
+
+Ao fim de cada ciclo com rede, o watch grava um documento em `logs-support_analyst.heartbeat-prd` (horário, ambiente, quantidade de detectores disparados, se o ciclo foi pulado/silencioso e o `releaseSha` visto; nada pessoal). A gravação usa a chave `quiver-support-analyst-heartbeat-prd` ([`prd-heartbeat-writer-role.json`](prd-heartbeat-writer-role.json): só `create_doc`/`auto_configure` nesse data stream, 365 dias), em `SUPPORT_ANALYST_REMOTE_HEARTBEAT_API_KEY`; ela precisa ser diferente da chave de leitura. Falha ao gravar não interrompe o ciclo (aparece como `heartbeat: failed` no log). O template `quiver-tap-analyst-heartbeat` guarda 30 dias, sem réplica.
+
+A regra `quiver-tap-analyst-heartbeat-missing-prd` (a cada 5 min, nenhum batimento em 15 min) vai pelo poller do VPS ao Telegram **uma vez por queda**, com mensagem de recuperação quando o PC volta. Como o PC às vezes é desligado (decisão do Filipe, 01/11), o aviso significa "PC desligado, sem internet ou analista parado", não necessariamente defeito. Configuração: `scripts/observability/setup-analyst-heartbeat.ps1 -Apply -ConfirmPrd`, depois `configure-kibana.ps1 -Target prd -ConfirmPrd` e `wire-alert-actions.ps1 -Target prd -ConfirmPrd -Apply`, e reinício da tarefa do analista.
 
 ## Partida com o Windows e janela pós-boot
 
