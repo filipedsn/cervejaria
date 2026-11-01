@@ -27,7 +27,7 @@ Os traces PRD são amostrados a 100% (`tail_sampling`), para que toda transaçã
 | `quiver-tap-nginx-5xx-surge-prd` | Mais de 20 respostas 5xx no nginx em 5 min |
 | `quiver-tap-container-restart-prd` | Reinício recente com `restarts > 0`, OOM, `unhealthy` ou contêiner essencial fora de `running`, em 3 min |
 
-As regras são aplicadas por `configure-kibana -Target prd` e conferidas por `diagnose-prd.ps1`; os alertas chegam ao Telegram pelo alert-poller (TAP-139) com o prefixo `[KIBANA]`.
+As regras são aplicadas por `configure-kibana -Target prd`, entram na lista canônica do `wire-alert-actions.ps1` e são conferidas por `diagnose-prd.ps1`; os alertas chegam ao Telegram pelo alert-poller (TAP-139) com o prefixo `[KIBANA]`.
 
 ## Instalação no VPS (exige autorização de produção)
 
@@ -37,7 +37,7 @@ Depois do merge e do deploy aprovado que atualizam `/opt/quiver-tap`:
 2. Instalar o cron: `install -m 644 /opt/quiver-tap/deploy/tap-quiver/cron.d/quiver-tap-docker-state /etc/cron.d/` e `chmod 755 /opt/quiver-tap/deploy/tap-quiver/docker-state.sh`.
 3. Após um minuto, conferir `tail -n 3 /var/log/quiver-docker-state.log`.
 4. Recriar o collector com a configuração nova (`docker compose -f docker-compose.observability.yml up -d`, a partir de `deploy/tap-quiver`).
-5. Aplicar as regras: `configure-kibana -Target prd`.
+5. Aplicar as regras: `configure-kibana -Target prd`, depois `wire-alert-actions -Target prd` (prévia) e `-Apply` para ligar a ação do índice de alertas nas quatro regras, que é o que leva o alerta ao Telegram.
 
 ## Verificação
 
