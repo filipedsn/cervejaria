@@ -5,7 +5,8 @@ test('reset excludes system, malformed, wildcard and unrelated streams', () => {
   assert(isResettableStream('logs-audit_customer.otel-dev'));
   for (const name of ['.kibana_8', '.security-7', '*', 'logs-*', 'logs-audit.otel-dev,.security', 'metrics-system-default', 'logs-audit.otel-production']) assert(!isResettableStream(name));
   assert.equal(retentionSpecifications().length, 10);
-  assert(retentionSpecifications().every(s => s.retention > 0 && s.retention <= 30));
+  assert(retentionSpecifications().every(s => s.name === 'quiver-tap-audit-prd' || (s.retention > 0 && s.retention <= 30)));
+  assert.equal(retentionSpecifications().find(s => s.name === 'quiver-tap-audit-prd').retention, 180);
 });
 test('rebuild requires explicit discard authorization before issuing requests', async () => {
   let called = false;

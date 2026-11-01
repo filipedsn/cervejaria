@@ -24,7 +24,8 @@ export function retentionSpecifications() {
   for (const [namespace, types] of Object.entries(days)) for (const [type, retention] of Object.entries(types)) {
     result.push({ name: `quiver-tap-${type}-${namespace}`, type, namespace, retention, priority: 500, pattern: `${type}-*.otel-${namespace}` });
   }
-  result.push({ name: 'quiver-tap-audit-prd', type: 'logs', namespace: 'prd', retention: 30, priority: 510, pattern: 'logs-audit.otel-prd' });
+  // Marco Civil da Internet, art. 15: registros de acesso (IP, data e hora) guardados por 6 meses.
+  result.push({ name: 'quiver-tap-audit-prd', type: 'logs', namespace: 'prd', retention: 180, priority: 510, pattern: 'logs-audit.otel-prd' });
   return result;
 }
 
@@ -42,16 +43,14 @@ export async function planPlatformRebuild(request) {
   return { targets, bases, specifications: retentionSpecifications(), protected: 'Kibana/security/system indices and application databases are excluded' };
 }
 
-export async function rebuildPlatform(request, plan, authorization) {
-  if (authorization !== 'DISCARD_CURRENT_OTEL_HISTORY') throw new Error('Explicit history-discard authorization required');
-  if (!plan.targets.length || !plan.targets.every(isResettableStream)) throw new Error('Invalid exact stream inventory');
-  await ensureMetricsFingerprint(request);
+/** Non-destructive: ILM policies and index templates only. Shared by rebuildPlatform and apply-retention.mjs. */
+export async function applyRetentionTemplates(request, bases, specifications) {
   const applied = [];
-  for (const spec of plan.specifications) {
+  for (const spec of specifications) {
     const policy = { policy: { phases: { hot: { actions: { rollover: { max_age: '1d', max_primary_shard_size: '1gb' } } }, delete: { min_age: spec.retention + 'd', actions: { delete: {} } } } } };
     const policyResult = await request('/_ilm/policy/' + spec.name, policy, false, 'PUT');
     if (!policyResult.acknowledged) throw new Error('Policy failed: ' + spec.name);
-    const base = plan.bases[spec.type];
+    const base = bases[spec.type];
     const template = structuredClone(base.template ?? {});
     template.settings = { ...template.settings, index: { ...(template.settings?.index ?? {}), number_of_shards: 1, number_of_replicas: 0, refresh_interval: '10s', lifecycle: { name: spec.name } } };
     // Preserve managed OTel mappings, TSDB settings and optional components.
@@ -60,6 +59,14 @@ export async function rebuildPlatform(request, plan, authorization) {
     if (!result.acknowledged) throw new Error('Template failed: ' + spec.name);
     applied.push({ name: spec.name, retentionDaysAfterRollover: spec.retention });
   }
+  return applied;
+}
+
+export async function rebuildPlatform(request, plan, authorization) {
+  if (authorization !== 'DISCARD_CURRENT_OTEL_HISTORY') throw new Error('Explicit history-discard authorization required');
+  if (!plan.targets.length || !plan.targets.every(isResettableStream)) throw new Error('Invalid exact stream inventory');
+  await ensureMetricsFingerprint(request);
+  const applied = await applyRetentionTemplates(request, plan.bases, plan.specifications);
   const deleted = [];
   for (let offset = 0; offset < plan.targets.length; offset += 20) {
     const names = plan.targets.slice(offset, offset + 20);
