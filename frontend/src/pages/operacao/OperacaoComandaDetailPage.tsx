@@ -603,7 +603,7 @@ export function OperacaoComandaDetailPage() {
                 confirmarAtendimentoBalcao.mutate(pedidoIds);
               }}
             >
-              {confirmarAtendimentoBalcao.isPending ? 'Confirmando...' : 'Atendido'}
+              {confirmarAtendimentoBalcao.isPending ? 'Confirmando...' : 'Entregue'}
             </button>
           </div>
         )}
@@ -714,7 +714,7 @@ export function OperacaoComandaDetailPage() {
                 {(naCozinha || pedido.itens.some((item) => !item.exigePreparo && !item.canceladoEm)) && (
                   <span
                     className={`text-xs font-semibold ${
-                      confirmado || rotuloStatusPedidoResumo(pedido) === 'Atendido' ? 'text-green-600' : 'text-amber-600'
+                      confirmado || rotuloStatusPedidoResumo(pedido) === 'Entregue' ? 'text-green-600' : 'text-amber-600'
                     }`}
                   >
                     {rotuloStatusPedidoResumo(pedido)}

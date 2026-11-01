@@ -55,13 +55,13 @@ test('pedido misto mostra status por item e cabeçalho Parcial quando latões j�
     ],
   };
 
-  assert.equal(rotuloStatusItemPedido(misto, misto.itens[0]!), 'Atendido');
-  assert.equal(rotuloStatusItemPedido(misto, misto.itens[1]!), 'Atendido');
+  assert.equal(rotuloStatusItemPedido(misto, misto.itens[0]!), 'Entregue');
+  assert.equal(rotuloStatusItemPedido(misto, misto.itens[1]!), 'Entregue');
   assert.equal(rotuloStatusItemPedido(misto, misto.itens[2]!), 'Na fila');
   assert.equal(rotuloStatusPedidoResumo(misto), 'Parcial');
 });
 
-test('pedido misto concluído não fica Parcial quando latões estão Atendido e a porção Entregue', () => {
+test('pedido misto concluído unifica latões e porção como Entregue', () => {
   const concluido: PedidoOperacao = {
     ...pedido,
     status: 'ENTREGUE',
@@ -72,9 +72,9 @@ test('pedido misto concluído não fica Parcial quando latões estão Atendido e
     ],
   };
 
-  assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[0]!), 'Atendido');
+  assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[0]!), 'Entregue');
   assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[1]!), 'Entregue');
-  assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[2]!), 'Atendido');
+  assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[2]!), 'Entregue');
   assert.equal(rotuloStatusPedidoResumo(concluido), 'Entregue');
 });
 

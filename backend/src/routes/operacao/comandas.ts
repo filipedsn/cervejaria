@@ -539,7 +539,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     return resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
   });
 
-  /** Confirma Servir do portal: pedidos sem preparo passam RECEBIDO → ENTREGUE (rótulo Atendido no cliente). */
+  /** Confirma Servir do portal: pedidos sem preparo passam RECEBIDO → ENTREGUE (rótulo Entregue no cliente). */
   app.post('/:id/atendimento-balcao', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id: comandaId } = request.params as { id: string };
