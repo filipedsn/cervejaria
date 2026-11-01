@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-container-restart-prd",
+  "tags": ["quiver-tap", "observability", "production", "infra", "docker"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "1m" },
+  "enabled": true,
+  "params": {
+    "index": ["logs-docker_state.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"should\":[{\"bool\":{\"filter\":[{\"term\":{\"attributes.recent_start\":true}},{\"range\":{\"attributes.restarts\":{\"gt\":0}}}]}},{\"term\":{\"attributes.oom_killed\":true}},{\"term\":{\"attributes.health\":\"unhealthy\"}},{\"bool\":{\"filter\":[{\"terms\":{\"attributes.container\":[\"cervejaria-api\",\"cervejaria-db\",\"elasticsearch\",\"kibana\",\"quiver-edot-collector-prd\",\"quiver-tap-alert-poller\"]}}],\"must_not\":[{\"term\":{\"attributes.status\":\"running\"}}]}}],\"minimum_should_match\":1}}}",
+    "size": 10,
+    "timeWindowSize": 3,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [0],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

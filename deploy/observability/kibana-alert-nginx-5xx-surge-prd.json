@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-nginx-5xx-surge-prd",
+  "tags": ["quiver-tap", "observability", "production", "infra", "seguranca", "nginx"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "1m" },
+  "enabled": true,
+  "params": {
+    "index": ["logs-nginx_access.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"range\":{\"attributes.http.response.status_code\":{\"gte\":500,\"lte\":599}}}]}}}",
+    "size": 10,
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [20],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

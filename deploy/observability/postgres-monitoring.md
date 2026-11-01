@@ -2,8 +2,8 @@
 
 O OTel Collector (contrib **0.130.1+**) usa o receiver `tcpcheck` para validar conectividade TCP em:
 
-- `host.docker.internal:5432` (Postgres prod)
-- `host.docker.internal:5434` (Postgres dev)
+- PRD (VPS): `cervejaria-db:5432`, pela rede Docker `banco-de-dados_default` à qual o collector PRD está ligado (`docker-compose.observability.yml`). A porta não fica exposta fora do host.
+- DEV (PC): `host.docker.internal:5434`
 
 Métricas `tcpcheck.*` são exportadas para `metrics-tcpcheckreceiver.otel-infra*` no Elasticsearch.
 
