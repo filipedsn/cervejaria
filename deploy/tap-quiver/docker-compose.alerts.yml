@@ -1,0 +1,29 @@
+# Alert poller PRD: Kibana (.index) -> quiver-tap-alert-events -> Telegram.
+# Incluido pelo deploy-prd.sh somente quando .env.alert-poller existe neste diretorio.
+services:
+  alert-poller:
+    image: quiver-tap-api:staging
+    pull_policy: never
+    container_name: quiver-tap-alert-poller
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env.alert-poller
+    environment:
+      NODE_ENV: production
+      KIBANA_ALERT_POLL_ENABLED: "true"
+      KIBANA_ALERT_POLL_IN_API: "false"
+      KIBANA_ALERT_POLL_STATE_FILE: /app/state/alert-poller-state.json
+      ALERT_POLLER_HEALTH_PORT: "3098"
+    command: ["node", "dist/alert-poller-worker.js"]
+    volumes:
+      - alert_poller_state:/app/state
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3098/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  alert_poller_state:

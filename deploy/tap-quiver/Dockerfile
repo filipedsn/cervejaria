@@ -50,7 +50,7 @@ ENV OTEL_LOGS_EXPORTER=none
 
 # Sem chown -R: em build sem cache ele copia cada arquivo do node_modules (minutos).
 # O runtime só grava em pastas novas dentro de /app (uploads, data/...).
-RUN mkdir -p /app/uploads /app/data && chown quiver:quiver /app /app/uploads /app/data
+RUN mkdir -p /app/uploads /app/data /app/state && chown quiver:quiver /app /app/uploads /app/data /app/state
 USER quiver
 EXPOSE 3001
 CMD ["node", "--import", "./scripts/otel-resource-policy.mjs", "--import", "@elastic/opentelemetry-node", "dist/index.js"]
