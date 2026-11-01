@@ -210,14 +210,14 @@ const fieldCapsResult = await check('field-caps', async () => {
   }
 
   if (environment === 'dev') {
-    requireKeyword(output[auditPattern], 'attributes.correlationId.keyword', auditPattern);
-    requireKeyword(output[auditPattern], 'attributes.requestId.keyword', auditPattern);
-    requireKeyword(output[auditPattern], 'attributes.releaseSha.keyword', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.correlationId', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.requestId', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.releaseSha', auditPattern);
   }
   if (environment === 'dev') {
-    requireKeyword(output[technicalPattern], 'attributes.correlationId.keyword', technicalPattern);
-    requireKeyword(output[technicalPattern], 'attributes.requestId.keyword', technicalPattern);
-    requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.correlationId', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.requestId', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.releaseSha', technicalPattern);
   }
   if (environment === 'prd') {
     validateProdFieldContract(output[technicalPattern], phase);
@@ -257,7 +257,7 @@ if (environment === 'dev') await check('search-audit', async () => {
         bool: {
           filter: [
             recentRange(),
-            { term: { 'attributes.correlationId.keyword': correlationId } },
+            { term: { 'attributes.correlationId': correlationId } },
           ],
         },
       }
@@ -276,7 +276,7 @@ await check('search-technical', async () => {
         bool: {
           filter: [
             recentRange(),
-            { term: { 'attributes.correlationId.keyword': correlationId } },
+            { term: { 'attributes.correlationId': correlationId } },
           ],
         },
       }

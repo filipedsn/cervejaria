@@ -37,15 +37,15 @@ export class ElasticsearchSources implements AlertSource, SignalSource {
   }
 
   findByCorrelationId(correlationId: string, options: LookupOptions): Promise<RawEventDocument[]> {
-    return this.findExact('attributes.correlationId.keyword', correlationId, options);
+    return this.findExact('attributes.correlationId', correlationId, options);
   }
 
   findByRequestId(requestId: string, options: LookupOptions): Promise<RawEventDocument[]> {
-    return this.findExact('attributes.requestId.keyword', requestId, options);
+    return this.findExact('attributes.requestId', requestId, options);
   }
 
   findByTraceId(traceId: string, options: LookupOptions): Promise<RawEventDocument[]> {
-    return this.findExact('trace_id.keyword', traceId, options);
+    return this.findExact('trace_id', traceId, options);
   }
 
   findAuditAround(options: AroundOptions): Promise<RawEventDocument[]> {
@@ -59,7 +59,7 @@ export class ElasticsearchSources implements AlertSource, SignalSource {
   async findByReleaseAndService(options: ReleaseServiceOptions): Promise<RawEventDocument[]> {
     validateIdentifier(options.releaseSha, 'releaseSha');
     validateIdentifier(options.service, 'service');
-    const body = searchBody({ bool: { filter: [rangeFilter(options.range), { term: { 'attributes.releaseSha.keyword': options.releaseSha } }, { term: { 'attributes.service.keyword': options.service } }] } }, SIGNAL_SOURCE_FIELDS, boundedLimit(options.limit, ANALYST_LIMITS.fallbackPerSource));
+    const body = searchBody({ bool: { filter: [rangeFilter(options.range), { term: { 'attributes.releaseSha': options.releaseSha } }, { term: { 'attributes.service': options.service } }] } }, SIGNAL_SOURCE_FIELDS, boundedLimit(options.limit, ANALYST_LIMITS.fallbackPerSource));
     const [audit, technical] = await Promise.all([
       this.find(this.indices.audit, 'audit', body), this.find(this.indices.technical, 'technical', body),
     ]);

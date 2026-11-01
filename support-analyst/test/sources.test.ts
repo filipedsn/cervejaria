@@ -49,10 +49,10 @@ test('exact lookup templates query only approved DEV audit and technical pattern
   await source.findByReleaseAndService({ releaseSha: 'release-01', service: 'quiver-api', range, limit: 3 });
   assert.equal(calls.length, 8);
   assert.ok(calls.every((call) => /logs-(audit|technical)\*\.otel-dev\*/.test(call.url)));
-  assert.deepEqual(body(calls[0]!).query.bool.filter[1], { term: { 'attributes.correlationId.keyword': 'corr-01' } });
-  assert.deepEqual(body(calls[2]!).query.bool.filter[1], { term: { 'attributes.requestId.keyword': 'request-01' } });
-  assert.deepEqual(body(calls[4]!).query.bool.filter[1], { term: { 'trace_id.keyword': 'trace-01' } });
-  assert.deepEqual(body(calls[6]!).query.bool.filter.slice(1), [{ term: { 'attributes.releaseSha.keyword': 'release-01' } }, { term: { 'attributes.service.keyword': 'quiver-api' } }]);
+  assert.deepEqual(body(calls[0]!).query.bool.filter[1], { term: { 'attributes.correlationId': 'corr-01' } });
+  assert.deepEqual(body(calls[2]!).query.bool.filter[1], { term: { 'attributes.requestId': 'request-01' } });
+  assert.deepEqual(body(calls[4]!).query.bool.filter[1], { term: { 'trace_id': 'trace-01' } });
+  assert.deepEqual(body(calls[6]!).query.bool.filter.slice(1), [{ term: { 'attributes.releaseSha': 'release-01' } }, { term: { 'attributes.service': 'quiver-api' } }]);
   assert.ok(calls.every((call) => body(call)._source.includes('body') === false));
   assert.ok(calls.every((call) => body(call).timeout === '5s'));
 });
