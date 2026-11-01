@@ -23,6 +23,8 @@ export interface CervejariaAuthPayload {
   corPaleta: BrandThemeV2 | null;
   exibirKpisComanda: boolean;
   comandasColunaUnica: boolean;
+  comandasAlarmeAtivo: boolean;
+  comandasAlarmeIntervaloSegundos: number;
   usaCardapio: boolean;
   updatedAt: string;
   /** Versão do arquivo/registro da logo para invalidar o cache do navegador. */
@@ -41,6 +43,8 @@ type CervejariaBrandingRow = {
   corPaleta: unknown;
   exibirKpisComanda: boolean;
   comandasColunaUnica: boolean;
+  comandasAlarmeAtivo: boolean;
+  comandasAlarmeIntervaloSegundos: number;
   usaCardapio: boolean;
   updatedAt: Date;
   portalBackgroundUrl?: string | null;
@@ -74,6 +78,8 @@ export function formatCervejariaAuth(cervejaria: CervejariaBrandingRow): Cerveja
     corPaleta: theme,
     exibirKpisComanda: cervejaria.exibirKpisComanda,
     comandasColunaUnica: cervejaria.comandasColunaUnica,
+    comandasAlarmeAtivo: cervejaria.comandasAlarmeAtivo,
+    comandasAlarmeIntervaloSegundos: cervejaria.comandasAlarmeIntervaloSegundos,
     // Compatibilidade para clientes antigos: cardápios salvos sempre disponíveis.
     usaCardapio: true,
     updatedAt: cervejaria.updatedAt.toISOString(),

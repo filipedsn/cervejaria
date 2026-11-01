@@ -49,6 +49,10 @@ export interface Cervejaria {
   exibirKpisComanda?: boolean;
   /** Lista em coluna única (true) ou duas colunas (false). */
   comandasColunaUnica?: boolean;
+  /** Alarme recorrente na tela de comandas (Servir / solicitação de pagamento). */
+  comandasAlarmeAtivo?: boolean;
+  /** Intervalo em segundos entre toques (5–120). */
+  comandasAlarmeIntervaloSegundos?: number;
   /** Cardápios com preço por evento (cervejaria). */
   usaCardapio?: boolean;
 }

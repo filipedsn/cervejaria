@@ -37,6 +37,8 @@ const updateOperacaoSchema = z
   .object({
     exibirKpisComanda: z.boolean().optional(),
     comandasColunaUnica: z.boolean().optional(),
+    comandasAlarmeAtivo: z.boolean().optional(),
+    comandasAlarmeIntervaloSegundos: z.number().int().min(5).max(120).optional(),
     // Mantido para que clientes antigos ainda possam enviar a preferência;
     // o valor é ignorado porque o fluxo tradicional agora é único.
     usaCardapio: z.boolean().optional(),
@@ -45,6 +47,8 @@ const updateOperacaoSchema = z
     (body) =>
       body.exibirKpisComanda !== undefined ||
       body.comandasColunaUnica !== undefined ||
+      body.comandasAlarmeAtivo !== undefined ||
+      body.comandasAlarmeIntervaloSegundos !== undefined ||
       body.usaCardapio !== undefined,
     { message: 'Informe ao menos uma preferência' },
   );
@@ -201,6 +205,10 @@ export async function cervejariaRoutes(app: FastifyInstance) {
       data: {
         ...(body.exibirKpisComanda !== undefined ? { exibirKpisComanda: body.exibirKpisComanda } : {}),
         ...(body.comandasColunaUnica !== undefined ? { comandasColunaUnica: body.comandasColunaUnica } : {}),
+        ...(body.comandasAlarmeAtivo !== undefined ? { comandasAlarmeAtivo: body.comandasAlarmeAtivo } : {}),
+        ...(body.comandasAlarmeIntervaloSegundos !== undefined
+          ? { comandasAlarmeIntervaloSegundos: body.comandasAlarmeIntervaloSegundos }
+          : {}),
       },
     });
     return formatCervejariaAuth(updated);

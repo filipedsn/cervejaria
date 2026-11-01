@@ -22,6 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import { connectSocket, getSocket } from '../../lib/socket';
 import { useAtendimentoBalcao } from '../../hooks/useAtendimentoBalcao';
+import { useComandasAtendimentoAlarme } from '../../hooks/useComandasAtendimentoAlarme';
 import {
   mesasOperacionais,
   ordenarComandasAbertasOperacao,
@@ -124,6 +125,18 @@ export function OperacaoComandasPage() {
   const abertasTurno = sessaoCaixaId && !abertasQuery.isError ? (abertasQuery.data ?? []) : [];
   const fechadasTurno = sessaoCaixaId && !fechadasQuery.isError ? (fechadasQuery.data ?? []) : [];
   const erroConsultaComandas = abertasQuery.isError || fechadasQuery.isError;
+
+  const precisaAlarmeAtendimento = useMemo(
+    () =>
+      pendentes.length > 0 ||
+      abertasTurno.some((comanda) => Boolean(comanda.solicitacaoPagamentoEm)),
+    [abertasTurno, pendentes],
+  );
+  useComandasAtendimentoAlarme({
+    ativo: cervejaria?.comandasAlarmeAtivo ?? true,
+    intervaloSegundos: cervejaria?.comandasAlarmeIntervaloSegundos ?? 10,
+    precisaAlarme: precisaAlarmeAtendimento,
+  });
 
   const quantidadeMesas = contexto.ativo ? (contexto.quantidadeMesas ?? 0) : 0;
   const mesas = useMemo(

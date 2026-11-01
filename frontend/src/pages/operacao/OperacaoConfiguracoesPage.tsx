@@ -14,6 +14,7 @@ import { OperationalCapabilitiesPanel } from '../../components/OperationalCapabi
 import { ConfigMesasOperacaoPanel } from '../../components/ConfigMesasOperacaoPanel';
 import { ConfigKpisComandaPanel } from '../../components/ConfigKpisComandaPanel';
 import { ConfigComandasLayoutPanel } from '../../components/ConfigComandasLayoutPanel';
+import { ConfigComandasAlarmePanel } from '../../components/ConfigComandasAlarmePanel';
 import { ConfigChavePixPanel } from '../../components/ConfigChavePixPanel';
 import { OnboardingManualEntry } from '../../components/OnboardingManualEntry';
 import { CozinhaVisualSettingsPanel } from '../../components/operacao/CozinhaVisualSettingsPanel';
@@ -94,7 +95,9 @@ export function OperacaoConfiguracoesPage() {
         <ConfigurationGroup title="Tela de comandas">
           <ConfigKpisComandaPanel />
           <ConfigComandasLayoutPanel />
+          <ConfigComandasAlarmePanel />
         </ConfigurationGroup>
+
         <ConfigurationGroup title="Cozinha">
           <CozinhaVisualSettingsPanel />
         </ConfigurationGroup>
