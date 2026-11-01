@@ -6,6 +6,7 @@ import {
   aplicarStatusPedidoCozinha,
   filtrarItensAtendimentoBalcao,
   filtroListaPedidosCozinha,
+  pedidoVaiParaCozinha,
   resumoPedidoCozinha,
 } from './cozinha.js';
 
@@ -109,6 +110,16 @@ describe('filtroListaPedidosCozinha', () => {
         { status: 'ENTREGUE', diaOperacional: hoje },
       ],
     });
+  });
+});
+
+describe('pedidoVaiParaCozinha / balcão portal', () => {
+  it('pedido só de bebida sem preparo não vai à cozinha', () => {
+    assert.equal(pedidoVaiParaCozinha([{ exigePreparo: false }, { exigePreparo: false }]), false);
+  });
+
+  it('qualquer item com preparo manda o pedido à cozinha', () => {
+    assert.equal(pedidoVaiParaCozinha([{ exigePreparo: false }, { exigePreparo: true }]), true);
   });
 });
 

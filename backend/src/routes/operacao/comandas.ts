@@ -16,6 +16,7 @@ import {
 } from '../../lib/operacao/venda.js';
 import {
   STATUS_NA_FILA,
+  marcarPedidosBalcaoAtendidos,
   notificarPedidoNovo,
   notificarPedidosDaComanda,
   notificarComandaOperacaoAtualizada,
@@ -536,6 +537,35 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
 
     return resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+  });
+
+  /** Confirma Servir do portal: pedidos sem preparo passam RECEBIDO → ENTREGUE (rótulo Atendido no cliente). */
+  app.post('/:id/atendimento-balcao', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id: comandaId } = request.params as { id: string };
+    const body = z.object({
+      pedidoIds: z.array(z.string().min(1)).min(1).max(50),
+    }).parse(request.body);
+
+    const comanda = await prisma.comanda.findFirst({
+      where: whereComandaOperacao(cervejariaId, { id: comandaId, status: 'ABERTA' }),
+      select: { id: true },
+    });
+    if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada ou já fechada.' });
+
+    const atendidos = await prisma.$transaction(async (tx) =>
+      marcarPedidosBalcaoAtendidos(tx, {
+        cervejariaId,
+        comandaId,
+        pedidoIds: body.pedidoIds,
+      }),
+    );
+
+    if (atendidos.length > 0) {
+      notificarComandaOperacaoAtualizada(app, cervejariaId, comandaId);
+    }
+
+    return { atendidos };
   });
 
   app.patch('/:id/pedidos/:pedidoId/cliente-avisado', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {

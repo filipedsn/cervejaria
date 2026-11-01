@@ -43,6 +43,22 @@ type PdvCardapio = {
 
 type PdvCardapioResponse = PdvCardapio | PdvProduct[];
 
+type PdvComandaItem = {
+  nome: string;
+  quantidade: number;
+  subtotal: number;
+  exigePreparo?: boolean;
+  cancelamentoPendenteEm?: string | null;
+  canceladoEm?: string | null;
+};
+
+type PdvComandaPedido = {
+  id: string;
+  numero: number;
+  status: StatusPedido | string;
+  itens: PdvComandaItem[];
+};
+
 type PdvComanda = {
   id: string;
   numero: number | null;
@@ -52,20 +68,40 @@ type PdvComanda = {
   desconto: number;
   valorEmAberto: number;
   solicitacaoPagamentoEm?: string | null;
-  pedidos: Array<{ id: string; numero: number; status: StatusPedido | string; itens: Array<{ nome: string; quantidade: number; subtotal: number; cancelamentoPendenteEm?: string | null; canceladoEm?: string | null }> }>;
+  pedidos: PdvComandaPedido[];
 };
 
-function rotuloStatusPortal(status: string): string {
-  switch (status) {
+/** Pedidos só de balcão (sem preparo): no portal aparecem Solicitado / Atendido. */
+function pedidoSomenteBalcao(pedido: PdvComandaPedido): boolean {
+  const ativos = pedido.itens.filter((item) => !item.canceladoEm);
+  return ativos.length > 0 && ativos.every((item) => !item.exigePreparo);
+}
+
+function rotuloStatusPortal(pedido: PdvComandaPedido): string {
+  if (pedidoSomenteBalcao(pedido)) {
+    switch (pedido.status) {
+      case 'RECEBIDO':
+        return 'Solicitado';
+      case 'ENTREGUE':
+        return 'Atendido';
+      case 'CANCELAMENTO_PENDENTE':
+      case 'CANCELADO':
+        return rotuloStatusPedido(pedido.status as StatusPedido);
+      default:
+        // Estados de cozinha não deveriam aparecer; ainda assim evita "Na fila".
+        return 'Solicitado';
+    }
+  }
+  switch (pedido.status) {
     case 'RECEBIDO':
     case 'EM_PREPARO':
     case 'PRONTO':
     case 'ENTREGUE':
     case 'CANCELAMENTO_PENDENTE':
     case 'CANCELADO':
-      return rotuloStatusPedido(status);
+      return rotuloStatusPedido(pedido.status as StatusPedido);
     default:
-      return status;
+      return pedido.status;
   }
 }
 
@@ -625,7 +661,7 @@ export function PortalPdvPage() {
                 {displayedComanda?.pedidos?.length ? displayedComanda.pedidos.map((pedido) => (
                   <article key={pedido.id}>
                     <strong>Pedido #{pedido.numero}</strong>
-                    <span>{rotuloStatusPortal(pedido.status)}</span>
+                    <span>{rotuloStatusPortal(pedido)}</span>
                     {itensValidos(pedido.itens).map((item, index) => (
                       <p key={`${item.nome}-${index}`}>{item.quantidade}x {item.nome}<small>R$ {item.subtotal.toFixed(2).replace('.', ',')}</small></p>
                     ))}

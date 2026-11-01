@@ -192,6 +192,46 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
   return itens.some((item) => item.exigePreparo);
 }
 
+/**
+ * Pedidos só de balcão (sem item de preparo) saem de RECEBIDO direto para ENTREGUE
+ * quando o atendente confirma Servir — a fila da cozinha não se aplica.
+ */
+export async function marcarPedidosBalcaoAtendidos(
+  tx: TxClient,
+  params: {
+    cervejariaId: string;
+    comandaId: string;
+    pedidoIds: string[];
+  },
+  agora = new Date(),
+): Promise<string[]> {
+  const ids = [...new Set(params.pedidoIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const pedidos = await tx.pedidoOperacao.findMany({
+    where: {
+      id: { in: ids },
+      cervejariaId: params.cervejariaId,
+      comandaId: params.comandaId,
+      status: 'RECEBIDO',
+    },
+    select: {
+      id: true,
+      status: true,
+      itensComanda: { select: { exigePreparo: true, canceladoEm: true } },
+    },
+  });
+
+  const atendidos: string[] = [];
+  for (const pedido of pedidos) {
+    const ativos = pedido.itensComanda.filter((item) => !item.canceladoEm);
+    if (ativos.length === 0 || pedidoVaiParaCozinha(ativos)) continue;
+    await aplicarStatusPedidoCozinha(tx, pedido, 'ENTREGUE', agora);
+    atendidos.push(pedido.id);
+  }
+  return atendidos;
+}
+
 /** O status da cozinha pode ser CANCELADO após cancelar apenas o último item de preparo.
  * CANCELAMENTO_PENDENTE ou uma solicitação antiga ainda marcada em item de preparo
  * identificam o cancelamento integral do pedido. */

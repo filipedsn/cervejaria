@@ -193,6 +193,15 @@ export function OperacaoComandaDetailPage() {
     onSuccess: invalidar,
   });
 
+  const confirmarAtendimentoBalcao = useMutation({
+    mutationFn: (pedidoIds: string[]) =>
+      api.post<{ atendidos: string[] }>(`/api/operacao/comandas/${id}/atendimento-balcao`, { pedidoIds }),
+    onSuccess: () => {
+      if (id) marcarAtendido(id);
+      invalidar();
+    },
+  });
+
   useEffect(() => {
     if (!cervejaria) return;
 
@@ -575,9 +584,17 @@ export function OperacaoComandaDetailPage() {
             <button
               type="button"
               className="touch-btn-secondary touch-btn-sm"
-              onClick={() => marcarAtendido(id)}
+              disabled={confirmarAtendimentoBalcao.isPending}
+              onClick={() => {
+                const pedidoIds = atendimentoPendente.pedidoIds;
+                if (!pedidoIds.length) {
+                  marcarAtendido(id);
+                  return;
+                }
+                confirmarAtendimentoBalcao.mutate(pedidoIds);
+              }}
             >
-              Atendido
+              {confirmarAtendimentoBalcao.isPending ? 'Confirmando...' : 'Atendido'}
             </button>
           </div>
         )}
