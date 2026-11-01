@@ -13,8 +13,13 @@ services:
       - .env.observability
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Grupo adm (gid 4 no Ubuntu): leitura de /var/log/nginx e /var/log/auth.log (640 root|syslog:adm).
+    # Restarts vêm do arquivo do cron docker-state.sh; o socket do Docker não é montado.
+    group_add:
+      - "4"
     volumes:
       - ../observability/otel-collector-config.prd.yml:/etc/otelcol-contrib/config.yaml:ro
+      - /var/log:/var/log/host:ro
     ports:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"

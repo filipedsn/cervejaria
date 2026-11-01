@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-ssh-bruteforce-prd",
+  "tags": ["quiver-tap", "observability", "production", "infra", "seguranca", "ssh"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "index": ["logs-ssh_auth.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"terms\":{\"attributes.ssh.event\":[\"Failed password\",\"Failed publickey\",\"Invalid user\"]}}]}}}",
+    "size": 10,
+    "timeWindowSize": 10,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [50],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

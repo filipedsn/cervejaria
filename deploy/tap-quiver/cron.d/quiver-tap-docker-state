@@ -1,0 +1,6 @@
+# Estado dos contêineres para o Elastic (TAP-161): a cada minuto, JSON Lines em /var/log/quiver-docker-state.log.
+# Instalado no VPS em /etc/cron.d/quiver-tap-docker-state.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+# min hora dom mes dow user comando
+* * * * * root /opt/quiver-tap/deploy/tap-quiver/docker-state.sh >/dev/null 2>&1

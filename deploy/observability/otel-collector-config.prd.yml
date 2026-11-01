@@ -57,6 +57,84 @@ receivers:
           system.paging.utilization:
             enabled: true
 
+  # Logs do host montados em /var/log/host (somente leitura). Query string fora da URL: pode carregar tokens.
+  filelog/nginx:
+    include: [/var/log/host/nginx/access.log]
+    start_at: end
+    operators:
+      - type: regex_parser
+        regex: '^(?P<edge_ip>\S+) \S+ (?P<remote_user>\S+) \[(?P<time>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>[^ "?]+)(?:\?[^ "]*)? (?P<proto>[^"]+)" (?P<status>\d{3}) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"'
+        timestamp:
+          parse_from: attributes.time
+          layout_type: strptime
+          layout: '%d/%b/%Y:%H:%M:%S %z'
+        on_error: send_quiet
+      - type: move
+        from: attributes.method
+        to: attributes["http.request.method"]
+        if: 'attributes.method != nil'
+      - type: move
+        from: attributes.path
+        to: attributes["url.path"]
+        if: 'attributes.path != nil'
+      - type: move
+        from: attributes.status
+        to: attributes["http.response.status_code"]
+        if: 'attributes.status != nil'
+      - type: move
+        from: attributes.ua
+        to: attributes["user_agent.original"]
+        if: 'attributes.ua != nil'
+      - type: move
+        from: attributes.edge_ip
+        to: attributes["source.address"]
+        if: 'attributes.edge_ip != nil'
+      - type: remove
+        field: attributes.time
+        if: 'attributes.time != nil'
+      - type: add
+        field: attributes["data_stream.dataset"]
+        value: nginx_access
+
+  filelog/ssh:
+    include: [/var/log/host/auth.log]
+    start_at: end
+    operators:
+      - type: filter
+        expr: 'not (body matches "sshd")'
+      - type: regex_parser
+        regex: '(?P<ssh_event>Failed password|Failed publickey|Invalid user|Accepted publickey|Accepted password|Connection closed by authenticating user|Disconnected from authenticating user)(?: for)?(?: invalid user)? ?(?P<ssh_user>\S+)? from (?P<src_ip>[0-9a-fA-F:.]+)'
+        on_error: send_quiet
+      - type: move
+        from: attributes.ssh_event
+        to: attributes["ssh.event"]
+        if: 'attributes.ssh_event != nil'
+      - type: move
+        from: attributes.ssh_user
+        to: attributes["user.name"]
+        if: 'attributes.ssh_user != nil'
+      - type: move
+        from: attributes.src_ip
+        to: attributes["source.address"]
+        if: 'attributes.src_ip != nil'
+      - type: add
+        field: attributes["data_stream.dataset"]
+        value: ssh_auth
+
+  filelog/docker:
+    include: [/var/log/host/quiver-docker-state.log]
+    start_at: end
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.ts
+          layout_type: gotime
+          layout: '2006-01-02T15:04:05Z07:00'
+        on_error: send_quiet
+      - type: add
+        field: attributes["data_stream.dataset"]
+        value: docker_state
+
 processors:
   transform/dataset:
     error_mode: propagate
@@ -122,6 +200,20 @@ processors:
           - set(attributes["deployment.environment.name"], "infra")
           - set(attributes["service.name"], "quiver-tap-infra")
 
+  transform/infra-logs:
+    error_mode: ignore
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["data_stream.namespace"], "infra")
+          - set(attributes["deployment.environment.name"], "infra")
+          - set(attributes["service.name"], "quiver-tap-infra")
+      - context: log
+        statements:
+          - set(attributes["http.response.status_code"], Int(attributes["http.response.status_code"])) where attributes["http.response.status_code"] != nil
+          - set(attributes["http.response.body.bytes"], Int(attributes["bytes"])) where attributes["bytes"] != nil
+          - delete_key(attributes, "bytes")
+
   filter/infra-allowlist:
     error_mode: ignore
     metrics:
@@ -150,10 +242,11 @@ processors:
         type: latency
         latency:
           threshold_ms: 500
+      # 100%: toda transação fica registrada (tráfego baixo; retenção de traces PRD é de 7 dias).
       - name: probabilistic
         type: probabilistic
         probabilistic:
-          sampling_percentage: 15
+          sampling_percentage: 100
 
   batch:
     timeout: 5s
@@ -190,4 +283,8 @@ service:
     logs:
       receivers: [otlp]
       processors: [transform/namespace, filter/prd-only, transform/dataset, batch]
+      exporters: [elasticsearch]
+    logs/infra:
+      receivers: [filelog/nginx, filelog/ssh, filelog/docker]
+      processors: [transform/infra-logs, batch]
       exporters: [elasticsearch]
