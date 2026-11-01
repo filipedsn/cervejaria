@@ -40,7 +40,8 @@ import {
   podeIncrementarLinhaCarrinho,
   produtosOperacionaisUrl,
   rotuloComanda,
-  rotuloStatusPedido,
+  rotuloStatusItemPedido,
+  rotuloStatusPedidoResumo,
   resumirItensComanda,
   temPedidoCozinhaPendente,
   totalItensComanda,
@@ -191,6 +192,23 @@ export function OperacaoComandaDetailPage() {
   const resolverSolicitacao = useMutation({
     mutationFn: () => api.delete(`/api/operacao/comandas/${id}/solicitacao-pagamento`, {}),
     onSuccess: invalidar,
+  });
+
+  const confirmarAtendimentoBalcao = useMutation({
+    mutationFn: (pedidoIds: string[]) =>
+      api.post<{ atendidos: string[] }>(`/api/operacao/comandas/${id}/atendimento-balcao`, { pedidoIds }),
+    onSuccess: () => {
+      if (id) marcarAtendido(id);
+      setErro('');
+      invalidar();
+    },
+    onError: (error) => {
+      setErro(
+        error instanceof ApiError
+          ? error.message
+          : 'Não foi possível confirmar o atendimento do balcão. Atualize a página e tente de novo.',
+      );
+    },
   });
 
   useEffect(() => {
@@ -575,9 +593,17 @@ export function OperacaoComandaDetailPage() {
             <button
               type="button"
               className="touch-btn-secondary touch-btn-sm"
-              onClick={() => marcarAtendido(id)}
+              disabled={confirmarAtendimentoBalcao.isPending}
+              onClick={() => {
+                const pedidoIds = atendimentoPendente.pedidoIds;
+                if (!pedidoIds.length) {
+                  marcarAtendido(id);
+                  return;
+                }
+                confirmarAtendimentoBalcao.mutate(pedidoIds);
+              }}
             >
-              Atendido
+              {confirmarAtendimentoBalcao.isPending ? 'Confirmando...' : 'Entregue'}
             </button>
           </div>
         )}
@@ -685,13 +711,13 @@ export function OperacaoComandaDetailPage() {
                 Senha {pedido.numero}
               </span>
               <div className="flex min-w-0 items-center gap-2">
-                {naCozinha && (
+                {(naCozinha || pedido.itens.some((item) => !item.exigePreparo && !item.canceladoEm)) && (
                   <span
                     className={`text-xs font-semibold ${
-                      confirmado ? 'text-green-600' : 'text-amber-600'
+                      confirmado || rotuloStatusPedidoResumo(pedido) === 'Entregue' ? 'text-green-600' : 'text-amber-600'
                     }`}
                   >
-                    {rotuloStatusPedido(pedido.status)}
+                    {rotuloStatusPedidoResumo(pedido)}
                   </span>
                 )}
               </div>
@@ -745,12 +771,14 @@ export function OperacaoComandaDetailPage() {
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {!item.canceladoEm && (
-                      <span className={`max-w-[7.5rem] text-right text-xs font-semibold tabular-nums sm:max-w-none sm:text-sm ${itemConfirmado ? '' : 'text-ink-faint'}`}>
+                      <span className={`max-w-[9rem] text-right text-xs font-semibold tabular-nums sm:max-w-none sm:text-sm ${itemConfirmado ? '' : 'text-ink-faint'}`}>
                         {item.cancelamentoPendenteEm
                           ? `Cancelamento pendente · ${formatCurrency(item.subtotal)}`
-                          : itemConfirmado
-                            ? formatCurrency(item.subtotal)
-                            : `Pendente · ${formatCurrency(item.subtotal)}`}
+                          : pedido.itens.filter((linha) => !linha.canceladoEm).length > 1
+                            ? `${rotuloStatusItemPedido(pedido, item)} · ${formatCurrency(item.subtotal)}`
+                            : itemConfirmado
+                              ? formatCurrency(item.subtotal)
+                              : `Pendente · ${formatCurrency(item.subtotal)}`}
                       </span>
                     )}
                     {removivel && (

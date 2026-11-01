@@ -182,6 +182,8 @@ export interface ItemPedido {
   volumeMl: number;
   subtotal: number;
   exigePreparo: boolean;
+  /** Confirmação Servir do balcão (item sem preparo). */
+  balcaoAtendidoEm?: string | null;
   cancelamentoPendenteEm?: string | null;
   canceladoEm?: string | null;
   cancelamentosEntregue?: Array<{
@@ -481,6 +483,34 @@ export function rotuloStatusPedido(status: StatusPedido): string {
     case 'CANCELADO':
       return 'Cancelado';
   }
+}
+
+/** Status operacional por item: balcão e cozinha usam o mesmo vocabulário (Entregue). */
+export function rotuloStatusItemPedido(
+  pedido: Pick<PedidoOperacao, 'status'>,
+  item: Pick<ItemPedido, 'exigePreparo' | 'balcaoAtendidoEm' | 'cancelamentoPendenteEm' | 'canceladoEm'>,
+): string {
+  if (item.canceladoEm) return 'Cancelado';
+  if (item.cancelamentoPendenteEm) return 'Cancelamento solicitado';
+  if (!item.exigePreparo) {
+    if (item.balcaoAtendidoEm || pedido.status === 'ENTREGUE') return 'Entregue';
+    return 'Solicitado';
+  }
+  return rotuloStatusPedido(pedido.status);
+}
+
+/**
+ * Rótulo do cabeçalho do pedido. Com vários itens de status distintos, usa Parcial
+ * para não mascarar latões entregues com a fila da porção.
+ */
+export function rotuloStatusPedidoResumo(pedido: PedidoOperacao): string {
+  const ativos = pedido.itens.filter((item) => !item.canceladoEm);
+  if (ativos.length === 0) return rotuloStatusPedido(pedido.status);
+  const rotulos = ativos.map((item) => rotuloStatusItemPedido(pedido, item));
+  if (ativos.length === 1) return rotulos[0]!;
+  const unicos = new Set(rotulos);
+  if (unicos.size === 1) return rotulos[0]!;
+  return 'Parcial';
 }
 
 /** Comandas fechadas a partir da abertura do turno de caixa (praia de dia, rua à noite). */

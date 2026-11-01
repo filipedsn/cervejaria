@@ -5,6 +5,7 @@ import { emitToCervejaria } from '../realtime.js';
 import { listCategoriasEstabelecimento } from '../portal-categorias.js';
 import { categoriasElegiveisAlertaBalcao } from '../portal-categorias-policy.js';
 import { categoriaParaAlertaBalcao } from '../produto-utils.js';
+import { normalizeCategoriaProduto } from './categorias.js';
 import { toNumber } from '../utils.js';
 
 type TxClient = Prisma.TransactionClient;
@@ -191,6 +192,61 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
   return itens.some((item) => item.exigePreparo);
 }
 
+/**
+ * Confirma Servir nos itens sem preparo (por item via balcaoAtendidoEm).
+ * Pedido só de balcão em RECEBIDO vira ENTREGUE. Pedido misto/cozinha
+ * permanece na fila — o status operacional dos latões fica no item.
+ */
+export async function marcarPedidosBalcaoAtendidos(
+  tx: TxClient,
+  params: {
+    cervejariaId: string;
+    comandaId: string;
+    pedidoIds: string[];
+  },
+  agora = new Date(),
+): Promise<string[]> {
+  const ids = [...new Set(params.pedidoIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const pedidos = await tx.pedidoOperacao.findMany({
+    where: {
+      id: { in: ids },
+      cervejariaId: params.cervejariaId,
+      comandaId: params.comandaId,
+      status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] },
+    },
+    select: {
+      id: true,
+      status: true,
+      itensComanda: {
+        select: { id: true, exigePreparo: true, canceladoEm: true, balcaoAtendidoEm: true },
+      },
+    },
+  });
+
+  const atendidos: string[] = [];
+  for (const pedido of pedidos) {
+    const balcaoPendentes = pedido.itensComanda.filter(
+      (item) => !item.canceladoEm && !item.exigePreparo && !item.balcaoAtendidoEm,
+    );
+    if (balcaoPendentes.length === 0) continue;
+
+    await tx.itemComanda.updateMany({
+      where: { id: { in: balcaoPendentes.map((item) => item.id) } },
+      data: { balcaoAtendidoEm: agora },
+    });
+
+    const ativos = pedido.itensComanda.filter((item) => !item.canceladoEm);
+    const temCozinha = ativos.some((item) => item.exigePreparo);
+    if (!temCozinha && pedido.status === 'RECEBIDO') {
+      await aplicarStatusPedidoCozinha(tx, pedido, 'ENTREGUE', agora);
+    }
+    atendidos.push(pedido.id);
+  }
+  return atendidos;
+}
+
 /** O status da cozinha pode ser CANCELADO após cancelar apenas o último item de preparo.
  * CANCELAMENTO_PENDENTE ou uma solicitação antiga ainda marcada em item de preparo
  * identificam o cancelamento integral do pedido. */
@@ -276,13 +332,18 @@ export function filtrarItensAtendimentoBalcao(
     exigePreparo: boolean;
     canceladoEm: Date | null;
     categoria?: string | null;
+    categoriaPdvNome?: string | null;
     tipo?: string | null;
     formato?: string | null;
   }>,
   categoriasAlerta: string[] | null,
 ): AtendimentoBalcaoPayload['itens'] {
   if (!Array.isArray(categoriasAlerta) || categoriasAlerta.length === 0) return [];
-  const allowed = new Set(categoriasAlerta.map((name) => name.trim()).filter(Boolean));
+  const allowed = new Set(
+    categoriasAlerta
+      .map((name) => normalizeCategoriaProduto(name.trim()))
+      .filter(Boolean),
+  );
   if (allowed.size === 0) return [];
 
   return itens
@@ -329,7 +390,14 @@ export async function notificarAtendimentoBalcaoPortal(
           volumeMl: true,
           exigePreparo: true,
           canceladoEm: true,
-          produto: { select: { categoria: true, tipo: true, formato: true } },
+          produto: {
+            select: {
+              categoria: true,
+              tipo: true,
+              formato: true,
+              categoriaPdv: { select: { nome: true } },
+            },
+          },
         },
       },
       comanda: {
@@ -348,6 +416,7 @@ export async function notificarAtendimentoBalcaoPortal(
       pedido.itensComanda.map((item) => ({
         ...item,
         categoria: item.produto?.categoria ?? null,
+        categoriaPdvNome: item.produto?.categoriaPdv?.nome ?? null,
         tipo: item.produto?.tipo ?? null,
         formato: item.produto?.formato ?? null,
       })),

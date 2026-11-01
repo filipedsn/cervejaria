@@ -1,4 +1,5 @@
 import type { FormatoBebida, ProdutoTipo } from '@prisma/client';
+import { normalizeCategoriaProduto } from './operacao/categorias.js';
 
 export const UNIT_ML = 1;
 
@@ -43,11 +44,13 @@ export const CATEGORIA_CHOPE = 'Chope';
 /** Categoria usada no gate do alerta de balcão (null + chope → "Chope"). */
 export function categoriaParaAlertaBalcao(produto: {
   categoria?: string | null;
+  /** Nome canônico PDV, preferido sobre a projeção legada `categoria`. */
+  categoriaPdvNome?: string | null;
   tipo?: string | null;
   formato?: string | null;
 }): string {
-  const named = produto.categoria?.trim();
-  if (named) return named;
+  const named = produto.categoriaPdvNome?.trim() || produto.categoria?.trim();
+  if (named) return normalizeCategoriaProduto(named);
   if (
     produto.tipo &&
     isChopeConfiguravelNaTapOperacao({
