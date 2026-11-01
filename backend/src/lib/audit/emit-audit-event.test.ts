@@ -1,6 +1,65 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildAuditPayload } from './emit-audit-event.js';
+import { runWithTelemetryContext, type TelemetryContext } from '../telemetry-context.js';
+
+const staffContext: TelemetryContext = {
+  slug: 'tenant-journey',
+  env: 'dev',
+  cervejariaId: 'tenant-journey-id',
+  actor: { type: 'usuario', id: 'staff-1', role: 'DONO', name: 'Maria Souza', email: 'maria@example.test' },
+  clientIp: '200.160.2.3',
+  clientIpSource: 'cloudflare',
+  clientCountryCode: 'BR',
+};
+
+test('jornada: registra quem (usuário), onde (IP, origem, país) e o dispositivo', () => {
+  const payload = runWithTelemetryContext(staffContext, () => buildAuditPayload({
+    action: 'ui.search',
+    message: 'Buscou "chope" em /operacao/comandas',
+    ui: { page: '/operacao/comandas', route: '/operacao/comandas', searchTerm: 'chope', viewport: '1280x720' },
+    client: { sessionId: 'abcdef0123456789abcdef0123456789', userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' },
+  }));
+  assert.equal(payload['user.id'], 'staff-1');
+  assert.equal(payload['user.name'], 'Maria Souza');
+  assert.equal(payload['user.email'], 'maria@example.test');
+  assert.equal(payload['user.roles'], 'DONO');
+  assert.equal(payload['client.address'], '200.160.2.3');
+  assert.equal(payload['client.ip_source'], 'cloudflare');
+  assert.equal(payload['client.geo.country_iso_code'], 'BR');
+  assert.equal(payload['session.id'], 'abcdef0123456789abcdef0123456789');
+  assert.equal(payload['user_agent.original'], 'Mozilla/5.0 (X11; Linux x86_64)');
+  assert.equal(payload['ui.route'], '/operacao/comandas');
+  assert.equal(payload['ui.search.term'], 'chope');
+  assert.equal(payload['ui.viewport'], '1280x720');
+});
+
+test('jornada: web vital e erro de interface viram campos próprios', () => {
+  const payload = runWithTelemetryContext(staffContext, () => buildAuditPayload({
+    action: 'ui.error',
+    message: 'Erro na interface em /operacao/caixa: boom',
+    outcome: 'failure',
+    vital: { name: 'LCP', value: 2300, rating: 'good' },
+    error: { message: 'boom', stackTrace: 'Error: boom\n    at x', type: 'TypeError' },
+  }));
+  assert.equal(payload['ui.vital.name'], 'LCP');
+  assert.equal(payload['ui.vital.value'], 2300);
+  assert.equal(payload['ui.vital.rating'], 'good');
+  assert.equal(payload['error.message'], 'boom');
+  assert.equal(payload['error.stack_trace'], 'Error: boom\n    at x');
+  assert.equal(payload['error.type'], 'TypeError');
+});
+
+test('cliente do portal não ganha nome nem e-mail e contexto sem IP não cria campos vazios', () => {
+  const payload = runWithTelemetryContext(
+    { slug: 'tenant-journey', env: 'dev', actor: { type: 'cliente-pdv', id: 'cliente-1', clienteId: 'cliente-1' } },
+    () => buildAuditPayload({ action: 'ui.click', message: 'Clicou' }),
+  );
+  assert.equal(payload['user.id'], 'cliente-1');
+  for (const key of ['user.name', 'user.email', 'user.roles', 'client.address', 'client.ip_source', 'session.id', 'user_agent.original']) {
+    assert.equal(Object.hasOwn(payload, key), false, key);
+  }
+});
 
 test('adds the isolated QA run marker to audit logs only from the runner process', () => {
   const previousMode = process.env.PDV_ISOLATED_QA;

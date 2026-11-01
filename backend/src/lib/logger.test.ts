@@ -55,3 +55,19 @@ test('redacts secrets recursively and preserves safe request context in a Pino c
   assert.doesNotMatch(output.lines[0] ?? '', /geo-value-must-not-appear/);
   assert.doesNotMatch(output.lines[0] ?? '', /should-not-appear|postgresql:\/\/user:pass/i);
 });
+
+test('audit journey keeps user e-mail and client address while still redacting tokens', () => {
+  const output = capture();
+  const log = createLoggerForDestination(output.destination);
+  log.info({
+    'user.email': 'maria@example.test',
+    'user.name': 'Maria Souza',
+    'client.address': '200.160.2.3',
+    'session.token': 'should-not-appear',
+  }, 'journey');
+  const event = JSON.parse(output.lines[0] ?? '{}') as Record<string, unknown>;
+  assert.equal(event['user.email'], 'maria@example.test');
+  assert.equal(event['user.name'], 'Maria Souza');
+  assert.equal(event['client.address'], '200.160.2.3');
+  assert.equal(event['session.token'], '[REDACTED]');
+});
