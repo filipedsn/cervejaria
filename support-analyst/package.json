@@ -27,6 +27,8 @@
     "analyst:health-smoke": "tsx src/health/smoke.ts",
     "analyst:pilot-once": "tsx src/index.ts --pilot-once",
     "analyst:pilot-run": "tsx src/index.ts --pilot-run",
+    "journey": "node --import ../scripts/node24-tsx-host.mjs --import tsx src/journey/cli.ts",
+    "watch-once": "tsx src/index.ts --watch-once",
     "start": "node dist/index.js"
   },
   "devDependencies": {

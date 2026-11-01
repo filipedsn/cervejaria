@@ -54,3 +54,14 @@ An authorized Elastic administrator must separately create/authorize the API key
 ## Release identity separation
 
 `RELEASE_SHA` remains the bridge runtime SHA `c195c77a18a254e992047693c51b108e80754db6`. A later merge commit for this validator-only PR is `TOOLING_SHA`; it must be used for support/release tooling only. The application artifact must continue to be built from `RELEASE_SHA`, never from `TOOLING_SHA` merely because the validator changed.
+
+## Capacidade ampliada (decisão do Filipe, 2026-11-01)
+
+Esta seção substitui, para o runtime do Support Analyst (WI-C, TAP-140), a restrição "audit PRD negado" do TAP-61. O restante deste documento permanece como histórico do TAP-61.
+
+- Identidade: `quiver-support-analyst-prd` (API key, expiração de 180 dias, renovada pelo Filipe).
+- Leitura (`read` + `view_index_metadata`, sem privilégio de cluster): `quiver-tap-alert-events`, `logs-technical*.otel-prd*`, `logs-audit*.otel-prd*` (jornada completa, com dados pessoais), `traces-*.otel-prd*`, `metrics-*.otel-prd*`, `metrics-*.otel-infra*`, `logs-*.otel-infra*`.
+- Continua negado: tudo `*otel-dev*`, `quiver-tap-alert-events-dev`, `.kibana*`, `.security*` e qualquer escrita (o validador confirma com `_has_privileges`).
+- Descritor exato para criar a chave (G11): [`prd-readonly-role.json`](prd-readonly-role.json). A política executável é `getPrivilegeScope('prd')` em `scripts/support-analyst/validator-policy.mjs`; um teste garante que os dois coincidem.
+- Travas de runtime: `SUPPORT_ANALYST_ALLOW_PRD=true`, `SUPPORT_ANALYST_CREDENTIAL_ENV=prd`, `SUPPORT_ANALYST_ENDPOINT_ENV=prd` e URL do Elasticsearch que não seja loopback.
+- Os dados pessoais lidos ficam no PC: a saída do comando `jornada` vai para `deploy/runtime/support-analyst/journeys/` (ignorado pelo Git, limpeza automática após 30 dias). Mensagens `[ANALISTA]` no Telegram nunca levam nome, e-mail, IP, cidade nem termo de busca.

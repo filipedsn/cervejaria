@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { readAnalystConfig, readHealthConfig, readLocalLlmConfig, readPilotRuntimeConfig, requireRuntimeElasticsearchConfig } from './config.js';
 import { normalizeEvent } from './normalize/index.js';
@@ -9,6 +11,9 @@ import { IncidentGrouper } from './incidents/grouper.js';
 import { ContextBuilder, buildDeterministicDossier, DossierStore, FeedbackStore, renderDossierMarkdown } from './dossiers/index.js';
 import { PilotElasticAlertSource, ReviewQueueStore, SupportAnalystRuntime } from './runtime/index.js';
 import type { NormalizedEvent, RawEventDocument } from './types.js';
+import { formatChannelTest } from './notify/index.js';
+import { sanitizeFreeText } from './privacy/sanitize.js';
+import { buildWatch, FileLock, waitForElastic } from './watch/index.js';
 
 const help = `Support Analyst core (TQ-SA-03)
 
@@ -21,6 +26,9 @@ Usage:
   support-analyst --feedback <dossierId> <USEFUL|PARTIAL|WRONG> --created-at <ISO> [--flags A,B] [--comment <text>]
   support-analyst --pilot-once
   support-analyst --pilot-run
+  support-analyst --watch-once
+  support-analyst --watch-run
+  support-analyst --notify-test
 
   support-analyst --dev-smoke
 
@@ -90,6 +98,45 @@ async function main(args: string[]): Promise<number> {
       console.log('Support Analyst pilot foreground runtime started: READ_ONLY, NO_EXTERNAL_ACTIONS.'); await runtime.run(); return 0;
     } catch (error) { runtime.healthTracker().markFatalError(); console.error(error instanceof Error ? error.message : 'Pilot runtime failed'); return 1; }
     finally { await runtime.stop(true); process.removeListener('SIGINT', shutdown); process.removeListener('SIGTERM', shutdown); }
+  }
+  if (command === '--watch-once' || command === '--watch-run' || command === '--notify-test') {
+    const built = buildWatch(process.env);
+    if (!built.ok) { console.error(`Watch configuration invalid: ${built.reason}`); return 2; }
+    if (command === '--notify-test') {
+      await built.notifications.send('TEST', formatChannelTest(new Date()));
+      console.log(JSON.stringify({ mode: built.notifications.mode, outbox: built.notifications.outboxPath }));
+      return 0;
+    }
+    if (command === '--watch-once') {
+      const result = await built.runner.runCycle();
+      console.log(JSON.stringify({ mode: `READ_ONLY_ELASTIC; TELEGRAM=${built.notifications.mode}`, environment: built.environment, ...result }, null, 2));
+      return 0;
+    }
+    const lock = new FileLock(join(built.runtimeDir, 'watch', 'watch.lock'));
+    try { await lock.acquire(); } catch (error) { console.error(error instanceof Error ? error.message : 'watch lock failed'); return 1; }
+    let stopping = false;
+    const stop = () => { stopping = true; };
+    process.once('SIGINT', stop); process.once('SIGTERM', stop);
+    console.log(`Support Analyst watch started: READ_ONLY_ELASTIC; TELEGRAM=${built.notifications.mode}; env=${built.environment}; interval=${built.watch.intervalMs}ms; boot=${built.bootTime.toISOString()}`);
+    try {
+      const sleep = async (ms: number) => { for (let waited = 0; waited < ms && !stopping; waited += 1_000) await delay(Math.min(1_000, ms - waited)); };
+      const waited = await waitForElastic({ ping: built.ping, store: built.store, bootTime: built.bootTime, quietMinutes: built.watch.bootQuietMinutes, sleep, shouldStop: () => stopping, log: (line) => console.log(line) });
+      console.log(JSON.stringify({ at: new Date().toISOString(), elasticReady: waited.ready, attempts: waited.attempts }));
+      while (!stopping) {
+        const started = Date.now();
+        try {
+          const result = await built.runner.runCycle();
+          console.log(JSON.stringify({ at: new Date().toISOString(), skipped: result.skipped, quiet: result.quiet, events: result.events, notified: result.notified }));
+        } catch (error) {
+          console.error(JSON.stringify({ at: new Date().toISOString(), watchCycleError: error instanceof Error ? sanitizeFreeText(error.message, 300) : 'unknown' }));
+        }
+        await sleep(Math.max(1_000, built.watch.intervalMs - (Date.now() - started)));
+      }
+      return 0;
+    } finally {
+      await lock.release();
+      process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
+    }
   }
   if (command === '--incident-replay') {
     let fixture: readonly NormalizedEvent[];

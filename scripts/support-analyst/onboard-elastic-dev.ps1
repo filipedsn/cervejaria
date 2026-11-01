@@ -207,7 +207,7 @@ if ($EmitValidationAlert) {
 # 5. Create the exclusive API key once. If a local key exists, reuse it idempotently.
 $analystApiKey = Get-LocalApiKey
 if (-not $analystApiKey) {
-  $existingKeys = Invoke-ElasticJson -Path "/_security/api_key?name=$ApiKeyName"
+  $existingKeys = Invoke-ElasticJson -Path "/_security/api_key?name=$ApiKeyName&active_only=true"
   if (@($existingKeys.api_keys).Count -gt 0) {
     throw "API key $ApiKeyName ja existe, mas o secret local nao esta disponivel. Revise antes de rotacionar."
   }
@@ -222,7 +222,10 @@ if (-not $analystApiKey) {
           names = @(
             $AlertIndex,
             'logs-audit*.otel-dev*',
-            'logs-technical*.otel-dev*'
+            'logs-technical*.otel-dev*',
+            'traces-*.otel-dev*',
+            'metrics-*.otel-dev*',
+            'metrics-*.otel-infra*'
           )
           privileges = @('read', 'view_index_metadata')
         })

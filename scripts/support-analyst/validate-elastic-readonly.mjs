@@ -79,15 +79,14 @@ const auditPattern = `logs-audit*.otel-${environment}*`;
 const technicalPattern = `logs-technical*.otel-${environment}*`;
 const alertIndex = environment === 'dev' ? 'quiver-tap-alert-events-dev' : null;
 const alertRuleNameExactField = 'ruleName';
-const allowedPatterns = environment === 'dev'
-  ? [alertIndex, auditPattern, technicalPattern]
-  : [technicalPattern];
+const privilegeScope = getPrivilegeScope(environment);
+const allowedPatterns = privilegeScope.allowed;
+const optionalPatterns = privilegeScope.optional;
 try {
   assertElasticTarget({ environment, baseUrl, indexPatterns: allowedPatterns });
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
-const privilegeScope = getPrivilegeScope(environment);
 const outsidePatterns = privilegeScope.denied;
 
 const sourceAllowlist = [
@@ -153,7 +152,13 @@ await check('resolve-index', async () => {
       ...(body.aliases || []).map((item) => item.name),
       ...(body.data_streams || []).map((item) => item.name),
     ];
-    if (!logicalNames.length) throw new Error(`nenhuma fonte resolve para ${pattern}`);
+    if (!logicalNames.length) {
+      if (optionalPatterns.includes(pattern)) {
+        warnings.push(`fonte opcional ainda inexistente: ${pattern}`);
+        continue;
+      }
+      throw new Error(`nenhuma fonte resolve para ${pattern}`);
+    }
     resolved[pattern] = {
       indices: (body.indices || []).length,
       aliases: (body.aliases || []).length,
@@ -205,14 +210,14 @@ const fieldCapsResult = await check('field-caps', async () => {
   }
 
   if (environment === 'dev') {
-    requireKeyword(output[auditPattern], 'attributes.correlationId.keyword', auditPattern);
-    requireKeyword(output[auditPattern], 'attributes.requestId.keyword', auditPattern);
-    requireKeyword(output[auditPattern], 'attributes.releaseSha.keyword', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.correlationId', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.requestId', auditPattern);
+    requireKeyword(output[auditPattern], 'attributes.releaseSha', auditPattern);
   }
   if (environment === 'dev') {
-    requireKeyword(output[technicalPattern], 'attributes.correlationId.keyword', technicalPattern);
-    requireKeyword(output[technicalPattern], 'attributes.requestId.keyword', technicalPattern);
-    requireKeyword(output[technicalPattern], 'attributes.releaseSha.keyword', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.correlationId', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.requestId', technicalPattern);
+    requireKeyword(output[technicalPattern], 'attributes.releaseSha', technicalPattern);
   }
   if (environment === 'prd') {
     validateProdFieldContract(output[technicalPattern], phase);
@@ -252,7 +257,7 @@ if (environment === 'dev') await check('search-audit', async () => {
         bool: {
           filter: [
             recentRange(),
-            { term: { 'attributes.correlationId.keyword': correlationId } },
+            { term: { 'attributes.correlationId': correlationId } },
           ],
         },
       }
@@ -271,7 +276,7 @@ await check('search-technical', async () => {
         bool: {
           filter: [
             recentRange(),
-            { term: { 'attributes.correlationId.keyword': correlationId } },
+            { term: { 'attributes.correlationId': correlationId } },
           ],
         },
       }
@@ -359,7 +364,8 @@ process.stdout.write(
     {
       ok: failures.length === 0,
       environment,
-      metricsIncluded: false,
+      allowedPatterns,
+      metricsIncluded: allowedPatterns.some((pattern) => pattern.startsWith('metrics-')),
       limits: {
         searchSize: MAX_SEARCH_SIZE,
         lookbackHours: SEARCH_LOOKBACK_HOURS,

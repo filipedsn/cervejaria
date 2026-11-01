@@ -17,8 +17,14 @@ export class IncidentStore {
 
   async acquireLock(): Promise<void> {
     await mkdir(this.runtimeDir, { recursive: true });
-    try { this.lockHandle = await open(this.lockPath, 'wx'); await this.lockHandle.writeFile(String(process.pid)); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error('Support Analyst runtime lock already exists; another writer may be active.'); throw error; }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try { this.lockHandle = await open(this.lockPath, 'wx'); await this.lockHandle.writeFile(String(process.pid)); return; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        if (attempt === 0 && await removeStaleLock(this.lockPath)) continue;
+        throw new Error('Support Analyst runtime lock already exists; another writer may be active.');
+      }
+    }
   }
   async releaseLock(): Promise<void> { if (this.lockHandle) { await this.lockHandle.close(); this.lockHandle = undefined; await rm(this.lockPath, { force: true }); } }
   async loadIncidents(): Promise<IncidentStoreSnapshot> { return this.read(this.incidentsPath, emptyIncidents, validateIncidents); }
@@ -86,4 +92,23 @@ const prohibited = new Set(['authorization', 'cookie', 'jwt', 'password', 'email
 export function assertPrivacy(value: unknown): void {
   const visit = (child: unknown): void => { if (Array.isArray(child)) child.forEach(visit); else if (isRecord(child)) for (const [key, nested] of Object.entries(child)) { if (prohibited.has(key.toLowerCase())) throw new Error(`Incident persistence rejects prohibited field: ${key}`); visit(nested); } };
   visit(value);
+}
+
+/** True when the PID exists (EPERM means it exists but belongs to another user). */
+export function isProcessAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
+}
+
+/** Removes a lock left by a dead process. An empty lock younger than 60s is treated as live. */
+export async function removeStaleLock(path: string): Promise<boolean> {
+  let raw: string;
+  try { raw = (await readFile(path, 'utf8')).trim(); } catch { return false; }
+  if (!raw) {
+    try { if (Date.now() - (await stat(path)).mtimeMs < 60_000) return false; } catch { return false; }
+  } else {
+    const pid = Number(raw);
+    if (!Number.isSafeInteger(pid) || pid <= 0 || isProcessAlive(pid)) return false;
+  }
+  await rm(path, { force: true });
+  return true;
 }

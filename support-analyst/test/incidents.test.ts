@@ -90,3 +90,16 @@ test('store loads empty, atomically saves/reloads, locks, rejects corrupt/schema
     await writeFile(join(directory, 'incidents.json'), JSON.stringify({ schemaVersion: 2, incidents: [] })); await assert.rejects(store.loadIncidents(), /incompatible/);
   } finally { await store.releaseLock(); await second.releaseLock(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('a stale lock left by a dead process is replaced', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'analyst-lock-'));
+  try {
+    await writeFile(join(dir, 'analyst.lock'), '2147483646');
+    const store = new IncidentStore(dir);
+    await store.acquireLock();
+    assert.equal((await readFile(join(dir, 'analyst.lock'), 'utf8')).trim(), String(process.pid));
+    await store.releaseLock();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

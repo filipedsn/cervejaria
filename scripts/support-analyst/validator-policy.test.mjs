@@ -67,20 +67,43 @@ test('PROD mode is resolvable only after explicit gates', () => {
   assert.equal(policy.allowPrd, true);
 });
 
-test('PROD privilege scope allows only technical PROD and denies DEV sources', () => {
+test('PROD privilege scope reads every PRD stream, including the audit journey (decision 2026-11-01)', () => {
   const scope = getPrivilegeScope('prd');
-  assert.deepEqual(scope.allowed, ['logs-technical*.otel-prd*']);
-  assert.ok(scope.denied.includes('logs-technical*.otel-dev*'));
-  assert.ok(scope.denied.includes('logs-audit*.otel-dev*'));
-  assert.ok(scope.denied.includes('quiver-tap-alert-events-dev'));
-  assert.ok(scope.denied.includes('logs-audit*.otel-prd*'));
-  assert.ok(scope.denied.includes('traces-*'));
+  assert.deepEqual(scope.allowed, ['quiver-tap-alert-events', 'logs-technical*.otel-prd*', 'logs-audit*.otel-prd*', 'traces-*.otel-prd*', 'metrics-*.otel-prd*', 'metrics-*.otel-infra*', 'logs-*.otel-infra*']);
+  assert.ok(!scope.denied.includes('logs-audit*.otel-prd*'));
+  assert.deepEqual(scope.optional, ['logs-*.otel-infra*']);
+  assert.ok(scope.optional.every((pattern) => scope.allowed.includes(pattern)));
 });
 
-test('DEV privilege scope remains the existing DEV allowlist and denies PROD', () => {
+test('PROD privilege scope keeps DEV, the DEV alert index, system indices and catch-alls denied', () => {
+  const scope = getPrivilegeScope('prd');
+  for (const pattern of ['logs-technical*.otel-dev*', 'logs-audit*.otel-dev*', 'traces-*.otel-dev*', 'metrics-*.otel-dev*', 'quiver-tap-alert-events-dev', '.kibana*', '.security*', 'traces-*', 'metrics-*', 'logs-*']) {
+    assert.ok(scope.denied.includes(pattern), pattern);
+  }
+  assert.ok(!scope.allowed.some((pattern) => /otel-dev|^\.|alert-events-dev/.test(pattern)));
+  assert.ok(!scope.allowed.some((pattern) => scope.denied.includes(pattern)));
+});
+
+test('DEV privilege scope mirrors the DEV streams and denies PROD', () => {
   const scope = getPrivilegeScope('dev');
-  assert.deepEqual(scope.allowed, ['quiver-tap-alert-events-dev', 'logs-audit*.otel-dev*', 'logs-technical*.otel-dev*']);
-  assert.ok(scope.denied.includes('logs-technical*.otel-prd*'));
+  assert.deepEqual(scope.allowed, ['quiver-tap-alert-events-dev', 'logs-audit*.otel-dev*', 'logs-technical*.otel-dev*', 'traces-*.otel-dev*', 'metrics-*.otel-dev*', 'metrics-*.otel-infra*']);
+  for (const pattern of ['logs-technical*.otel-prd*', 'logs-audit*.otel-prd*', 'traces-*.otel-prd*', 'metrics-*.otel-prd*', 'quiver-tap-alert-events', '.kibana*', '.security*']) {
+    assert.ok(scope.denied.includes(pattern), pattern);
+  }
+  assert.ok(!scope.allowed.some((pattern) => /otel-prd/.test(pattern)));
+});
+
+test('PRD read-only role descriptor matches the PRD scope and grants nothing else', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const role = JSON.parse(await readFile(new URL('../../docs/support-analyst/prd-readonly-role.json', import.meta.url), 'utf8'));
+  const descriptors = Object.values(role.role_descriptors);
+  assert.equal(descriptors.length, 1);
+  const [descriptor] = descriptors;
+  assert.deepEqual(descriptor.cluster, []);
+  assert.equal(descriptor.indices.length, 1);
+  assert.deepEqual([...descriptor.indices[0].names].sort(), [...getPrivilegeScope('prd').allowed].sort());
+  assert.deepEqual(descriptor.indices[0].privileges, ['read', 'view_index_metadata']);
+  assert.equal(JSON.stringify(role).match(/"(?:encoded|api_key|password)"/), null);
 });
 
 test('PROD source allowlist excludes functional and PII-bearing fields', () => {

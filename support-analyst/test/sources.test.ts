@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readAnalystConfig } from '../src/config.js';
-import { ElasticReadOnlyClient, ElasticSourceError, ElasticsearchSources, normalizeBatch } from '../src/index.js';
+import { ElasticReadOnlyClient, ElasticSourceError, ElasticsearchSources, normalizeBatch, PRD_INDICES } from '../src/index.js';
 
 const range = { from: '2026-08-31T12:00:00.000Z', to: '2026-08-31T13:00:00.000Z' };
 type Call = { url: string; init?: RequestInit };
@@ -49,10 +49,10 @@ test('exact lookup templates query only approved DEV audit and technical pattern
   await source.findByReleaseAndService({ releaseSha: 'release-01', service: 'quiver-api', range, limit: 3 });
   assert.equal(calls.length, 8);
   assert.ok(calls.every((call) => /logs-(audit|technical)\*\.otel-dev\*/.test(call.url)));
-  assert.deepEqual(body(calls[0]!).query.bool.filter[1], { term: { 'attributes.correlationId.keyword': 'corr-01' } });
-  assert.deepEqual(body(calls[2]!).query.bool.filter[1], { term: { 'attributes.requestId.keyword': 'request-01' } });
-  assert.deepEqual(body(calls[4]!).query.bool.filter[1], { term: { 'trace_id.keyword': 'trace-01' } });
-  assert.deepEqual(body(calls[6]!).query.bool.filter.slice(1), [{ term: { 'attributes.releaseSha.keyword': 'release-01' } }, { term: { 'attributes.service.keyword': 'quiver-api' } }]);
+  assert.deepEqual(body(calls[0]!).query.bool.filter[1], { term: { 'attributes.correlationId': 'corr-01' } });
+  assert.deepEqual(body(calls[2]!).query.bool.filter[1], { term: { 'attributes.requestId': 'request-01' } });
+  assert.deepEqual(body(calls[4]!).query.bool.filter[1], { term: { 'trace_id': 'trace-01' } });
+  assert.deepEqual(body(calls[6]!).query.bool.filter.slice(1), [{ term: { 'attributes.releaseSha': 'release-01' } }, { term: { 'attributes.service': 'quiver-api' } }]);
   assert.ok(calls.every((call) => body(call)._source.includes('body') === false));
   assert.ok(calls.every((call) => body(call).timeout === '5s'));
 });
@@ -89,8 +89,26 @@ test('source output is RawEventDocument only and normalization failures are coun
   assert.deepEqual({ received: batch.received, normalized: batch.normalized, rejected: batch.rejected, rejectedReasons: batch.rejectedReasons }, { received: 2, normalized: 1, rejected: 1, rejectedReasons: { missing_timestamp: 1 } });
 });
 
-test('PRD source construction is blocked regardless of SUPPORT_ANALYST_ALLOW_PRD', () => {
+test('PRD source construction requires every marker and then reads only PRD indices', async () => {
   const config = readAnalystConfig({ SUPPORT_ANALYST_ENV: 'prd', SUPPORT_ANALYST_ES_URL: 'https://elastic.test', SUPPORT_ANALYST_ES_API_KEY: 'secret' });
-  assert.equal(config.ok, true);
-  assert.throws(() => ElasticsearchSources.fromConfig(config.config, { SUPPORT_ANALYST_ALLOW_PRD: 'true' }), /PRD access is not enabled for TQ-SA-04/);
+  if (!config.ok) throw new Error('structural config should be valid');
+  assert.throws(() => ElasticsearchSources.fromConfig(config.config, { SUPPORT_ANALYST_ALLOW_PRD: 'true' }), /SUPPORT_ANALYST_CREDENTIAL_ENV=prd/);
+  const calls: Call[] = [];
+  const source = ElasticsearchSources.fromConfig(config.config, { SUPPORT_ANALYST_ALLOW_PRD: 'true', SUPPORT_ANALYST_CREDENTIAL_ENV: 'prd', SUPPORT_ANALYST_ENDPOINT_ENV: 'prd' }, fake(validResponse(), calls));
+  await source.findAlertEvents({ range, limit: 1 });
+  assert.equal(calls[0]?.url, 'https://elastic.test/quiver-tap-alert-events/_search?ignore_unavailable=true');
+  assert.deepEqual(source.indexNames(), PRD_INDICES);
+  assert.ok(Object.values(PRD_INDICES).every((pattern) => !/otel-dev|alert-events-dev/.test(pattern)));
+});
+
+test('watch reads are bounded POST searches', async () => {
+  const calls: Call[] = [];
+  const response = new Response(JSON.stringify({ hits: { total: { value: 7 }, hits: [{ _source: { '@timestamp': '2026-10-27T12:00:00.000Z' } }] } }), { status: 200 });
+  const source = new ElasticsearchSources(new ElasticReadOnlyClient('https://elastic.test', 'k', fake(response, calls)), PRD_INDICES);
+  assert.equal(await source.latestTimestamp(PRD_INDICES.appMetrics), '2026-10-27T12:00:00.000Z');
+  assert.equal(await source.countLastMinutes(PRD_INDICES.technical, 5, [{ term: { severity_text: 'ERROR' } }]), 7);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.init?.method === 'POST' && call.url.endsWith('/_search?ignore_unavailable=true')));
+  await assert.rejects(source.countLastMinutes(PRD_INDICES.technical, 0, []), ElasticSourceError);
+  await assert.rejects(source.countLastMinutes(PRD_INDICES.technical, 1441, []), ElasticSourceError);
 });

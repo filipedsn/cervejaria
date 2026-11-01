@@ -2,6 +2,8 @@
 
 ## Limite operacional
 
+Esta seção vale para o piloto DEV (`pilot-once`/`pilot-run`). O watch PRD com Telegram (WI-C) está em "Watch PRD e jornada", mais abaixo.
+
 Este é um processo Node foreground, read-only e sem ações externas. Ele não é um Windows Service, não reinicia a si mesmo e não aciona Ops Panel, deploy, banco, Elasticsearch write, GitHub, Telegram ou shell de remediação. Não use PROD: o runtime o recusa.
 
 O piloto só começa após uma identidade Elastic DEV exclusiva/read-only ser autorizada. Sem isso, registre `PILOT SOURCE VALIDATION PENDING`; não substitua por credencial privilegiada.
@@ -65,6 +67,60 @@ npm run feedback -- <dossierId> USEFUL --created-at 2026-09-02T12:30:00.000Z --c
 ```
 
 Os valores permitidos são `USEFUL`, `PARTIAL` e `WRONG`. O comando grava no FeedbackStore existente e marca a entrada da fila como `REVIEWED`. Não inclua identidade do revisor, PII, credenciais, SQL, payload bruto ou instruções de remediação no comentário.
+
+## Watch PRD e jornada (WI-C, TAP-140)
+
+Capacidade, escopo da chave e detectores: [TQ-SA-PRD-02](TQ-SA-PRD-02-watch-capability.md). O watch é um modo separado do piloto acima: lê o Elastic PRD, só com leitura, e avisa no Telegram com o prefixo `[ANALISTA]`.
+
+### Arquivo de configuração
+
+Copie `support-analyst/support-analyst-prd.env.example` para `deploy/runtime/support-analyst-prd.env` (pasta ignorada pelo Git) e preencha URL, chave e Telegram. Para DEV, o equivalente é `deploy/runtime/support-analyst-dev.env`, com URL loopback. Não imprima nem cole esses arquivos em tickets.
+
+### Rodar à mão
+
+```powershell
+npm run build --prefix support-analyst
+.\scripts\support-analyst\run-analyst.ps1 -Target prd -Mode watch-once   # um ciclo, imprime o JSON
+.\scripts\support-analyst\run-analyst.ps1 -Target prd -Mode notify-test  # mensagem de teste do canal
+.\scripts\support-analyst\run-analyst.ps1 -Target prd -Mode watch        # loop; log em <RUNTIME_DIR>\logs
+```
+
+Com `SUPPORT_ANALYST_TELEGRAM_DRY_RUN=true` nada sai do PC: as mensagens ficam em `<RUNTIME_DIR>\notifications\outbox.jsonl`. O estado dos detectores fica em `<RUNTIME_DIR>\watch\state.json`.
+
+### Partida com o Windows
+
+```powershell
+.\scripts\support-analyst\install-watch-task.ps1 -Status            # tarefa, última execução e estado do watch
+.\scripts\support-analyst\install-watch-task.ps1 -Install -WhatIf   # confere a definição sem registrar
+.\scripts\support-analyst\install-watch-task.ps1 -Install           # G12; pode pedir PowerShell como administrador
+.\scripts\support-analyst\install-watch-task.ps1 -Uninstall
+```
+
+A tarefa `QuiverTap-SupportAnalyst-Watch-PRD` sobe 60 s após o boot e no logon. Logo após o boot, o estado mostra "aguardando rede" até o Elastic responder pela Tailscale; nos primeiros 10 min nenhum alerta é enviado.
+
+### Silenciar
+
+- Só o Telegram: `SUPPORT_ANALYST_TELEGRAM_DRY_RUN=true` (as mensagens continuam no outbox local).
+- O watch inteiro: `SUPPORT_ANALYST_WATCH_ENABLED=false`, ou `Disable-ScheduledTask -TaskName QuiverTap-SupportAnalyst-Watch-PRD` (reative com `Enable-ScheduledTask`).
+
+Depois de mudar o arquivo, reinicie a tarefa (`Stop-ScheduledTask` e `Start-ScheduledTask`).
+
+### Jornada de um cliente
+
+```powershell
+npm run journey --prefix support-analyst -- --usuario cliente@exemplo.com --desde 24h
+npm run journey --prefix support-analyst -- --sessao <session.id> --desde 7d --resumo
+npm run journey --prefix support-analyst -- --correlacao <correlationId> --env prd
+npm run journey --prefix support-analyst -- --usuario <actor.id> --desde 2026-11-01T08:00-03:00 --ate 2026-11-01T12:00-03:00 --env dev
+```
+
+A saída é uma linha do tempo em horário de Brasília, agrupada por sessão, com tela, ação, status/tempo, erros e último passo. `--correlacao` inclui os traces. `--resumo` pede um resumo ao Ollama local (loopback); se ele não estiver rodando, sai só a linha do tempo. O arquivo vai para `deploy/runtime/support-analyst/journeys/`, e arquivos com mais de 30 dias são apagados a cada execução. A jornada tem dados pessoais: fica só no PC, nunca vai para Telegram, ticket ou commit.
+
+### Sequência G11 / G12 (feita pelo Filipe)
+
+1. **G11, chave PRD:** no Kibana PRD (Dev Tools, pela Tailscale), execute `POST /_security/api_key` com o corpo de `docs/support-analyst/prd-readonly-role.json`. Grave o `encoded` só em `deploy/runtime/support-analyst-prd.env`. Valide com `node scripts/support-analyst/validate-elastic-readonly.mjs` carregando esse arquivo e confira `runtime-privileges PASS`. Depois rode `run-analyst.ps1 -Target prd -Mode watch-once` ainda em dry-run.
+2. **G12, ligar:** preencha token e chat do bot, rode `-Mode notify-test` com `TELEGRAM_DRY_RUN=false`, confirme a mensagem no celular e instale a tarefa com `install-watch-task.ps1 -Install`. Confira com `-Status` após um reboot.
+3. **Renovação:** a chave expira em 180 dias. O detector "Chave do analyst recusada" avisa quando ela vencer; para evitar isso, crie uma chave nova antes, troque o arquivo e invalide a antiga (`DELETE /_security/api_key` com o id dela).
 
 ## Critérios antes de SA-09
 

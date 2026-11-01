@@ -97,18 +97,26 @@ export function validateProdFieldContract(fields, phase) {
   return true;
 }
 
+/**
+ * Read scope of the Analyst key per environment. PRD reads every PRD stream, including the
+ * audit journey with personal data (decision of 2026-11-01, supersedes the TAP-61 audit denial).
+ * Broad patterns in `denied` (traces-*, metrics-*, logs-*) stay false in _has_privileges because
+ * the key only covers the environment-suffixed patterns. `optional` patterns may not exist yet.
+ */
 export function getPrivilegeScope(environment) {
   const envName = normalize(environment);
   if (envName === 'dev') {
     return {
-      allowed: ['quiver-tap-alert-events-dev', 'logs-audit*.otel-dev*', 'logs-technical*.otel-dev*'],
-      denied: ['quiver-tap-alert-events', 'logs-audit*.otel-prd*', 'logs-technical*.otel-prd*', 'traces-*', 'logs-generic*', 'metrics-*', '.kibana*'],
+      allowed: ['quiver-tap-alert-events-dev', 'logs-audit*.otel-dev*', 'logs-technical*.otel-dev*', 'traces-*.otel-dev*', 'metrics-*.otel-dev*', 'metrics-*.otel-infra*'],
+      denied: ['quiver-tap-alert-events', 'logs-audit*.otel-prd*', 'logs-technical*.otel-prd*', 'traces-*.otel-prd*', 'metrics-*.otel-prd*', 'traces-*', 'logs-generic*', 'metrics-*', 'logs-*', '.kibana*', '.security*'],
+      optional: [],
     };
   }
   if (envName === 'prd') {
     return {
-      allowed: ['logs-technical*.otel-prd*'],
-      denied: ['logs-technical*.otel-dev*', 'logs-audit*.otel-dev*', 'quiver-tap-alert-events-dev', 'logs-audit*.otel-prd*', 'quiver-tap-alert-events', 'traces-*', 'logs-generic*', 'metrics-*', '.kibana*'],
+      allowed: ['quiver-tap-alert-events', 'logs-technical*.otel-prd*', 'logs-audit*.otel-prd*', 'traces-*.otel-prd*', 'metrics-*.otel-prd*', 'metrics-*.otel-infra*', 'logs-*.otel-infra*'],
+      denied: ['logs-technical*.otel-dev*', 'logs-audit*.otel-dev*', 'traces-*.otel-dev*', 'metrics-*.otel-dev*', 'quiver-tap-alert-events-dev', 'traces-*', 'logs-generic*', 'metrics-*', 'logs-*', '.kibana*', '.security*'],
+      optional: ['logs-*.otel-infra*'],
     };
   }
   throw new Error('Ambiente Elastic inválido.');

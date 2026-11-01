@@ -60,6 +60,20 @@ TQ-SA-09: BLOCKED — do not start
 
 Próximo passo recomendado: disponibilizar explicitamente uma identidade DEV exclusiva/read-only e executar, com o runbook, um `analyst:pilot-once`, uma janela curta de `analyst:pilot-run`, stop cooperativo e replay. Após isso, revisar o Functional Value Gate antes de iniciar qualquer ciclo técnico longo de SA-09.
 
+## Drill WI-C 2026-11-01 (TAP-140, DEV)
+
+Executado só no DEV local (ES 9.5.5 em loopback), com a chave `quiver-support-analyst-shadow-dev` recriada no G10 com o escopo DEV do WI-C (`quiver-tap-alert-events-dev`, `logs-audit*.otel-dev*`, `logs-technical*.otel-dev*`, `traces-*.otel-dev*`, `metrics-*.otel-dev*`, `metrics-*.otel-infra*`; read + view_index_metadata; 90 dias). O segredo ficou só em `deploy/runtime/support-analyst-dev.env`, com ACL restrita. Telegram em dry-run; PRD não foi consultado. Identificadores abaixo mascarados.
+
+| Passo | Resultado |
+|---|---|
+| Validador DEV | `authenticate`, `resolve-index`, buscas (alertas, audit, technical) e `runtime-privileges` **PASS**. Negados confirmados: alertas PRD, `*otel-prd*`, curingas amplos, `.kibana*`, `.security*`, escrita. `field-caps` **FAIL** pré-existente: exige `attributes.correlationId.keyword`, e o mapeamento OTel do ES 9 não tem subcampos `.keyword` (ver pendência). |
+| `run-analyst.ps1 -Target dev -Mode watch-once` | 7 detectores OK: rede HTTP 200, `/api/ready` 200, Elastic ok, métrica da API há 1 min, httpcheck há 1 min, 0 logs ERROR em 5 min. Só o resumo diário foi para o outbox local (`dryRun: true`, `sent: false`), sem dado pessoal. |
+| `jornada --correlacao <uuid> --desde 7d --env dev` | 4 eventos (audit 3, traces 1), 1 grupo de sessão, 0 erros, último passo em `GET /api/onboarding/readiness`. Arquivo gravado em `deploy/runtime/support-analyst/journeys/`. |
+| `jornada --usuario <actor> --desde 7d --env dev --resumo` | 70 eventos de auditoria, 0 erros, último passo em `GET /api/cervejaria/configuracao-portal-alerta-balcao`. O Ollama local estava no ar e gerou o resumo. Limpeza de mais de 30 dias: 0 removidos. |
+| Tarefa do Windows | `-Install -WhatIf` validou a definição sem registrar; `-Status` "não instalada"; `-Uninstall -WhatIf` "nada a remover". |
+
+Pendências: G11 (chave PRD) e G12 (tarefa instalada e Telegram real) dependem do Filipe. A dependência de `.keyword` no validador DEV e nas consultas do piloto, que não existe no mapeamento OTel do ES 9, fica como sugestão de item. As regras Kibana DEV não existem no cluster DEV novo; por isso o índice de alertas DEV tem só o documento de validação do drill.
+
 ## Limites de segurança desta acceptance
 
 Elastic write: **NO**. DB access/write: **NO**. PROD: **NO**. Deploy, restart de serviço, GitHub, Telegram, shell de remediação e APIs externas: **NO**. Nenhum segredo, Authorization, body bruto Elastic, PII evidente, hostname/usuário ou caminho local sensível foi colocado neste documento.
