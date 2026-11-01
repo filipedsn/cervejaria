@@ -10,6 +10,8 @@ import {
   totalItensComanda,
   pedidoVisivelNaComanda,
   rotuloComanda,
+  rotuloStatusItemPedido,
+  rotuloStatusPedidoResumo,
   type PedidoOperacao,
 } from '../src/lib/operacao.ts';
 
@@ -42,6 +44,22 @@ const pedido: PedidoOperacao = {
     },
   ],
 };
+
+test('pedido misto mostra status por item e cabeçalho Parcial quando latões já foram atendidos', () => {
+  const misto: PedidoOperacao = {
+    ...pedido,
+    itens: [
+      { ...pedido.itens[0]!, id: 'heineken', nome: 'Latão Heineken', balcaoAtendidoEm: '2026-11-01T12:00:00.000Z' },
+      { ...pedido.itens[0]!, id: 'amstel', nome: 'Latão Amstel', balcaoAtendidoEm: '2026-11-01T12:00:00.000Z' },
+      { ...pedido.itens[1]!, id: 'c-boi', nome: 'C. BOI' },
+    ],
+  };
+
+  assert.equal(rotuloStatusItemPedido(misto, misto.itens[0]!), 'Atendido');
+  assert.equal(rotuloStatusItemPedido(misto, misto.itens[1]!), 'Atendido');
+  assert.equal(rotuloStatusItemPedido(misto, misto.itens[2]!), 'Na fila');
+  assert.equal(rotuloStatusPedidoResumo(misto), 'Parcial');
+});
 
 test('item sem preparo compõe o resumo imediatamente, mesmo com o pedido ainda na cozinha', () => {
   const comanda = { pedidos: [pedido] } as Parameters<typeof resumirItensComanda>[0];

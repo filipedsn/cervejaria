@@ -193,8 +193,9 @@ export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): b
 }
 
 /**
- * Pedidos só de balcão (sem item de preparo) saem de RECEBIDO direto para ENTREGUE
- * quando o atendente confirma Servir — a fila da cozinha não se aplica.
+ * Confirma Servir nos itens sem preparo (por item via balcaoAtendidoEm).
+ * Pedido só de balcão em RECEBIDO vira ENTREGUE. Pedido misto/cozinha
+ * permanece na fila — o status operacional dos latões fica no item.
  */
 export async function marcarPedidosBalcaoAtendidos(
   tx: TxClient,
@@ -213,20 +214,34 @@ export async function marcarPedidosBalcaoAtendidos(
       id: { in: ids },
       cervejariaId: params.cervejariaId,
       comandaId: params.comandaId,
-      status: 'RECEBIDO',
+      status: { in: ['RECEBIDO', 'EM_PREPARO', 'PRONTO'] },
     },
     select: {
       id: true,
       status: true,
-      itensComanda: { select: { exigePreparo: true, canceladoEm: true } },
+      itensComanda: {
+        select: { id: true, exigePreparo: true, canceladoEm: true, balcaoAtendidoEm: true },
+      },
     },
   });
 
   const atendidos: string[] = [];
   for (const pedido of pedidos) {
+    const balcaoPendentes = pedido.itensComanda.filter(
+      (item) => !item.canceladoEm && !item.exigePreparo && !item.balcaoAtendidoEm,
+    );
+    if (balcaoPendentes.length === 0) continue;
+
+    await tx.itemComanda.updateMany({
+      where: { id: { in: balcaoPendentes.map((item) => item.id) } },
+      data: { balcaoAtendidoEm: agora },
+    });
+
     const ativos = pedido.itensComanda.filter((item) => !item.canceladoEm);
-    if (ativos.length === 0 || pedidoVaiParaCozinha(ativos)) continue;
-    await aplicarStatusPedidoCozinha(tx, pedido, 'ENTREGUE', agora);
+    const temCozinha = ativos.some((item) => item.exigePreparo);
+    if (!temCozinha && pedido.status === 'RECEBIDO') {
+      await aplicarStatusPedidoCozinha(tx, pedido, 'ENTREGUE', agora);
+    }
     atendidos.push(pedido.id);
   }
   return atendidos;

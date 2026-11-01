@@ -811,6 +811,8 @@ model ItemComanda {
   observacao        String?
   exigePreparo      Boolean  @default(false)
   paraViagem        Boolean  @default(false)
+  /// Quando o balcão confirma Servir no item sem preparo (portal / alerta).
+  balcaoAtendidoEm  DateTime?
   cancelamentoPendenteEm DateTime?
   canceladoEm       DateTime?
   pedidoCozinhaId   String?

@@ -9,7 +9,14 @@ import { Loading } from '../components/Loading';
 import { PortalBackground } from '../components/PortalBackground';
 import { Modal } from '../components/Modal';
 import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../components/NavIcons';
-import { CATEGORIAS_PRODUTO_OPERACAO, normalizeCategoriaProduto, rotuloStatusPedido, type StatusPedido } from '../lib/operacao';
+import {
+  CATEGORIAS_PRODUTO_OPERACAO,
+  normalizeCategoriaProduto,
+  rotuloStatusItemPedido,
+  rotuloStatusPedidoResumo,
+  type PedidoOperacao,
+  type StatusPedido,
+} from '../lib/operacao';
 
 type Info = {
   cervejaria: { nome: string; logoUrl?: string | null; portalBackgroundUrl?: string | null };
@@ -48,6 +55,7 @@ type PdvComandaItem = {
   quantidade: number;
   subtotal: number;
   exigePreparo?: boolean;
+  balcaoAtendidoEm?: string | null;
   cancelamentoPendenteEm?: string | null;
   canceladoEm?: string | null;
 };
@@ -71,38 +79,40 @@ type PdvComanda = {
   pedidos: PdvComandaPedido[];
 };
 
-/** Pedidos só de balcão (sem preparo): no portal aparecem Solicitado / Atendido. */
-function pedidoSomenteBalcao(pedido: PdvComandaPedido): boolean {
-  const ativos = pedido.itens.filter((item) => !item.canceladoEm);
-  return ativos.length > 0 && ativos.every((item) => !item.exigePreparo);
+function asPedidoOperacao(pedido: PdvComandaPedido): PedidoOperacao {
+  return {
+    id: pedido.id,
+    numero: pedido.numero,
+    status: pedido.status as StatusPedido,
+    observacao: null,
+    createdAt: '',
+    itens: pedido.itens.map((item, index) => ({
+      id: `${pedido.id}-${index}`,
+      produtoId: '',
+      nome: item.nome,
+      precoUnit: 0,
+      quantidade: item.quantidade,
+      volumeMl: 0,
+      subtotal: item.subtotal,
+      exigePreparo: Boolean(item.exigePreparo),
+      balcaoAtendidoEm: item.balcaoAtendidoEm ?? null,
+      cancelamentoPendenteEm: item.cancelamentoPendenteEm ?? null,
+      canceladoEm: item.canceladoEm ?? null,
+    })),
+  };
 }
 
 function rotuloStatusPortal(pedido: PdvComandaPedido): string {
-  if (pedidoSomenteBalcao(pedido)) {
-    switch (pedido.status) {
-      case 'RECEBIDO':
-        return 'Solicitado';
-      case 'ENTREGUE':
-        return 'Atendido';
-      case 'CANCELAMENTO_PENDENTE':
-      case 'CANCELADO':
-        return rotuloStatusPedido(pedido.status as StatusPedido);
-      default:
-        // Estados de cozinha não deveriam aparecer; ainda assim evita "Na fila".
-        return 'Solicitado';
-    }
-  }
-  switch (pedido.status) {
-    case 'RECEBIDO':
-    case 'EM_PREPARO':
-    case 'PRONTO':
-    case 'ENTREGUE':
-    case 'CANCELAMENTO_PENDENTE':
-    case 'CANCELADO':
-      return rotuloStatusPedido(pedido.status as StatusPedido);
-    default:
-      return pedido.status;
-  }
+  return rotuloStatusPedidoResumo(asPedidoOperacao(pedido));
+}
+
+function rotuloStatusItemPortal(pedido: PdvComandaPedido, item: PdvComandaItem): string {
+  return rotuloStatusItemPedido(asPedidoOperacao(pedido), {
+    exigePreparo: Boolean(item.exigePreparo),
+    balcaoAtendidoEm: item.balcaoAtendidoEm ?? null,
+    cancelamentoPendenteEm: item.cancelamentoPendenteEm ?? null,
+    canceladoEm: item.canceladoEm ?? null,
+  });
 }
 
 type PdvCartItem = {
@@ -663,7 +673,12 @@ export function PortalPdvPage() {
                     <strong>Pedido #{pedido.numero}</strong>
                     <span>{rotuloStatusPortal(pedido)}</span>
                     {itensValidos(pedido.itens).map((item, index) => (
-                      <p key={`${item.nome}-${index}`}>{item.quantidade}x {item.nome}<small>R$ {item.subtotal.toFixed(2).replace('.', ',')}</small></p>
+                      <p key={`${item.nome}-${index}`}>
+                        {item.quantidade}x {item.nome}
+                        <small>
+                          {rotuloStatusItemPortal(pedido, item)} · R$ {item.subtotal.toFixed(2).replace('.', ',')}
+                        </small>
+                      </p>
                     ))}
                   </article>
                 )) : <p>Nenhum pedido enviado ainda.</p>}
