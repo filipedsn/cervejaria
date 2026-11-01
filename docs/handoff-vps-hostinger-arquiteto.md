@@ -460,6 +460,8 @@ push na main (ou "Run workflow" manual)
 
 **Modos:** push na main = `head-only` (se um run antigo for aprovado depois de um merge mais novo, ele é ignorado com aviso — o run mais novo publica o HEAD). `workflow_dispatch` com `sha` = `allow-older` (rollback intencional).
 
+**Push sem efeito em runtime (TAP-166):** o `paths-ignore` do workflow não abre run quando o push só altera `docs/**`, `*.md`, `.cursor/**` ou os workflows `ci.yml`, `uptime-external.yml` e `cloudflare-ips.yml`. No `head-only`, o `deploy-prd.sh` aceita publicar um SHA atrás do HEAD quando os commits à frente só tocam esses caminhos (a mesma lista em `NO_RUNTIME_PATHS`; mudou uma, mude a outra). `deploy/**` e `scripts/**` nunca entram na lista: o deploy sincroniza esses diretórios no VPS.
+
 **DEV antes de PRD:** a esteira não publica o DEV (que é o PC). Só aprove o deploy depois de validar o mesmo SHA no DEV local (`:3002`/`:5202`).
 
 #### B. Configuração (uma vez)
