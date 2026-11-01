@@ -16,7 +16,7 @@ export class AuditErrorBoundary extends Component<Props, State> {
     trackUiError(error.message, error.stack, {
       componentStack: info.componentStack?.slice(0, 1500),
       boundary: true,
-    });
+    }, error.name);
   }
 
   render(): ReactNode {
