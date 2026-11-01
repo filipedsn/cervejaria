@@ -499,16 +499,25 @@ export function rotuloStatusItemPedido(
   return rotuloStatusPedido(pedido.status);
 }
 
+function statusItemConcluido(rotulo: string): boolean {
+  return rotulo === 'Atendido' || rotulo === 'Entregue';
+}
+
 /**
  * Rótulo do cabeçalho do pedido. Com vários itens de status distintos, usa Parcial
- * para não mascarar latões atendidos com a fila da porção.
+ * para não mascarar latões atendidos com a fila da porção. Atendido + Entregue
+ * contam como concluído (não Parcial).
  */
 export function rotuloStatusPedidoResumo(pedido: PedidoOperacao): string {
   const ativos = pedido.itens.filter((item) => !item.canceladoEm);
   if (ativos.length === 0) return rotuloStatusPedido(pedido.status);
-  if (ativos.length === 1) return rotuloStatusItemPedido(pedido, ativos[0]!);
-  const rotulos = new Set(ativos.map((item) => rotuloStatusItemPedido(pedido, item)));
-  if (rotulos.size === 1) return [...rotulos][0]!;
+  const rotulos = ativos.map((item) => rotuloStatusItemPedido(pedido, item));
+  if (ativos.length === 1) return rotulos[0]!;
+  const unicos = new Set(rotulos);
+  if (unicos.size === 1) return rotulos[0]!;
+  if (rotulos.every(statusItemConcluido)) {
+    return rotulos.includes('Entregue') ? 'Entregue' : 'Atendido';
+  }
   return 'Parcial';
 }
 

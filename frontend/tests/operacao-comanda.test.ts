@@ -61,6 +61,23 @@ test('pedido misto mostra status por item e cabeçalho Parcial quando latões j�
   assert.equal(rotuloStatusPedidoResumo(misto), 'Parcial');
 });
 
+test('pedido misto concluído não fica Parcial quando latões estão Atendido e a porção Entregue', () => {
+  const concluido: PedidoOperacao = {
+    ...pedido,
+    status: 'ENTREGUE',
+    itens: [
+      { ...pedido.itens[0]!, id: 'heineken', nome: 'Latão Heineken', balcaoAtendidoEm: '2026-11-01T12:00:00.000Z' },
+      { ...pedido.itens[1]!, id: 'c-boi', nome: 'C. BOI' },
+      { ...pedido.itens[0]!, id: 'amstel', nome: 'Latão Amstel', balcaoAtendidoEm: '2026-11-01T12:00:00.000Z' },
+    ],
+  };
+
+  assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[0]!), 'Atendido');
+  assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[1]!), 'Entregue');
+  assert.equal(rotuloStatusItemPedido(concluido, concluido.itens[2]!), 'Atendido');
+  assert.equal(rotuloStatusPedidoResumo(concluido), 'Entregue');
+});
+
 test('item sem preparo compõe o resumo imediatamente, mesmo com o pedido ainda na cozinha', () => {
   const comanda = { pedidos: [pedido] } as Parameters<typeof resumirItensComanda>[0];
 
