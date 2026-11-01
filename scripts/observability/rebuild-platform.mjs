@@ -24,7 +24,8 @@ export function retentionSpecifications() {
   for (const [namespace, types] of Object.entries(days)) for (const [type, retention] of Object.entries(types)) {
     result.push({ name: `quiver-tap-${type}-${namespace}`, type, namespace, retention, priority: 500, pattern: `${type}-*.otel-${namespace}` });
   }
-  result.push({ name: 'quiver-tap-audit-prd', type: 'logs', namespace: 'prd', retention: 30, priority: 510, pattern: 'logs-audit.otel-prd' });
+  // Marco Civil da Internet, art. 15: registros de acesso (IP, data e hora) guardados por 6 meses.
+  result.push({ name: 'quiver-tap-audit-prd', type: 'logs', namespace: 'prd', retention: 180, priority: 510, pattern: 'logs-audit.otel-prd' });
   return result;
 }
 
