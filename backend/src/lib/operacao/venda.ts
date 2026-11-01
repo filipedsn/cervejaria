@@ -334,15 +334,31 @@ export async function criarPedidos(
   return pedidos;
 }
 
-/** Cada linha independente conserva seus opcionais/snapshot e quantidade; as demais linhas de preparo ficam juntas. */
+/**
+ * Balcão (sem preparo) nunca compartilha pedido com cozinha — senão o status
+ * da fila mascara itens já servidos. Dentro da cozinha, linhas independentes
+ * continuam em pedidos próprios.
+ */
 export function particionarItensParaPedidos(itens: ItemResolvido[], temCozinha: boolean): ItemResolvido[][] {
-  if (!temCozinha || itens.length <= 1) return itens.length ? [itens] : [];
-  const independentes = itens.filter((item) => item.exigePreparo && item.prepararEmPedidoSeparado);
-  if (independentes.length === 0) return [itens];
+  if (itens.length === 0) return [];
+  if (!temCozinha || itens.length <= 1) return [itens];
+
+  const balcao = itens.filter((item) => !item.exigePreparo);
+  const cozinha = itens.filter((item) => item.exigePreparo);
+  const grupos: ItemResolvido[][] = [];
+  if (balcao.length > 0) grupos.push(balcao);
+  if (cozinha.length === 0) return grupos;
+
+  const independentes = cozinha.filter((item) => item.prepararEmPedidoSeparado);
+  if (independentes.length === 0) {
+    grupos.push(cozinha);
+    return grupos;
+  }
   const independentesSet = new Set(independentes);
-  const comuns = itens.filter((item) => !independentesSet.has(item));
-  if (independentes.length === 1 && comuns.filter((item) => item.exigePreparo).length === 0) return [itens];
-  return [...(comuns.length ? [comuns] : []), ...independentes.map((item) => [item])];
+  const comuns = cozinha.filter((item) => !independentesSet.has(item));
+  if (comuns.length > 0) grupos.push(comuns);
+  for (const item of independentes) grupos.push([item]);
+  return grupos;
 }
 
 async function criarPedidoUnico(
@@ -565,6 +581,7 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsCha
       })),
       subtotal: reais(centavos(item.precoUnit) * item.quantidade),
       exigePreparo: item.exigePreparo,
+      balcaoAtendidoEm: item.balcaoAtendidoEm ?? null,
     })),
   }));
 
