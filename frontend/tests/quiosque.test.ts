@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ordenarComandasParaOperacao,
+  ordenarComandasAbertasOperacao,
+  ultimoPedidoEm,
   mesasOperacionais,
   rotuloComanda,
   rotuloInternoComanda,
@@ -10,6 +12,7 @@ import {
   podeIncrementarQuantidadeProduto,
   resumirItensComanda,
   type ComandaQuiosque,
+  type PedidoOperacao,
 } from '../src/lib/operacao.ts';
 
 function comanda(id: string, identificador: string, numero: number): ComandaQuiosque {
@@ -54,6 +57,44 @@ test('TQ-F01: reabrir a Mesa 3 mantém a mesa na posição física, mesmo com no
 
   assert.equal(mesa3Reaberta.numero, 12);
   assert.deepEqual(ordenadas.map((item) => item.identificador), ['1', '2', '3', '4']);
+});
+
+function comPedido(base: ComandaQuiosque, createdAt: string, pedidoId = `${base.id}-pedido`): ComandaQuiosque {
+  const pedido: PedidoOperacao = {
+    id: pedidoId,
+    numero: 1,
+    status: 'RECEBIDO',
+    observacao: null,
+    createdAt,
+    itens: [],
+  };
+  return { ...base, pedidos: [pedido] };
+}
+
+test('TAP-155: lista aberta sobe Servir e depois o consumo mais recente', () => {
+  const antiga = comPedido(comanda('a', '1', 1), '2026-11-01T10:00:00.000Z');
+  const recente = comPedido(comanda('b', '2', 2), '2026-11-01T12:00:00.000Z');
+  const servir = comPedido(comanda('c', '3', 3), '2026-11-01T09:00:00.000Z');
+  const servirRecente = comPedido(comanda('d', '4', 4), '2026-11-01T11:00:00.000Z');
+  const pendentes = new Set(['c', 'd']);
+
+  const ordenadas = ordenarComandasAbertasOperacao(
+    [antiga, recente, servir, servirRecente],
+    (id) => pendentes.has(id),
+  );
+
+  assert.deepEqual(ordenadas.map((item) => item.id), ['d', 'c', 'b', 'a']);
+  assert.equal(ultimoPedidoEm(recente), Date.parse('2026-11-01T12:00:00.000Z'));
+  assert.equal(ultimoPedidoEm(comanda('vazia', '9', 9)), 0);
+});
+
+test('TAP-155: sem pendente Servir, desempate de mesa física permanece', () => {
+  const mesa3 = comPedido(comanda('mesa-3', '3', 5), '2026-11-01T10:00:00.000Z');
+  const mesa1 = comPedido(comanda('mesa-1', '1', 1), '2026-11-01T10:00:00.000Z');
+  const mesa2 = comPedido(comanda('mesa-2', '2', 2), '2026-11-01T10:00:00.000Z');
+
+  const ordenadas = ordenarComandasAbertasOperacao([mesa3, mesa1, mesa2], () => false);
+  assert.deepEqual(ordenadas.map((item) => item.identificador), ['1', '2', '3']);
 });
 
 test('TQ-F01B: configuração de 12 posições mantém mesas nunca usadas livres e associa a ocupada', () => {

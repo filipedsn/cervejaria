@@ -390,25 +390,58 @@ export function mesasOperacionais(
  * sequencial da comanda nunca participa desta ordem, pois ele muda a cada
  * abertura da mesma mesa.
  */
+function compararComandasOperacaoDesempate(a: ComandaOperacao, b: ComandaOperacao): number {
+  if (a.tipo === 'MESA' && b.tipo !== 'MESA') return -1;
+  if (a.tipo !== 'MESA' && b.tipo === 'MESA') return 1;
+
+  if (a.tipo === 'MESA' && b.tipo === 'MESA') {
+    const numeroA = numeroMesa(a.identificador);
+    const numeroB = numeroMesa(b.identificador);
+    if (numeroA != null && numeroB != null && numeroA !== numeroB) return numeroA < numeroB ? -1 : 1;
+    if (numeroA != null && numeroB == null) return -1;
+    if (numeroA == null && numeroB != null) return 1;
+  }
+
+  const porIdentificador = rotuloComanda(a).localeCompare(rotuloComanda(b), 'pt-BR', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  if (porIdentificador !== 0) return porIdentificador;
+  return (a.numero ?? 0) - (b.numero ?? 0);
+}
+
 export function ordenarComandasParaOperacao(comandas: ComandaOperacao[]): ComandaOperacao[] {
+  return [...comandas].sort(compararComandasOperacaoDesempate);
+}
+
+/** Timestamp do pedido mais recente da comanda (0 se não houver pedidos). */
+export function ultimoPedidoEm(comanda: Pick<ComandaOperacao, 'pedidos'>): number {
+  let max = 0;
+  for (const pedido of comanda.pedidos) {
+    const ts = Date.parse(pedido.createdAt);
+    if (Number.isFinite(ts) && ts > max) max = ts;
+  }
+  return max;
+}
+
+/**
+ * Lista de abertas (sem grade física de mesas): Servir primeiro, depois
+ * consumo recente (último pedido), com o desempate operacional atual.
+ */
+export function ordenarComandasAbertasOperacao(
+  comandas: ComandaOperacao[],
+  precisaAtendimento: (comandaId: string) => boolean,
+): ComandaOperacao[] {
   return [...comandas].sort((a, b) => {
-    if (a.tipo === 'MESA' && b.tipo !== 'MESA') return -1;
-    if (a.tipo !== 'MESA' && b.tipo === 'MESA') return 1;
+    const pendenteA = precisaAtendimento(a.id) ? 1 : 0;
+    const pendenteB = precisaAtendimento(b.id) ? 1 : 0;
+    if (pendenteA !== pendenteB) return pendenteB - pendenteA;
 
-    if (a.tipo === 'MESA' && b.tipo === 'MESA') {
-      const numeroA = numeroMesa(a.identificador);
-      const numeroB = numeroMesa(b.identificador);
-      if (numeroA != null && numeroB != null && numeroA !== numeroB) return numeroA < numeroB ? -1 : 1;
-      if (numeroA != null && numeroB == null) return -1;
-      if (numeroA == null && numeroB != null) return 1;
-    }
+    const ultimoA = ultimoPedidoEm(a);
+    const ultimoB = ultimoPedidoEm(b);
+    if (ultimoA !== ultimoB) return ultimoB - ultimoA;
 
-    const porIdentificador = rotuloComanda(a).localeCompare(rotuloComanda(b), 'pt-BR', {
-      numeric: true,
-      sensitivity: 'base',
-    });
-    if (porIdentificador !== 0) return porIdentificador;
-    return (a.numero ?? 0) - (b.numero ?? 0);
+    return compararComandasOperacaoDesempate(a, b);
   });
 }
 
