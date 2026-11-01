@@ -93,6 +93,7 @@ export function buildAuditEnrichPipeline() {
 }
 
 export const GEO_DYNAMIC_TEMPLATE = 'quiver_tap_client_geo_location';
+export const VITAL_DYNAMIC_TEMPLATE = 'quiver_tap_ui_vital_value';
 
 /** ES 9 GET adds read-only fields (created_date_millis, modified_date_millis) that PUT rejects. */
 export function writableComponentTemplate(component) {
@@ -104,18 +105,21 @@ export function writableComponentTemplate(component) {
 }
 
 /**
- * geo_point for the dotted OTel attribute, preserving other custom mappings.
+ * geo_point for the dotted OTel attribute (and double for web vitals, so an integer LCP
+ * arriving first cannot turn CLS into a truncated long), preserving other custom mappings.
  * ES 9.5 replaces (not merges) an `attributes` object redeclared in a later component,
- * dropping the managed OTel properties, so this uses a dynamic template instead.
+ * dropping the managed OTel properties, so this uses dynamic templates instead.
  */
 export function buildLogsCustomComponent(existing) {
   const body = writableComponentTemplate(existing);
   body.template ??= {};
   body.template.mappings ??= {};
-  const others = (body.template.mappings.dynamic_templates ?? []).filter((entry) => !Object.hasOwn(entry, GEO_DYNAMIC_TEMPLATE));
+  const owned = [GEO_DYNAMIC_TEMPLATE, VITAL_DYNAMIC_TEMPLATE];
+  const others = (body.template.mappings.dynamic_templates ?? []).filter((entry) => !owned.some((name) => Object.hasOwn(entry, name)));
   body.template.mappings.dynamic_templates = [
     ...others,
     { [GEO_DYNAMIC_TEMPLATE]: { path_match: `attributes.${GEO_LOCATION_FIELD}`, mapping: { type: 'geo_point' } } },
+    { [VITAL_DYNAMIC_TEMPLATE]: { path_match: 'attributes.ui.vital.value', mapping: { type: 'double' } } },
   ];
   return body;
 }

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   AUDIT_ENRICH_PIPELINE,
   GEO_DYNAMIC_TEMPLATE,
+  VITAL_DYNAMIC_TEMPLATE,
   buildAuditEnrichPipeline,
   buildLogsCustomComponent,
   parseArgs,
@@ -48,7 +49,10 @@ test('mapping geo_point usa dynamic template e preserva o que ja existe no compo
   assert.equal(geo.length, 1);
   assert.deepEqual(geo[0][GEO_DYNAMIC_TEMPLATE], { path_match: 'attributes.client.geo.location', mapping: { type: 'geo_point' } });
   assert.ok(body.template.mappings.dynamic_templates.some((entry) => entry.outro));
-  assert.deepEqual(buildLogsCustomComponent(undefined).template.mappings.dynamic_templates.length, 1);
+  const vital = body.template.mappings.dynamic_templates.find((entry) => entry[VITAL_DYNAMIC_TEMPLATE]);
+  assert.deepEqual(vital[VITAL_DYNAMIC_TEMPLATE], { path_match: 'attributes.ui.vital.value', mapping: { type: 'double' } });
+  assert.deepEqual(buildLogsCustomComponent(undefined).template.mappings.dynamic_templates.length, 2);
+  assert.equal(buildLogsCustomComponent(body).template.mappings.dynamic_templates.length, 3, 'idempotente');
 });
 
 test('campos somente leitura do GET (ES 9) nao voltam no PUT dos componentes', async () => {
