@@ -1,0 +1,22 @@
+{
+  "name": "quiver-tap-api-latency-p95-prd",
+  "tags": ["quiver-tap", "observability", "production", "app", "latency"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "searchType": "esqlQuery",
+    "esqlQuery": {
+      "esql": "FROM traces-*.otel-prd* | WHERE kind == \"Server\" AND service.name == \"quiver-tap-api\" | STATS requisicoes = COUNT(*), p95_ms = PERCENTILE(duration, 95) / 1000000 | WHERE requisicoes >= 20 AND p95_ms > 1000"
+    },
+    "timeField": "@timestamp",
+    "timeWindowSize": 15,
+    "timeWindowUnit": "m",
+    "size": 0,
+    "thresholdComparator": ">",
+    "threshold": [0]
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}
