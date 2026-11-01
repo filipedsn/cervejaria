@@ -88,7 +88,8 @@ build_compose() {
   fi
 }
 build_compose
-compose() { (cd "$COMPOSE_DIR" && "${COMPOSE[@]}" "$@"); }
+# RELEASE_SHA exportado do .env.staging (já atualizado por set_release_sha) para a interpolação do compose do poller.
+compose() { (cd "$COMPOSE_DIR" && RELEASE_SHA="$(sed -n 's/^RELEASE_SHA=//p' "$ENV_FILE" | tail -n1)" "${COMPOSE[@]}" "$@"); }
 
 sync_code() {
   local target="$1"

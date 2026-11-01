@@ -184,7 +184,7 @@ export async function main(argv, { fetchImpl = fetch, log = console.log } = {}) 
   const baseUrl = env.ELASTICSEARCH_URL || (args.target === 'dev' ? 'http://localhost:9200' : '');
   if (!baseUrl) throw new Error('ELASTICSEARCH_URL obrigatorio no alvo PRD');
   assertSafeEndpoint(baseUrl, args.target);
-  const request = createRequest(baseUrl, env, fetchImpl);
+  const request = createRequest(baseUrl, env, fetchImpl, { admin: args.apply || args.simulate });
   const summary = { target: args.target, mode: args.apply ? 'APPLY' : 'PLAN', pipeline: AUDIT_ENRICH_PIPELINE, geoPointField: `attributes.${GEO_LOCATION_FIELD}` };
   if (args.simulate) {
     const result = await request('/_ingest/pipeline/_simulate', { pipeline: buildAuditEnrichPipeline(), docs: simulationDocuments() });

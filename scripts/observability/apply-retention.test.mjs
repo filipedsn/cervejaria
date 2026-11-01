@@ -27,6 +27,16 @@ test('alvo prd recusa localhost e alvo dev recusa host remoto', () => {
   assert.doesNotThrow(() => assertSafeEndpoint('http://127.0.0.1:9200', 'dev'));
 });
 
+test('leitura usa a chave somente leitura e mutacao usa o usuario admin de observabilidade', async () => {
+  const env = { ELASTIC_API_KEY: 'ro-key', ELASTIC_ADMIN_USER: 'quiver-obs-admin', ELASTIC_ADMIN_PASSWORD: 'pw' };
+  const seen = [];
+  const fetchImpl = async (_url, init) => { seen.push(init.headers.authorization); return new Response('{}', { status: 200 }); };
+  await createRequest('http://10.0.0.5:9200', env, fetchImpl)('/_data_stream');
+  await createRequest('http://10.0.0.5:9200', env, fetchImpl, { admin: true })('/_ilm/policy/x', {}, false, 'PUT');
+  assert.equal(seen[0], 'ApiKey ro-key');
+  assert.equal(seen[1], `Basic ${Buffer.from('quiver-obs-admin:pw').toString('base64')}`);
+});
+
 test('request nunca executa DELETE', async () => {
   const request = createRequest('http://es.test', {}, async () => { throw new Error('nao deveria chamar a rede'); });
   await assert.rejects(request('/x', undefined, false, 'DELETE'), /nunca executa DELETE/);

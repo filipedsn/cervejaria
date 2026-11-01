@@ -1,0 +1,22 @@
+{
+  "description": "Gestao da observabilidade PRD (regras, data views, ILM, templates, pipelines, snapshots). Sem gestao de usuarios/seguranca.",
+  "cluster": [
+    "monitor",
+    "manage_ilm",
+    "manage_index_templates",
+    "manage_ingest_pipelines",
+    "manage_slm",
+    "monitor_snapshot",
+    "read_security"
+  ],
+  "indices": [
+    {
+      "names": ["logs-*", "metrics-*", "traces-*", "quiver-tap-*", ".ds-logs-*", ".ds-metrics-*", ".ds-traces-*"],
+      "privileges": ["all"]
+    }
+  ],
+  "applications": [
+    { "application": "kibana-.kibana", "privileges": ["all"], "resources": ["*"] }
+  ],
+  "metadata": { "owner": "TAP-164", "purpose": "observability admin PRD" }
+}

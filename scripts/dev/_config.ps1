@@ -49,8 +49,19 @@ function Test-DevProcessAlive {
   return $null -ne (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
 }
 
+# Get-NetTCPConnection nao enxerga sockets de processos elevados quando o chamador nao e
+# elevado (protecao de administrador do Windows); a conexao TCP independe do dono do processo.
 function Test-DevPortListening {
-  param([int]$Port)
+  param([int]$Port, [int]$TimeoutMs = 800)
+  foreach ($address in @('127.0.0.1', '::1')) {
+    $client = [System.Net.Sockets.TcpClient]::new([System.Net.IPAddress]::Parse($address).AddressFamily)
+    try {
+      if ($client.ConnectAsync($address, $Port).Wait($TimeoutMs) -and $client.Connected) { return $true }
+    } catch {
+    } finally {
+      $client.Dispose()
+    }
+  }
   return $null -ne (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 }
 

@@ -10,7 +10,7 @@ alwaysApply: true
 O DEV oficial neste ciclo é local: frontend `http://localhost:5202` e API `http://localhost:3002`. A API roda em Node nativo; Postgres e Elasticsearch rodam em Docker local. O Postgres DEV pode usar `:5432` e/ou `:5434` conforme o compose; nunca use o Postgres do VPS. O Elasticsearch local é separado do cluster PRD.
 
 - Para mudanças visuais/comportamentais, validar no DEV local quando os serviços estiverem disponíveis.
-- A publicação de um pacote de DEV usa commit enviado ao GitHub e os scripts `prepare-dev-release.ps1` / `swap-dev-release.ps1`, conforme [CONTRIBUTING.md](../../CONTRIBUTING.md); editar arquivos não atualiza a tela.
+- O DEV roda da pasta canônica, sem elevação; a versão é trocada pelo painel Ops ou por `sync-dev-main.ps1` / `switch-dev-code.ps1`, conforme [CONTRIBUTING.md](../../CONTRIBUTING.md). `prepare-dev-release.ps1` / `swap-dev-release.ps1` são o modo alternativo de pacote compilado.
 - `tapdev.quivercloud.com.br` e o tunnel para DEV são legados/removidos; não os use como destino de teste.
 - Nunca tocar na produção pública ou em `:3001` como parte de validação de DEV.
 

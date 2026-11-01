@@ -1,5 +1,7 @@
-# DEV-only swap between two DEV releases prepared by prepare-dev-release.ps1. Never touches port 3001 / prod-artifacts.
-# Must run elevated (the DEV processes run elevated).
+# DEV-only swap between two compiled DEV releases prepared by prepare-dev-release.ps1. Never touches port 3001 / prod-artifacts.
+# Only applies when a compiled release is active (deploy/dev-artifacts/manifest.json). When the DEV runs from the
+# canonical folder (source mode, TAP-136), switch versions with scripts/dev/switch-dev-code.ps1 or the Ops panel.
+# Run with the same privilege level as the DEV processes (non-elevated by default).
 param(
   [Parameter(Mandatory)][string]$FromSha,
   [Parameter(Mandatory)][string]$ToSha
@@ -59,7 +61,11 @@ function Wait-Release([string]$Sha) {
 $prodBefore = Get-Listener 3001
 $stopped = $false
 try {
-  $manifest = Get-Content (Join-Path $root 'deploy\dev-artifacts\manifest.json') -Raw | ConvertFrom-Json
+  $activeManifest = Join-Path $root 'deploy\dev-artifacts\manifest.json'
+  if (-not (Test-Path -LiteralPath $activeManifest -PathType Leaf)) {
+    throw 'No compiled DEV release is active (deploy\dev-artifacts\manifest.json missing): the DEV runs from source. Use scripts\dev\switch-dev-code.ps1 (or the Ops panel) instead.'
+  }
+  $manifest = Get-Content $activeManifest -Raw | ConvertFrom-Json
   if ($manifest.releaseSha -ne $FromSha) { throw "Active DEV is $($manifest.releaseSha), expected $FromSha." }
   $health = Invoke-RestMethod 'http://127.0.0.1:3002/api/health' -TimeoutSec 8
   if ($health.releaseSha -ne $FromSha) { throw "DEV API reports $($health.releaseSha), expected $FromSha." }

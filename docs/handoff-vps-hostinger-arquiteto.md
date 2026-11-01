@@ -159,11 +159,13 @@ Se for equalizar DEV em Docker, proponha PR pequeno (compose dev) sem tocar PRD.
 | Porta | Estado |
 |---|---|
 | 22 SSH | **Fechada** (acesso só Tailscale) |
-| 80 HTTP | Aberta (redirect → HTTPS) |
-| 443 HTTPS | Aberta (nginx → app) |
+| 80 HTTP | **Só faixas Cloudflare** (redirect → HTTPS) |
+| 443 HTTPS | **Só faixas Cloudflare** (nginx → app) |
 | 3001 | **Fechada** na internet |
 | 9200 / 5601 | **Fechadas** (localhost + Tailscale) |
 | ICMP | Aberta |
+
+80/443 aceitam apenas as faixas publicadas em [cloudflare.com/ips](https://www.cloudflare.com/ips/) (15 IPv4 + 7 IPv6, uma regra TCP `80:443` por faixa, desde 2026-11-01, TAP-164). Acesso direto ao IP de origem com o Host do site **não responde**, então WAF/DDoS da Cloudflare não podem ser contornados. Se a Cloudflare publicar faixa nova, acrescentar a regra no firewall e sincronizar (`vps_firewall_create-rule` + `vps_firewall_sync-to-all-assigned-v-ms`), senão parte do tráfego da borda falha com 52x.
 
 ---
 
@@ -196,7 +198,7 @@ Se for equalizar DEV em Docker, proponha PR pequeno (compose dev) sem tocar PRD.
 ### 2.4 Fluxo HTTP atual
 
 ```
-Cliente → Cloudflare (HTTPS, WAF Free) → VPS :443 (nginx + Origin CA)
+Cliente → Cloudflare (HTTPS, WAF Free) → VPS :443 (só IPs Cloudflare; nginx + Origin CA)
        → 127.0.0.1:3001 (cervejaria-api)
 ```
 
@@ -261,8 +263,9 @@ PC (Tailscale) → 100.120.170.89:9200 / :5601
 | Cloudflare SSL Full Strict + Always HTTPS | ok |
 | Min TLS Cloudflare | **subido para 1.2** (+ TLS 1.3 on) |
 | HSTS na borda Cloudflare | **habilitado** (1 ano, includeSubDomains) |
-| Firewall Hostinger | só 80/443/ICMP · 22/3001/5432/9200/5601 fechados na internet |
-| API `:3001` | **bind `127.0.0.1`** (só nginx local alcança) |
+| Firewall Hostinger | 80/443 só para faixas Cloudflare + ICMP · 22/3001/5432/9200/5601 fechados na internet |
+| API `:3001` | bind `0.0.0.0` (host network; o httpcheck do collector chega pelo gateway da bridge Docker) · **inalcançável da internet** pelo firewall |
+| Credenciais Elastic | collector e poller com chaves só de escrita/leitura do próprio escopo; PC com chave somente leitura + usuário `quiver-obs-admin` (sem `manage_security`) para mutações confirmadas; superusuário `elastic` só no VPS · papéis em `deploy/observability/roles/`, rotação por `scripts/observability/rotate-prd-credentials.ps1 -ConfirmPrd` |
 | `.env.staging` permissões | **600** (antes 666 — corrigido) |
 | SSH senha | **PasswordAuthentication no** · root só com chave |
 | SSH público | timeout (fechado no firewall) |

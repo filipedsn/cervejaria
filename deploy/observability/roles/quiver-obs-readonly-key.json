@@ -1,0 +1,19 @@
+{
+  "name": "quiver-obs-readonly-prd",
+  "expiration": "365d",
+  "role_descriptors": {
+    "quiver_obs_readonly": {
+      "cluster": ["monitor", "read_ilm", "read_pipeline", "monitor_snapshot", "read_slm"],
+      "indices": [
+        {
+          "names": ["logs-*", "metrics-*", "traces-*", "quiver-tap-*", ".ds-logs-*", ".ds-metrics-*", ".ds-traces-*"],
+          "privileges": ["read", "view_index_metadata", "monitor"]
+        }
+      ],
+      "applications": [
+        { "application": "kibana-.kibana", "privileges": ["read"], "resources": ["*"] }
+      ]
+    }
+  },
+  "metadata": { "owner": "TAP-164", "purpose": "observability diagnose PRD (read-only)" }
+}

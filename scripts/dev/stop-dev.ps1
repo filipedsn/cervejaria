@@ -46,7 +46,14 @@ foreach ($port in @($paths.BackendPort, $paths.FrontendPort)) {
 # tsx watch / vite podem existir sem porta (reinício) e travam prisma generate (EPERM no query engine).
 foreach ($proc in @($nodes.Values)) {
   $cmd = $proc.CommandLine
-  if (-not $cmd -or $cmd -notlike "*$root*" -or $cmd -like '*ops-panel*') { continue }
+  if (-not $cmd -or $cmd -like '*ops-panel*') { continue }
+  # O tsx watch do backend roda com caminhos relativos (sem a raiz do repo na linha de comando).
+  if ($cmd -like '*node24-tsx-host.mjs*' -and $cmd -like '*watch src/index.ts*') {
+    & taskkill.exe /PID $proc.ProcessId /T /F 2>$null | Out-Null
+    Write-Host "Node DEV residual (tsx watch): encerrado PID $($proc.ProcessId)." -ForegroundColor DarkGray
+    continue
+  }
+  if ($cmd -notlike "*$root*") { continue }
   if ($cmd -like '*\backend\*' -or $cmd -like '*vite*' -or $cmd -like '*frontend*node_modules*') {
     Stop-DevRepoNodeTree -ProcessId ([int]$proc.ProcessId) -Reason 'Node DEV residual'
   }
