@@ -198,7 +198,15 @@ export function OperacaoComandaDetailPage() {
       api.post<{ atendidos: string[] }>(`/api/operacao/comandas/${id}/atendimento-balcao`, { pedidoIds }),
     onSuccess: () => {
       if (id) marcarAtendido(id);
+      setErro('');
       invalidar();
+    },
+    onError: (error) => {
+      setErro(
+        error instanceof ApiError
+          ? error.message
+          : 'Não foi possível confirmar o atendimento do balcão. Atualize a página e tente de novo.',
+      );
     },
   });
 
