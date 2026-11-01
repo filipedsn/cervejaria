@@ -1,8 +1,12 @@
-# Alertas Kibana (licenca Basic): connector .index -> ES -> poll na API -> SMTP.
+# Alertas Kibana (licenca Basic): connector .index -> ES -> poller -> Telegram/e-mail.
 # Nao requer Gold (.webhook/.email bloqueados no Basic).
+[CmdletBinding()]
+param([ValidateSet('dev', 'prd')][string]$Target = 'dev', [switch]$ConfirmPrd)
 
 $ErrorActionPreference = 'Stop'
+$script:ObsTarget = $Target
 . (Join-Path $PSScriptRoot '_elastic-auth.ps1')
+Assert-PrdMutationConfirmed -Confirmed:$ConfirmPrd
 $ProjectRoot = $ObsProjectRoot
 $AlertIndex = 'quiver-tap-alert-events'
 
@@ -20,16 +24,33 @@ $mappingBody = @{
   mappings = @{
     properties = @{
       '@timestamp' = @{ type = 'date' }
+      ruleId = @{ type = 'keyword' }
       ruleName = @{ type = 'keyword' }
+      environment = @{ type = 'keyword' }
       alertState = @{ type = 'keyword' }
       reason = @{ type = 'text' }
       viewInAppUrl = @{ type = 'keyword' }
+      processed = @{ type = 'boolean' }
+      processedAt = @{ type = 'date' }
     }
   }
 } | ConvertTo-Json -Depth 6 -Compress
 
-Invoke-Elastic -Method PUT -Path "/$AlertIndex" -Body $mappingBody | Out-Null
-Write-Host "  Indice ES: $AlertIndex" -ForegroundColor Gray
+$mappingFile = Join-Path $env:TEMP "quiver-alert-index-$([guid]::NewGuid().ToString('N')).json"
+try {
+  Write-Utf8NoBom -Path $mappingFile -Content $mappingBody
+  $indexResult = (Invoke-Elastic -Method PUT -Path "/$AlertIndex" -BodyFile $mappingFile | Out-String)
+} finally {
+  Remove-Item -LiteralPath $mappingFile -ErrorAction SilentlyContinue
+}
+if ($indexResult -match '"acknowledged"\s*:\s*true') {
+  Write-Host "  Indice ES criado: $AlertIndex" -ForegroundColor Green
+} elseif ($indexResult -match 'resource_already_exists_exception') {
+  Write-Host "  Indice ES ja existe: $AlertIndex" -ForegroundColor Green
+} else {
+  Write-Host "  Falha ao criar indice: $indexResult" -ForegroundColor Red
+  exit 1
+}
 
 $connectorBody = @{
   name = 'quiver-tap-alert-index'
@@ -63,7 +84,7 @@ Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue
 
 Write-Host ''
 Write-Host 'Vinculando acoes aos alertas...' -ForegroundColor Yellow
-& (Join-Path $PSScriptRoot 'wire-alert-actions.ps1')
+& (Join-Path $PSScriptRoot 'wire-alert-actions.ps1') -Target $Target
 
 Write-Host ''
 Write-Host 'Fluxo:' -ForegroundColor Cyan

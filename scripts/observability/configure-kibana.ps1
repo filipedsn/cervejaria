@@ -1,13 +1,25 @@
 # Configura Kibana: data view, dashboard e alertas para Quiver Tap OTel.
+[CmdletBinding()]
+param([ValidateSet('dev', 'prd')][string]$Target = 'dev', [switch]$ConfirmPrd)
 
 $ErrorActionPreference = 'Stop'
+$script:ObsTarget = $Target
 . (Join-Path $PSScriptRoot '_elastic-auth.ps1')
+Assert-PrdMutationConfirmed -Confirmed:$ConfirmPrd
+
+function Test-SkipForTarget {
+  param([string]$Name)
+  if ($ObsTarget -eq 'prd' -and $Name -match '-dev(\.json|\.ndjson)?$') { return $true }
+  if ($ObsTarget -eq 'dev' -and $Name -match '-prd(\.json|\.ndjson)?$') { return $true }
+  return $false
+}
 $ProjectRoot = $ObsProjectRoot
 $ObsDir = Join-Path $ProjectRoot 'deploy\observability'
 
 function Set-QuiverDataView {
   param([string]$JsonFile)
   if (-not (Test-Path $JsonFile)) { return $false }
+  if (Test-SkipForTarget ([System.IO.Path]::GetFileName($JsonFile))) { Write-Host "   Pulado no alvo ${ObsTarget}: $([System.IO.Path]::GetFileName($JsonFile))" -ForegroundColor Gray; return $true }
 
   $spec = Get-Content -Raw -Path $JsonFile | ConvertFrom-Json
   $name = $spec.data_view.name
@@ -74,20 +86,44 @@ function Set-QuiverAlertRule {
 
   $spec = Get-Content -Raw -Path $JsonFile | ConvertFrom-Json
   $name = $spec.name
+  if (Test-SkipForTarget $name) { Write-Host "   Pulado no alvo ${ObsTarget}: $name" -ForegroundColor Gray; return $true }
   $findRaw = Invoke-Kibana -Method GET -Path "/api/alerting/rules/_find?search=$SearchName&per_page=50"
   $find = $findRaw | ConvertFrom-Json
   $existing = $find.data | Where-Object { $_.name -eq $name } | Select-Object -First 1
 
   if ($existing) {
-    $del = Invoke-Kibana -Method DELETE -Path "/api/alerting/rule/$($existing.id)"
-    if ($del -notmatch '"id"' -and $del -notmatch 'not_found' -and $del -notmatch '404') {
-      Write-Host "   $name DELETE: $del" -ForegroundColor Yellow
+    # Atualiza no lugar (PUT) para preservar as acoes ja ligadas pelo wire-alert-actions.ps1.
+    $detail = Invoke-Kibana -Method GET -Path "/api/alerting/rule/$($existing.id)" | ConvertFrom-Json
+    $actions = @(@($detail.actions) | Where-Object { $_ } | ForEach-Object {
+      $a = [ordered]@{ group = $_.group; id = $_.id; params = $_.params }
+      if ($_.PSObject.Properties.Name -contains 'frequency' -and $_.frequency) { $a.frequency = $_.frequency }
+      $a
+    })
+    $update = [ordered]@{ name = $spec.name; tags = @($spec.tags); schedule = $spec.schedule; params = $spec.params; actions = $actions }
+    $hasFrequency = @($actions | Where-Object { $_.Contains('frequency') }).Count -gt 0
+    if ($spec.notify_when -and -not $hasFrequency) { $update.notify_when = $spec.notify_when }
+    $tmp = Join-Path $env:TEMP "quiver-rule-$([guid]::NewGuid().ToString('N')).json"
+    try {
+      Write-Utf8NoBom -Path $tmp -Content ($update | ConvertTo-Json -Depth 20 -Compress)
+      $result = Invoke-Kibana -Method PUT -Path "/api/alerting/rule/$($existing.id)" -BodyFile $tmp
+    } finally {
+      Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue
     }
+    if ($result -notmatch '"id"') {
+      Write-Host "   $name PUT: $result" -ForegroundColor Yellow
+      return $false
+    }
+    if ([bool]$spec.enabled -ne [bool]$detail.enabled) {
+      $toggle = if ([bool]$spec.enabled) { '_enable' } else { '_disable' }
+      Invoke-Kibana -Method POST -Path "/api/alerting/rule/$($existing.id)/$toggle" | Out-Null
+    }
+    Write-Host "   OK $name (atualizado; $($actions.Count) acoes preservadas)" -ForegroundColor Green
+    return $true
   }
 
   $result = Invoke-Kibana -Method POST -Path '/api/alerting/rule' -BodyFile $JsonFile
   if ($result -match '"id"') {
-    Write-Host "   OK $name ($(if ($existing) { 'recriado' } else { 'criado' }))" -ForegroundColor Green
+    Write-Host "   OK $name (criado)" -ForegroundColor Green
     return $true
   }
   if ($result -match 'encryption key' -or $result -match 'Internal Server Error') {
@@ -125,6 +161,7 @@ function Disable-LegacyAlert {
 function Set-UptimeMonitor {
   param([string]$JsonFile)
   if (-not (Test-Path $JsonFile)) { return $false }
+  if (Test-SkipForTarget ([System.IO.Path]::GetFileName($JsonFile))) { Write-Host "   Pulado no alvo ${ObsTarget}: $([System.IO.Path]::GetFileName($JsonFile))" -ForegroundColor Gray; return $true }
   $spec = Get-Content -Raw -Path $JsonFile | ConvertFrom-Json
   $name = $spec.name
   $listRaw = Invoke-Kibana -Path '/api/synthetics/monitors'
@@ -195,6 +232,7 @@ foreach ($vf in $viewFiles) {
 # 2. Dashboards DEV + PRD
 Write-Host '2. Dashboards Quiver Tap (DEV / PRD)...' -ForegroundColor Yellow
 foreach ($dashFile in @('quiver-tap-dashboard-prd.ndjson', 'quiver-tap-dashboard-dev.ndjson', 'quiver-tap-dashboard-infra.ndjson', 'quiver-tap-dashboard-slo.ndjson', 'quiver-tap-dashboard-business.ndjson')) {
+  if (Test-SkipForTarget $dashFile) { Write-Host "   Pulado no alvo ${ObsTarget}: $dashFile" -ForegroundColor Gray; continue }
   $ndjson = Join-Path $ObsDir $dashFile
   if (-not (Test-Path $ndjson)) {
     Write-Host "   Arquivo ausente: $dashFile" -ForegroundColor Red
@@ -221,6 +259,7 @@ Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-api-ready-down-pr
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-public-ready-down-prd.json') -SearchName 'quiver-tap-public-ready-down-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-public-ready-down-dev.json') -SearchName 'quiver-tap-public-ready-down-dev' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-postgres-tcp-down-prd.json') -SearchName 'quiver-tap-postgres-tcp-down-prd' | Out-Null
+Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-disk-high-prd.json') -SearchName 'quiver-tap-disk-high-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-postgres-tcp-down-dev.json') -SearchName 'quiver-tap-postgres-tcp-down-dev' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-es-cluster.json') -SearchName 'quiver-tap-es-cluster-not-green' | Out-Null
 
