@@ -1,5 +1,7 @@
 import { requireRuntimeElasticsearchConfig, type AnalystConfig } from '../config.js';
+import { toSafeErrorContext } from '../notify/privacy.js';
 import type { RawEventDocument } from '../types.js';
+import type { ErrorContext } from '../watch/types.js';
 import { ALERT_SOURCE_FIELDS, ANALYST_LIMITS, DEV_INDICES, indicesFor, SIGNAL_SOURCE_FIELDS, type AnalystIndices } from './constants.js';
 import { ElasticReadOnlyClient, ElasticSourceError, type FetchLike } from './elastic.js';
 import type { AlertSource, AroundOptions, FindAlertsOptions, LookupOptions, ReleaseServiceOptions, SignalSource, TimeRange } from './types.js';
@@ -94,6 +96,20 @@ export class ElasticsearchSources implements AlertSource, SignalSource {
     const response = await this.client.search(index, { size: 0, timeout: ANALYST_LIMITS.elasticTimeout, track_total_hits: true, query: { bool: { filter: [{ range: { '@timestamp': { gte: `now-${minutes}m` } } }, ...filters] } } }) as { hits?: { total?: { value?: unknown } } };
     const value = response.hits?.total?.value;
     return typeof value === 'number' ? value : 0;
+  }
+
+  /** Watch read: top route templates and correlation ids among ERROR logs (technical fields only). */
+  async errorContext(index: string, minutes: number): Promise<ErrorContext> {
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60) throw new ElasticSourceError('request_failed', 'Invalid bounded window');
+    const response = await this.client.search(index, {
+      size: 0, timeout: ANALYST_LIMITS.elasticTimeout, track_total_hits: false,
+      query: { bool: { filter: [{ range: { '@timestamp': { gte: `now-${minutes}m` } } }, { term: { severity_text: 'ERROR' } }] } },
+      aggs: { routes: { terms: { field: 'attributes.http.route', size: 3 } }, correlations: { terms: { field: 'attributes.correlationId', size: 3 } } },
+    }) as { aggregations?: { routes?: { buckets?: Array<{ key?: unknown; doc_count?: unknown }> }; correlations?: { buckets?: Array<{ key?: unknown }> } } };
+    return toSafeErrorContext({
+      routes: (response.aggregations?.routes?.buckets ?? []).map((bucket) => ({ route: bucket.key, count: bucket.doc_count })),
+      correlationIds: (response.aggregations?.correlations?.buckets ?? []).map((bucket) => bucket.key),
+    });
   }
 
   /** Raw bounded search for the journey command; the caller builds a capped body. */
