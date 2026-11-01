@@ -266,6 +266,7 @@ export function OperacaoEstoquePage() {
                 aria-activedescendant={mostrarSugestoes ? `sugestao-produto-estoque-${sugestaoAtiva}` : undefined}
                 autoComplete="off"
                 placeholder="Digite o nome do produto"
+                data-audit-search=""
                 value={buscaProduto}
                 onFocus={() => { if (termoBusca) setBuscaAberta(true); }}
                 onBlur={() => setBuscaAberta(false)}

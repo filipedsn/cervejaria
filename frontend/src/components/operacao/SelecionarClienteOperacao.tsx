@@ -59,6 +59,7 @@ export function SelecionarClienteOperacao({
             value={busca}
             onChange={(event) => setBusca(event.target.value)}
             placeholder="Buscar por nome ou telefone"
+            data-audit-search=""
           />
           {isFetching && <p className="text-xs text-ink-faint">Buscando clientes...</p>}
           {termo.length >= 2 && !isFetching && (
