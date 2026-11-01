@@ -152,6 +152,8 @@ function formatAdminCervejaria(
     corPaleta: unknown;
     exibirKpisComanda: boolean;
     comandasColunaUnica: boolean;
+    comandasAlarmeAtivo: boolean;
+    comandasAlarmeIntervaloSegundos: number;
     usaCardapio: boolean;
     updatedAt: Date;
     configuracaoOperacao?: {
@@ -207,6 +209,8 @@ async function mapCervejariasList() {
         corPaleta: true,
         exibirKpisComanda: true,
         comandasColunaUnica: true,
+        comandasAlarmeAtivo: true,
+        comandasAlarmeIntervaloSegundos: true,
         usaCardapio: true,
         updatedAt: true,
         _count: { select: { usuarios: true, eventos: true } },

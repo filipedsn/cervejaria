@@ -178,6 +178,10 @@ model Cervejaria {
   exibirKpisComanda Boolean @default(true)
   /** Lista de comandas em coluna única (ligado) ou duas colunas (desligado). */
   comandasColunaUnica Boolean @default(true)
+  /** Alarme sonoro recorrente na tela de comandas (Servir / solicitação de pagamento). */
+  comandasAlarmeAtivo Boolean @default(true)
+  /** Intervalo em segundos entre toques do alarme da tela de comandas (5–120). */
+  comandasAlarmeIntervaloSegundos Int @default(10)
   /** Cardápios com preço por evento (ligado) ou só catálogo tradicional (desligado). */
   usaCardapio Boolean @default(false)
   createdAt   DateTime @default(now())

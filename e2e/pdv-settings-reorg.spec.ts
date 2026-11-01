@@ -24,7 +24,12 @@ async function mockApi(page: Page, options: MockOptions = {}) {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   let tapsEnabled = options.tapsEnabled ?? true;
   let pix = '';
-  let companySettings = { exibirKpisComanda: true, comandasColunaUnica: true };
+  let companySettings = {
+    exibirKpisComanda: true,
+    comandasColunaUnica: true,
+    comandasAlarmeAtivo: true,
+    comandasAlarmeIntervaloSegundos: 10,
+  };
   const source = options.source ?? 'CANONICAL_PDV';
   const body = (route: Parameters<Parameters<Page['route']>[1]>[0]) => route.request().postDataJSON() as Record<string, unknown>;
   page.on('request', request => {

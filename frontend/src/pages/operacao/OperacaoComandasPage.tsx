@@ -22,6 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import { connectSocket, getSocket } from '../../lib/socket';
 import { useAtendimentoBalcao } from '../../hooks/useAtendimentoBalcao';
+import { useComandasAtendimentoAlarme } from '../../hooks/useComandasAtendimentoAlarme';
 import {
   mesasOperacionais,
   ordenarComandasParaOperacao,
@@ -49,7 +50,7 @@ export function OperacaoComandasPage() {
   const exibirKpis = cervejaria?.exibirKpisComanda ?? true;
   const colunaUnica = cervejaria?.comandasColunaUnica ?? true;
   const { contexto } = useOperacaoContexto();
-  const { temPendente } = useAtendimentoBalcao();
+  const { temPendente, pendentes } = useAtendimentoBalcao();
   const pontosVenda = contexto.ativo ? contexto.pontosVenda : [];
   const [searchParams, setSearchParams] = useSearchParams();
   const pontoVendaSelecionadoId = searchParams.get('pontoVendaId') ?? '';
@@ -123,6 +124,18 @@ export function OperacaoComandasPage() {
   const abertasTurno = sessaoCaixaId && !abertasQuery.isError ? (abertasQuery.data ?? []) : [];
   const fechadasTurno = sessaoCaixaId && !fechadasQuery.isError ? (fechadasQuery.data ?? []) : [];
   const erroConsultaComandas = abertasQuery.isError || fechadasQuery.isError;
+
+  const precisaAlarmeAtendimento = useMemo(
+    () =>
+      pendentes.length > 0 ||
+      abertasTurno.some((comanda) => Boolean(comanda.solicitacaoPagamentoEm)),
+    [abertasTurno, pendentes],
+  );
+  useComandasAtendimentoAlarme({
+    ativo: cervejaria?.comandasAlarmeAtivo ?? true,
+    intervaloSegundos: cervejaria?.comandasAlarmeIntervaloSegundos ?? 10,
+    precisaAlarme: precisaAlarmeAtendimento,
+  });
 
   const comandas = ordenarComandasParaOperacao(
     comandaTab === 'ABERTA' ? abertasTurno : fechadasTurno.filter((c) => c.tipo !== 'AVULSA'),
