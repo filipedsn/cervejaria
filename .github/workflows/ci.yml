@@ -56,6 +56,7 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
             ops-panel/package-lock.json
+            support-analyst/package-lock.json
 
       - name: Install root
         run: npm ci
@@ -105,3 +106,12 @@ jobs:
         run: |
           npm ci --prefix ops-panel
           npm run test:unit --prefix ops-panel
+
+      - name: Support analyst typecheck + unit tests
+        run: |
+          npm ci --prefix support-analyst
+          npm run typecheck --prefix support-analyst
+          npm run test --prefix support-analyst
+
+      - name: Analyst and observability script tests
+        run: node --test scripts/support-analyst/validator-policy.test.mjs scripts/support-analyst/elastic-target-guard.test.mjs scripts/observability/rebuild-platform.test.mjs scripts/observability/apply-retention.test.mjs
