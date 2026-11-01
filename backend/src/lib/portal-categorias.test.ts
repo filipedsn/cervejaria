@@ -14,6 +14,22 @@ describe('categoriaParaAlertaBalcao', () => {
     );
   });
 
+  it('normaliza legado e prefere categoriaPdv', () => {
+    assert.equal(
+      categoriaParaAlertaBalcao({ categoria: 'cerveja', tipo: 'BEBIDA', formato: 'LATA' }),
+      'Cervejas',
+    );
+    assert.equal(
+      categoriaParaAlertaBalcao({
+        categoria: 'Outros',
+        categoriaPdvNome: 'Cervejas',
+        tipo: 'BEBIDA',
+        formato: 'LATA',
+      }),
+      'Cervejas',
+    );
+  });
+
   it('mapeia chope sem categoria para Chope', () => {
     assert.equal(
       categoriaParaAlertaBalcao({ categoria: null, tipo: 'BEBIDA', formato: 'CHOPE' }),

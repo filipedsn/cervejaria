@@ -26,11 +26,11 @@ describe('particionarItensParaPedidos', () => {
     const itens = [linha('churrasquinho', true), linha('batata', true)];
     assert.deepEqual(particionarItensParaPedidos(itens, true), [itens]);
   });
-  it('separa uma linha marcada das linhas comuns e deixa bebidas fora da cozinha', () => {
+  it('separa balcão da cozinha e isola linha marcada', () => {
     const marcado = linha('churrasquinho', true, true);
     const comum = linha('batata', true);
     const bebida = linha('refrigerante', false);
-    assert.deepEqual(particionarItensParaPedidos([marcado, comum, bebida], true), [[comum, bebida], [marcado]]);
+    assert.deepEqual(particionarItensParaPedidos([marcado, comum, bebida], true), [[bebida], [comum], [marcado]]);
   });
   it('cria um pedido para cada linha marcada e preserva quantidade na linha', () => {
     const um = linha('churrasquinho', true, true, 3);
@@ -38,6 +38,15 @@ describe('particionarItensParaPedidos', () => {
     const comum = linha('batata', true);
     assert.deepEqual(particionarItensParaPedidos([um, comum, dois], true), [[comum], [um], [dois]]);
     assert.equal(particionarItensParaPedidos([um], true)[0]?.[0]?.quantidade, 3);
+  });
+  it('isola latões do item de cozinha no mesmo envio', () => {
+    const heineken = linha('latao-heineken', false);
+    const amstel = linha('latao-amstel', false);
+    const porcao = linha('c-boi', true);
+    assert.deepEqual(
+      particionarItensParaPedidos([heineken, porcao, amstel], true),
+      [[heineken, amstel], [porcao]],
+    );
   });
   it('não divide um único item de preparo nem cria pedidos de cozinha quando desabilitada', () => {
     const marcado = linha('churrasquinho', true, true);

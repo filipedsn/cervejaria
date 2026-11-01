@@ -6,6 +6,7 @@ import {
   aplicarStatusPedidoCozinha,
   filtrarItensAtendimentoBalcao,
   filtroListaPedidosCozinha,
+  pedidoVaiParaCozinha,
   resumoPedidoCozinha,
 } from './cozinha.js';
 
@@ -112,6 +113,16 @@ describe('filtroListaPedidosCozinha', () => {
   });
 });
 
+describe('pedidoVaiParaCozinha / balcão portal', () => {
+  it('pedido só de bebida sem preparo não vai à cozinha', () => {
+    assert.equal(pedidoVaiParaCozinha([{ exigePreparo: false }, { exigePreparo: false }]), false);
+  });
+
+  it('qualquer item com preparo manda o pedido à cozinha', () => {
+    assert.equal(pedidoVaiParaCozinha([{ exigePreparo: false }, { exigePreparo: true }]), true);
+  });
+});
+
 describe('filtrarItensAtendimentoBalcao', () => {
   const linhas = [
     { nome: 'IPA', quantidade: 1, volumeMl: 500, exigePreparo: false, canceladoEm: null, categoria: 'Chope' },
@@ -129,6 +140,41 @@ describe('filtrarItensAtendimentoBalcao', () => {
     assert.deepEqual(filtrarItensAtendimentoBalcao(linhas, ['Chope']), [
       { nome: 'IPA', quantidade: 1, volumeMl: 500 },
     ]);
+  });
+
+  it('casa categoria legada com alerta canônico Cervejas', () => {
+    assert.deepEqual(
+      filtrarItensAtendimentoBalcao(
+        [
+          {
+            nome: 'Latão Heineken',
+            quantidade: 1,
+            volumeMl: 1,
+            exigePreparo: false,
+            canceladoEm: null,
+            categoria: 'cerveja',
+            tipo: 'BEBIDA',
+            formato: 'LATA',
+          },
+          {
+            nome: 'IPA torneira',
+            quantidade: 1,
+            volumeMl: 500,
+            exigePreparo: false,
+            canceladoEm: null,
+            categoria: null,
+            categoriaPdvNome: 'Cervejas',
+            tipo: 'BEBIDA',
+            formato: 'GARRAFA',
+          },
+        ],
+        ['Cervejas'],
+      ),
+      [
+        { nome: 'Latão Heineken', quantidade: 1, volumeMl: 1 },
+        { nome: 'IPA torneira', quantidade: 1, volumeMl: 500 },
+      ],
+    );
   });
 
   it('trata chope sem categoria cadastrada como Chope pelo formato', () => {

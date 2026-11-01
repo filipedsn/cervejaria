@@ -25,6 +25,7 @@ import { useAtendimentoBalcao } from '../../hooks/useAtendimentoBalcao';
 import { useComandasAtendimentoAlarme } from '../../hooks/useComandasAtendimentoAlarme';
 import {
   mesasOperacionais,
+  ordenarComandasAbertasOperacao,
   ordenarComandasParaOperacao,
   RESUMO_TURNO_VAZIO,
   rotuloComanda,
@@ -137,15 +138,20 @@ export function OperacaoComandasPage() {
     precisaAlarme: precisaAlarmeAtendimento,
   });
 
-  const comandas = ordenarComandasParaOperacao(
-    comandaTab === 'ABERTA' ? abertasTurno : fechadasTurno.filter((c) => c.tipo !== 'AVULSA'),
-  );
-
   const quantidadeMesas = contexto.ativo ? (contexto.quantidadeMesas ?? 0) : 0;
   const mesas = useMemo(
     () => (quantidadeMesas <= 0 ? null : mesasOperacionais(quantidadeMesas, abertasTurno)),
     [quantidadeMesas, abertasTurno],
   );
+
+  const comandas = useMemo(() => {
+    if (comandaTab === 'ABERTA') {
+      // Grade física 1..N mantém posição de salão; priorização só na lista livre.
+      if (quantidadeMesas > 0) return ordenarComandasParaOperacao(abertasTurno);
+      return ordenarComandasAbertasOperacao(abertasTurno, temPendente);
+    }
+    return ordenarComandasParaOperacao(fechadasTurno.filter((c) => c.tipo !== 'AVULSA'));
+  }, [abertasTurno, comandaTab, fechadasTurno, pendentes, quantidadeMesas, temPendente]);
 
   const itensLista = useMemo(
     () =>

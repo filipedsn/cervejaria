@@ -28,6 +28,7 @@ import {
   IconTrophy,
 } from './NavIcons';
 import { usePedidoAlertSound } from '../hooks/usePedidoAlertSound';
+import { useAtendimentoBalcao } from '../hooks/useAtendimentoBalcao';
 import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 
 function ChevronRightIcon({ className }: { className?: string }) {
@@ -238,6 +239,8 @@ export function Layout() {
       : [...navItemsCervejariaComCatalogo, ...navItemsOperacaoModoSemCatalogo];
   const { alertEnabled, alertNeedsUnlock, pushStatus, wakeLockActive, togglePedidoAlert } =
     usePedidoAlertSound();
+  // Mantém o socket do badge Servir ativo em qualquer tela do shell (não só Comandas).
+  useAtendimentoBalcao();
   const onEventsPage = location.pathname === '/eventos';
   const onTrailerPage = location.pathname === '/trailer';
   // Evento e trailer sao da cervejaria: nao aparecem dentro da superficie
