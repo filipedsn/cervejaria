@@ -7,6 +7,12 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      teste_telegram:
+        description: "Enviar uma mensagem de teste ao Telegram (valida os secrets) sem mudar o estado."
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   actions: read
@@ -58,6 +64,18 @@ jobs:
           fi
           curl -fsS -o /dev/null -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=${text}"
+
+      - name: Teste do Telegram (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.teste_telegram
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CODE: ${{ steps.probe.outputs.code }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$CHAT" ]; then echo "::error::secrets TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes"; exit 1; fi
+          curl -fsS -o /dev/null -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" \
+            --data-urlencode "text=[MONITOR EXTERNO] TESTE — canal do GitHub Actions funcionando. /api/ready respondeu HTTP ${CODE}."
 
       - name: Marcar a execução como falha enquanto o site estiver fora
         if: steps.probe.outputs.state == 'down'
