@@ -17,12 +17,14 @@ receivers:
         method: GET
       - endpoint: http://host.docker.internal:3001/
         method: GET
+      - endpoint: https://tap.quivercloud.com.br/api/ready
+        method: GET
 
   tcpcheck:
     collection_interval: 60s
     initial_delay: 5s
     targets:
-      - endpoint: host.docker.internal:5432
+      - endpoint: cervejaria-db:5432
         dialer:
           timeout: 5s
 

@@ -8,7 +8,7 @@
   "params": {
     "index": ["metrics-tcpcheckreceiver.otel-infra*"],
     "timeField": "@timestamp",
-    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.tcpcheck.endpoint\":\"*5432*\"}}],\"must_not\":[{\"term\":{\"metrics.tcpcheck.status\":1}}]}}}",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.tcpcheck.endpoint\":\"*5432*\"}}],\"should\":[{\"bool\":{\"filter\":[{\"exists\":{\"field\":\"metrics.tcpcheck.status\"}}],\"must_not\":[{\"term\":{\"metrics.tcpcheck.status\":1}}]}},{\"exists\":{\"field\":\"attributes.error.message\"}}],\"minimum_should_match\":1}}}",
     "size": 10,
     "timeWindowSize": 3,
     "timeWindowUnit": "m",
