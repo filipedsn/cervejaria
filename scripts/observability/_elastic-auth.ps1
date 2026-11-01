@@ -1,8 +1,23 @@
 # Credenciais centralizadas para scripts obs:* (Elasticsearch / Kibana com xpack.security).
+# Alvo: defina $script:ObsTarget = 'dev' (padrao) ou 'prd' ANTES do dot-source deste arquivo.
 $ErrorActionPreference = 'Stop'
 
+if (-not (Get-Variable -Name ObsTarget -Scope Script -ErrorAction SilentlyContinue)) { $script:ObsTarget = 'dev' }
+if ($script:ObsTarget -notin @('dev', 'prd')) { throw "ObsTarget invalido: $script:ObsTarget" }
+
 $script:ObsProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$script:ObsEnvFile = Join-Path $ObsProjectRoot 'deploy\observability\.env.observability'
+$script:ObsEnvFile = if ($script:ObsTarget -eq 'prd') {
+  Join-Path $ObsProjectRoot 'deploy\observability\.env.observability.prd'
+} else {
+  Join-Path $ObsProjectRoot 'deploy\observability\.env.observability'
+}
+
+if ($script:ObsTarget -eq 'prd') {
+  if (-not (Test-Path -LiteralPath $ObsEnvFile)) { throw 'Alvo PRD exige deploy\observability\.env.observability.prd (nao versionado). Peca ao Filipe para criar.' }
+  foreach ($n in 'ELASTICSEARCH_URL', 'KIBANA_URL', 'ELASTIC_API_KEY', 'ELASTIC_USER', 'ELASTIC_PASSWORD') {
+    Remove-Item -Path "env:$n" -ErrorAction SilentlyContinue
+  }
+}
 
 function Import-ObservabilityEnv {
   if (-not (Test-Path $ObsEnvFile)) { return }
@@ -26,6 +41,18 @@ function Import-ObservabilityEnv {
 }
 
 Import-ObservabilityEnv
+
+foreach ($n in 'ELASTICSEARCH_URL', 'KIBANA_URL') {
+  $v = [Environment]::GetEnvironmentVariable($n)
+  $isLocal = $v -match '^https?://(localhost|127\.0\.0\.1|\[::1\])(:|/|$)'
+  if ($script:ObsTarget -eq 'prd') {
+    if (-not $v) { throw "$n obrigatorio no alvo PRD." }
+    if ($isLocal) { throw "$n aponta para localhost (DEV). Recusado no alvo PRD." }
+  } elseif ($v -and -not $isLocal) {
+    throw "$n aponta para fora do PC no alvo DEV. Recusado (para o VPS use o alvo PRD)."
+  }
+}
+if ($script:ObsTarget -eq 'prd') { Write-Host 'ALVO: PRD (cluster do VPS)' -ForegroundColor Red }
 
 $script:EsBase = if ($env:ELASTICSEARCH_URL) { $env:ELASTICSEARCH_URL.TrimEnd('/') } else { 'http://localhost:9200' }
 $script:KibanaBase = if ($env:KIBANA_URL) { $env:KIBANA_URL.TrimEnd('/') } else { 'http://localhost:5601' }
@@ -89,4 +116,11 @@ function Test-ElasticHttpStatus {
 function Get-ElasticCurlAuthArgs {
   if (-not $ElasticAuthHeader) { return @() }
   return @('-H', "Authorization: $ElasticAuthHeader")
+}
+
+function Assert-PrdMutationConfirmed {
+  param([bool]$Confirmed)
+  if ($script:ObsTarget -eq 'prd' -and -not $Confirmed) {
+    throw 'Mutacao em PRD exige -ConfirmPrd (e GATE autorizado pelo Filipe).'
+  }
 }
