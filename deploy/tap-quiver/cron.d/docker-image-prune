@@ -1,0 +1,10 @@
+# Limpeza diária de imagens Docker sem tag: 02:23 America/Sao_Paulo (05:23 UTC).
+# Instalado no VPS em /etc/cron.d/docker-image-prune (TAP-158).
+# O servidor está em UTC e o cron do Ubuntu ignora CRON_TZ: horários abaixo são UTC.
+# Sem -a: imagens com tag (quiver-tap-api:rollback, :<sha>) não podem sair; as :<sha>
+# antigas já são podadas pelo deploy-prd.sh (KEEP_SHA_IMAGES).
+# flock -n pula a rodada se houver publicação em andamento (mesmo lock do deploy-prd.sh).
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+# min hora dom mes dow user comando
+23 5 * * * root flock -n /var/lock/quiver-tap-deploy.lock docker image prune -f --filter until=24h >/dev/null 2>&1
