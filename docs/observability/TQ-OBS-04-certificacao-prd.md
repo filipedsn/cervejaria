@@ -1,8 +1,22 @@
 # TQ-OBS-04 — Certificação de observabilidade PRD
 
 Primeira rodada: 2026-10-26 21:22 BRT (RELEASE_SHA `ef52d938`)  
-Rodada atual: 2026-11-01 15:35 BRT (RELEASE_SHA `1126730f15e0d2b7cdd1075eb6b72feb8859d44b`)  
+Segunda rodada: 2026-11-01 15:35 BRT (RELEASE_SHA `1126730f15e0d2b7cdd1075eb6b72feb8859d44b`)  
+Rodada final: 2026-11-01 18:40 BRT (RELEASE_SHA `1ae135808ee96c46f12e749b023847c3bc5d1424`, Elastic 9.5.5)  
 Projeto Plane: TAP-138
+
+## Rodada final (2026-11-01 18:40 BRT)
+
+`diagnose-prd.ps1`: 19 de 19 PASS depois do deploy de `1ae13580` e do upgrade do Elastic PRD para 9.5.5.
+
+- ES-01: green. As réplicas dos backing indices antigos foram zeradas (cluster de um nó); os índices novos já nascem com 0 réplicas.
+- ILM-01 e MAP-01: PASS após `apply-retention --target prd --apply --rollover`, reaplicado depois do upgrade. Auditoria PRD com 180 dias.
+- ALT-01, KB-03, KB-04, KB-05: PASS. Regras PRD criadas e 15 regras canônicas ligadas ao índice `quiver-tap-alert-events`.
+- VPS-04: resolvido. tcpcheck `cervejaria-db:5432` com status 1 em 100% das amostras dos últimos 20 min; collector sem erros.
+- Restarts de contêiner: fonte criada (cron `docker-state.sh` e regra `quiver-tap-container-restart-prd`).
+- Pendente fora desta certificação: entrega no Telegram pelo alert-poller, que espera o token do bot (TAP-139).
+
+A matriz abaixo é a segunda rodada, mantida como histórico.
 
 ## Autorizações
 
@@ -48,12 +62,9 @@ Resultados da rodada atual. Onde a primeira rodada diverge, a diferença está n
 
 ## Correções aplicadas
 
-Nenhuma correção em PRD foi aplicada até a revisão R1. Cada correção abaixo depende do seu GATE.
+Em 2026-11-01, com autorização do Filipe: pipeline `quiver-tap-audit-enrich`, retenção com rollover (antes e depois do upgrade), réplicas zeradas nos índices antigos, recriação do collector nas redes do Elastic e do banco, cron de estado dos contêineres, objetos e regras do Kibana PRD, upgrade 8.17.0 → 8.19.23 → 9.5.5 com snapshots `pre-819` e `pre-9`.
 
 ## Pendências
 
-- ILM-01 e MAP-01: FAIL. Correção do WI-A: G3-ILM com `--rollover` (`apply-retention.mjs --target prd --apply --rollover --confirm-prd`).
-- VPS-04 (tcpcheck do Postgres): corrigido no WI-B (TAP-139). O collector passa a entrar também na rede do banco e checa `cervejaria-db:5432`, sem abrir porta nem mudar o bind do Postgres; aplicado no G7.
-- ES-01: WARN pelo cluster de um nó em yellow; réplicas não foram alteradas.
-- KB-03, KB-05, ALT-01 e KB-04: WAIVED para entrega do WI-B, G8 (TAP-139).
-- Restarts de contêiner: sem fonte de dados; fica como pendência no handoff.
+- Todas as pendências da segunda rodada foram resolvidas na rodada final.
+- Entrega no Telegram pelo alert-poller: espera o token do bot (TAP-139).
