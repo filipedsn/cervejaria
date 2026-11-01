@@ -35,3 +35,24 @@ export function describeTransacao(tipo: TransacaoTipo, metadata: unknown): strin
 export function describePageView(page: string): string {
   return `Abriu a página ${page}`;
 }
+
+export function describeSelection(field: string, option: string, page: string): string {
+  return `Selecionou "${option}" em "${field}" na página ${page}`;
+}
+
+export function describeSearch(term: string, screen: string): string {
+  return `Buscou "${term}" em ${screen}`;
+}
+
+export function describeWebVital(name: string, value: number, rating: string | undefined, screen: string): string {
+  const formatted = name === 'CLS' ? value.toFixed(3) : `${Math.round(value)} ms`;
+  return `${name} ${formatted}${rating ? ` (${rating})` : ''} em ${screen}`;
+}
+
+export function describeUiError(screen: string, message: string): string {
+  return `Erro na interface em ${screen}: ${message}`;
+}
+
+export function describeNavigation(screen: string): string {
+  return `Navegou para ${screen}`;
+}

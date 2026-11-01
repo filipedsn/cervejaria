@@ -185,7 +185,7 @@ test('legacy and PDV sessions remain independently attributable within the same 
   }
 });
 
-test('query strings, unrecognized labels, and free-form metadata do not enter audit events', async () => {
+test('query strings and free-form metadata do not enter audit events; labels are sanitized instead of allowlisted', async () => {
   const { app, emitted } = await makeApp({ pdvValid: true });
   try {
     const response = await app.inject({
@@ -211,13 +211,109 @@ test('query strings, unrecognized labels, and free-form metadata do not enter au
     assert.equal(response.statusCode, 204);
     assert.equal(emitted.length, 1);
     const serialized = JSON.stringify(emitted[0]?.input);
-    assert.equal(serialized?.includes('alice@example.com'), false);
     assert.equal(serialized?.includes('secret-value'), false);
     assert.equal(serialized?.includes('5511999999999'), false);
     assert.equal(serialized?.includes('do-not-store'), false);
     assert.equal(emitted[0]?.input.ui?.page, '/c/brewery/p/pos-1');
-    assert.equal(emitted[0]?.input.ui?.label, 'unclassified-action');
+    // TAP-160: the visible label is kept (full-data decision); only card-like digits and tokens are redacted.
+    assert.equal(emitted[0]?.input.ui?.label, 'alice@example.com');
+    assert.equal(emitted[0]?.input.ui?.element, '[REDACTED]');
   } finally {
     await app.close();
+  }
+});
+
+const sessionId = 'abcdef0123456789abcdef0123456789';
+
+async function postStaffEvents(events: unknown[], headers: Record<string, string> = {}) {
+  const { app, emitted } = await makeApp();
+  try {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/events',
+      headers: { cookie: 'token=staff', ...headers },
+      payload: { events },
+    });
+    return { statusCode: response.statusCode, emitted };
+  } finally {
+    await app.close();
+  }
+}
+
+test('busca registra termo, rota-modelo, sessão e user-agent da requisição', async () => {
+  const { statusCode, emitted } = await postStaffEvents([{
+    type: 'search',
+    page: '/operacao/comandas/cm1234567890abcdefghijkl',
+    route: '/operacao/comandas/:id',
+    sessionId,
+    search: '  chope\u0007  pilsen ',
+  }], { 'user-agent': 'Mozilla/5.0 (Linux; Android 14)\r\nX-Injected: 1' });
+  assert.equal(statusCode, 204);
+  const input = emitted[0]?.input;
+  assert.equal(input?.action, 'ui.search');
+  assert.equal(input?.ui?.searchTerm, 'chope pilsen');
+  assert.equal(input?.ui?.route, '/operacao/comandas/:id');
+  assert.equal(input?.ui?.page, '/operacao/comandas/cm1234567890abcdefghijkl');
+  assert.equal(input?.client?.sessionId, sessionId);
+  assert.equal(input?.client?.userAgent, 'Mozilla/5.0 (Linux; Android 14)  X-Injected: 1');
+  assert.equal(input?.message, 'Buscou "chope pilsen" em /operacao/comandas/:id');
+});
+
+test('rótulos são saneados: controle, espaços, cartão e token longo', async () => {
+  const { emitted } = await postStaffEvents([
+    { type: 'click', page: '/operacao/caixa', label: ' Pagar\n\n  com   cartão 4111 1111 1111 1111 ' },
+    { type: 'click', page: '/operacao/caixa', label: 'token a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8' },
+    { type: 'click', page: '/operacao/caixa', label: 'operacao-caixa-encerrar-administrativamente' },
+    { type: 'click', page: '/operacao/caixa', label: 'x'.repeat(300) },
+  ]);
+  assert.equal(emitted[0]?.input.ui?.label, 'Pagar com cartão [REDACTED]');
+  assert.equal(emitted[1]?.input.ui?.label, 'token [REDACTED]');
+  assert.equal(emitted[2]?.input.ui?.label, 'operacao-caixa-encerrar-administrativamente');
+  assert.equal(emitted[3]?.input.ui?.label?.length, 120);
+  assert.equal(emitted[0]?.input.message, 'Clicou em "Pagar com cartão [REDACTED]" na página /operacao/caixa');
+});
+
+test('web vital e erro de interface geram campos e mensagens legíveis', async () => {
+  const stack = `TypeError: boom\n    at render (app.js:1:2)\n${'x'.repeat(3900)}`;
+  const { statusCode, emitted } = await postStaffEvents([
+    { type: 'web_vital', page: '/operacao/caixa', route: '/operacao/caixa', vitals: { name: 'LCP', value: 2300.4, rating: 'good' } },
+    { type: 'web_vital', page: '/operacao/caixa', vitals: { name: 'CLS', value: 0.1234, rating: 'needs-improvement' } },
+    { type: 'error', page: '/operacao/caixa', label: 'frontend_error', error: { message: 'boom', stack, name: 'TypeError' } },
+    { type: 'page_view', page: '/operacao/caixa', viewport: { w: 1280, h: 720 }, meta: { sinceLastMs: 1500 } },
+  ]);
+  assert.equal(statusCode, 204);
+  assert.deepEqual(emitted[0]?.input.vital, { name: 'LCP', value: 2300.4, rating: 'good' });
+  assert.equal(emitted[0]?.input.message, 'LCP 2300 ms (good) em /operacao/caixa');
+  assert.equal(emitted[1]?.input.message, 'CLS 0.123 (needs-improvement) em /operacao/caixa');
+  assert.equal(emitted[2]?.input.outcome, 'failure');
+  assert.equal(emitted[2]?.input.message, 'Erro na interface em /operacao/caixa: boom');
+  assert.equal(emitted[2]?.input.error?.message, 'boom');
+  assert.equal(emitted[2]?.input.error?.type, 'TypeError');
+  assert.match(emitted[2]?.input.error?.stackTrace ?? '', /^TypeError: boom\n {4}at render/);
+  assert.equal(emitted[3]?.input.ui?.viewport, '1280x720');
+  assert.equal(emitted[3]?.input.metadata?.sinceLastMs, 1500);
+});
+
+test('seleção em lista vira ação legível com a opção escolhida', async () => {
+  const { emitted } = await postStaffEvents([
+    { type: 'click', page: '/operacao/estoque', element: 'select', label: 'select:Categoria', meta: { option: 'Chopes' } },
+  ]);
+  assert.equal(emitted[0]?.input.message, 'Selecionou "Chopes" em "Categoria" na página /operacao/estoque');
+  assert.equal(emitted[0]?.input.metadata?.option, 'Chopes');
+});
+
+test('sessão, web vital e erro malformados rejeitam o lote', async () => {
+  for (const event of [
+    { type: 'click', page: '/operacao/caixa', sessionId: 'curto' },
+    { type: 'click', page: '/operacao/caixa', sessionId: 'a'.repeat(65) },
+    { type: 'web_vital', page: '/operacao/caixa', vitals: { name: 'FID', value: 10 } },
+    { type: 'web_vital', page: '/operacao/caixa', vitals: { name: 'LCP', value: -1 } },
+    { type: 'error', page: '/operacao/caixa', error: { message: 'x'.repeat(501) } },
+    { type: 'search', page: '/operacao/caixa', search: 'x'.repeat(201) },
+    { type: 'page_view', page: '/operacao/caixa', viewport: { w: 1.5, h: 720 } },
+  ]) {
+    const { statusCode, emitted } = await postStaffEvents([event]);
+    assert.equal(statusCode, 400, JSON.stringify(event));
+    assert.equal(emitted.length, 0);
   }
 });
