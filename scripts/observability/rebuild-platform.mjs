@@ -1,3 +1,5 @@
+import { AUDIT_ENRICH_PIPELINE, ensureAuditEnrichPipeline, ensureLogsGeoMapping, writableComponentTemplate } from './audit-enrich-pipeline.mjs';
+
 /** Destructive data reset: call only after explicit authorization to discard current OTel history. */
 export const isResettableStream = name => /^(logs|metrics|traces)-[a-zA-Z0-9_.-]+\.otel-(dev|prd|infra)$/.test(name);
 
@@ -6,7 +8,7 @@ export async function ensureMetricsFingerprint(request) {
   const existing = await request('/_component_template/metrics-otel@custom');
   const component = existing.component_templates?.[0]?.component_template;
   if (!component && existing.httpStatus !== 404) throw new Error('Cannot inspect metrics custom mappings');
-  const body = structuredClone(component ?? { template: {} });
+  const body = writableComponentTemplate(component);
   body.template ??= {};
   body.template.mappings ??= {};
   body.template.mappings.properties = { ...body.template.mappings.properties, _metric_names_hash: { type: 'keyword', time_series_dimension: true } };
@@ -22,11 +24,20 @@ const days = {
 export function retentionSpecifications() {
   const result = [];
   for (const [namespace, types] of Object.entries(days)) for (const [type, retention] of Object.entries(types)) {
-    result.push({ name: `quiver-tap-${type}-${namespace}`, type, namespace, retention, priority: 500, pattern: `${type}-*.otel-${namespace}` });
+    const finalPipeline = type === 'logs' && namespace !== 'infra' ? { finalPipeline: AUDIT_ENRICH_PIPELINE } : {};
+    result.push({ name: `quiver-tap-${type}-${namespace}`, type, namespace, retention, priority: 500, pattern: `${type}-*.otel-${namespace}`, ...finalPipeline });
   }
   // Marco Civil da Internet, art. 15: registros de acesso (IP, data e hora) guardados por 6 meses.
-  result.push({ name: 'quiver-tap-audit-prd', type: 'logs', namespace: 'prd', retention: 180, priority: 510, pattern: 'logs-audit.otel-prd' });
+  result.push({ name: 'quiver-tap-audit-prd', type: 'logs', namespace: 'prd', retention: 180, priority: 510, pattern: 'logs-audit.otel-prd', finalPipeline: AUDIT_ENRICH_PIPELINE });
   return result;
+}
+
+/** Templates that set index.final_pipeline must never point at a missing pipeline. */
+export async function ensureTemplateDependencies(request, specifications) {
+  if (!specifications.some((spec) => spec.finalPipeline === AUDIT_ENRICH_PIPELINE)) return [];
+  await ensureAuditEnrichPipeline(request);
+  await ensureLogsGeoMapping(request);
+  return [AUDIT_ENRICH_PIPELINE, 'logs-otel@custom'];
 }
 
 export async function planPlatformRebuild(request) {
@@ -52,7 +63,7 @@ export async function applyRetentionTemplates(request, bases, specifications) {
     if (!policyResult.acknowledged) throw new Error('Policy failed: ' + spec.name);
     const base = bases[spec.type];
     const template = structuredClone(base.template ?? {});
-    template.settings = { ...template.settings, index: { ...(template.settings?.index ?? {}), number_of_shards: 1, number_of_replicas: 0, refresh_interval: '10s', lifecycle: { name: spec.name } } };
+    template.settings = { ...template.settings, index: { ...(template.settings?.index ?? {}), number_of_shards: 1, number_of_replicas: 0, refresh_interval: '10s', lifecycle: { name: spec.name }, ...(spec.finalPipeline ? { final_pipeline: spec.finalPipeline } : {}) } };
     // Preserve managed OTel mappings, TSDB settings and optional components.
     const body = { index_patterns: [spec.pattern], priority: spec.priority, composed_of: base.composed_of, data_stream: base.data_stream ?? {}, template, _meta: { owner: 'TAP-96', purpose: 'single-node bounded retention' }, ...(base.ignore_missing_component_templates ? { ignore_missing_component_templates: base.ignore_missing_component_templates } : {}) };
     const result = await request('/_index_template/' + spec.name, body, false, 'PUT');
@@ -66,6 +77,7 @@ export async function rebuildPlatform(request, plan, authorization) {
   if (authorization !== 'DISCARD_CURRENT_OTEL_HISTORY') throw new Error('Explicit history-discard authorization required');
   if (!plan.targets.length || !plan.targets.every(isResettableStream)) throw new Error('Invalid exact stream inventory');
   await ensureMetricsFingerprint(request);
+  await ensureTemplateDependencies(request, plan.specifications);
   const applied = await applyRetentionTemplates(request, plan.bases, plan.specifications);
   const deleted = [];
   for (let offset = 0; offset < plan.targets.length; offset += 20) {

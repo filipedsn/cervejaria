@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { applyRetentionTemplates, ensureMetricsFingerprint, retentionSpecifications } from './rebuild-platform.mjs';
+import { applyRetentionTemplates, ensureMetricsFingerprint, ensureTemplateDependencies, retentionSpecifications } from './rebuild-platform.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -86,7 +86,7 @@ export async function main(argv, { fetchImpl = fetch, log = console.log } = {}) 
   const specifications = specsForTarget(args.target);
   const inventory = await request('/_data_stream');
   const streams = streamsForTarget((inventory.data_streams ?? []).map((stream) => stream.name), args.target);
-  log(JSON.stringify({ target: args.target, mode: args.apply ? 'APPLY' : 'PLAN', policies: specifications.map((spec) => `${spec.name} (${spec.pattern}, delete ${spec.retention}d apos rollover)`), streams, rollover: args.rollover }, null, 2));
+  log(JSON.stringify({ target: args.target, mode: args.apply ? 'APPLY' : 'PLAN', policies: specifications.map((spec) => `${spec.name} (${spec.pattern}, delete ${spec.retention}d apos rollover${spec.finalPipeline ? `, final_pipeline ${spec.finalPipeline}` : ''})`), streams, rollover: args.rollover }, null, 2));
   if (!args.apply) return { applied: [], rolledOver: [] };
   const bases = {};
   for (const type of ['logs', 'metrics', 'traces']) {
@@ -96,6 +96,7 @@ export async function main(argv, { fetchImpl = fetch, log = console.log } = {}) 
     bases[type] = template;
   }
   await ensureMetricsFingerprint(request);
+  await ensureTemplateDependencies(request, specifications);
   const applied = await applyRetentionTemplates(request, bases, specifications);
   const rolledOver = [];
   if (args.rollover) {
