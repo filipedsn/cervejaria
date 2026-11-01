@@ -18,6 +18,7 @@ export function ComandasBuscaInput({
       onChange={(e) => onChange(e.target.value)}
       aria-label="Buscar comandas"
       autoComplete="off"
+      data-audit-search=""
     />
   );
 }

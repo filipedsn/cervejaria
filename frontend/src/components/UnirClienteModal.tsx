@@ -152,6 +152,7 @@ export function UnirClienteModal({
               setSelected(null);
             }}
             placeholder="Buscar por nome ou telefone..."
+            data-audit-search=""
           />
         </div>
 

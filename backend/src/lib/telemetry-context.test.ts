@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { resolveTelemetryFromRequest } from './telemetry-context.js';
+import { resolveTelemetryFromClienteSession, resolveTelemetryFromRequest } from './telemetry-context.js';
 
 const tenantId = 'tenant-pdv-audit-test';
 const customerId = 'customer-pdv-audit-test';
@@ -97,4 +97,73 @@ test('unauthenticated public API calls stay anonymous even when a staff cookie e
   assert.equal(context.cervejariaId, tenantId);
   assert.equal(context.slug, 'tenant-publico');
   assert.deepEqual(context.actor, { type: 'anonymous' });
+});
+
+test('funcionário leva nome, e-mail, IP do cliente e país vindos da Cloudflare via nginx', async () => {
+  const request = {
+    id: 'request-staff-network-test',
+    correlationId: '123e4567-e89b-42d3-a456-426614174004',
+    url: '/api/comandas',
+    headers: { 'x-real-ip': '172.70.10.20', 'cf-connecting-ip': '200.160.2.3', 'cf-ipcountry': 'BR' },
+    raw: { socket: { remoteAddress: '127.0.0.1' } },
+    user: { sub: 'staff-user', papel: 'DONO', cervejariaId: 'staff-tenant', nome: 'Maria Souza', email: 'maria@example.test' },
+    cookies: {},
+    server: { jwt: { verify: async () => { throw new Error('no customer cookie'); } } },
+    jwtVerify: async () => undefined,
+  };
+
+  const context = await resolveTelemetryFromRequest(request as never, {
+    byId: async () => 'staff-tenant',
+    byPublicSlug: async () => undefined,
+  });
+  assert.deepEqual(context.actor, {
+    type: 'usuario', id: 'staff-user', role: 'DONO', name: 'Maria Souza', email: 'maria@example.test',
+  });
+  assert.equal(context.clientIp, '200.160.2.3');
+  assert.equal(context.clientIpSource, 'cloudflare');
+  assert.equal(context.clientCountryCode, 'BR');
+});
+
+test('cabeçalhos forjados sem nginx na frente não mudam o IP registrado', async () => {
+  const request = {
+    id: 'request-spoof-network-test',
+    correlationId: '123e4567-e89b-42d3-a456-426614174005',
+    url: '/api/comandas',
+    headers: { 'x-real-ip': '172.70.10.20', 'cf-connecting-ip': '200.160.2.3', 'cf-ipcountry': 'BR' },
+    raw: { socket: { remoteAddress: '198.51.100.20' } },
+    cookies: {},
+    server: { jwt: { verify: async () => { throw new Error('no customer cookie'); } } },
+    jwtVerify: async () => { throw new Error('staff session absent'); },
+  };
+
+  const context = await resolveTelemetryFromRequest(request as never, {
+    byId: async () => undefined,
+    byPublicSlug: async () => undefined,
+  });
+  assert.equal(context.clientIp, '198.51.100.20');
+  assert.equal(context.clientIpSource, 'socket');
+  assert.equal(context.clientCountryCode, undefined);
+});
+
+test('contexto do cliente do portal também registra o IP, sem nome do cliente', async () => {
+  const session = {
+    type: 'cliente-pdv' as const,
+    cervejariaId: tenantId,
+    pontoVendaId: pointOfSaleId,
+    clienteId: customerId,
+    comandaId: commandId,
+  };
+  const request = {
+    id: 'request-customer-network-test',
+    headers: { 'x-real-ip': '203.0.113.7' },
+    raw: { socket: { remoteAddress: '::1' } },
+  };
+
+  const context = await resolveTelemetryFromClienteSession(request as never, session, {
+    byId: async () => 'tenant-real',
+    byPublicSlug: async () => undefined,
+  });
+  assert.equal(context.clientIp, '203.0.113.7');
+  assert.equal(context.clientIpSource, 'nginx');
+  assert.deepEqual(context.actor, { type: 'cliente-pdv', id: customerId, clienteId: customerId });
 });

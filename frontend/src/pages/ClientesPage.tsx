@@ -169,6 +169,7 @@ export function ClientesPage() {
         <input
           className="input flex-1"
           placeholder="Buscar nome, telefone ou e-mail..."
+          data-audit-search=""
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />

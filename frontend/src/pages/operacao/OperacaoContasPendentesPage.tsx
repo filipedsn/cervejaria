@@ -208,6 +208,7 @@ export function OperacaoContasPendentesPage() {
                 onChange={(event) => setBusca(event.target.value)}
                 placeholder="Buscar cliente, telefone ou comanda..."
                 data-testid="contas-pendentes-busca"
+                data-audit-search=""
                 aria-label="Buscar contas pendentes"
               />
             </label>

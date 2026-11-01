@@ -1,7 +1,15 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { emitAuditEvent } from '../lib/audit/emit-audit-event.js';
-import { describePageView, describeUiAction } from '../lib/audit/describe.js';
+import {
+  describeNavigation,
+  describePageView,
+  describeSearch,
+  describeSelection,
+  describeUiAction,
+  describeUiError,
+  describeWebVital,
+} from '../lib/audit/describe.js';
 import { verifySession } from '../lib/session.js';
 import { verifyClienteSession } from '../lib/cliente-session.js';
 import type { ClienteSessionPayload, PdvClienteSessionPayload } from '../types/cliente-session.js';
@@ -30,11 +38,29 @@ const httpTelemetrySchema = z.object({
   interactionId: z.string().refine(validCorrelationId).optional(),
 });
 
+const vitalSchema = z.object({
+  name: z.enum(['LCP', 'INP', 'CLS', 'TTFB', 'FCP']),
+  value: z.number().finite().min(0).max(600_000),
+  rating: z.enum(['good', 'needs-improvement', 'poor']).optional(),
+});
+
+const uiErrorSchema = z.object({
+  message: z.string().max(500),
+  stack: z.string().max(4000).optional(),
+  name: z.string().max(100).optional(),
+});
+
 const uiEventSchema = z.object({
-  type: z.enum(['click', 'page_view', 'submit', 'error', 'http_request']),
+  type: z.enum(['click', 'page_view', 'submit', 'error', 'http_request', 'search', 'web_vital', 'navigation']),
   page: z.string().min(1).max(500),
+  route: z.string().max(300).optional(),
+  sessionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/, 'Sessão inválida').optional(),
   element: z.string().max(200).optional(),
   label: z.string().max(300).optional(),
+  search: z.string().max(200).optional(),
+  vitals: vitalSchema.optional(),
+  error: uiErrorSchema.optional(),
+  viewport: z.object({ w: z.number().int().min(0).max(20_000), h: z.number().int().min(0).max(20_000) }).optional(),
   timestamp: z.string().datetime().optional(),
   interactionId: z.string().refine(validCorrelationId).optional(),
   meta: z.record(z.unknown()).optional(),
@@ -48,28 +74,40 @@ const bodySchema = z.object({
 type ClienteAuditSession = ClienteSessionPayload | PdvClienteSessionPayload;
 type ClienteSessionKind = 'legacy' | 'pdv';
 
-const SAFE_UI_ACTION_LABELS = new Set([
-  'comanda-abrir', 'comanda-cancelar', 'comanda-fechar',
-  'error-boundary-reload', 'frontend_error',
-  'operacao-caixa-abrir', 'operacao-caixa-corrigir', 'operacao-caixa-encerrar-administrativamente',
-  'operacao-caixa-fechar', 'operacao-caixa-fechar-confirmar', 'operacao-caixa-sangria',
-  'operacao-caixa-abrir-confirmar',
-  'operacao-caixa-suprimento', 'operacao-comanda-cancelar', 'operacao-comanda-fechar',
-  'operacao-confirmar-pagamento', 'operacao-cozinha-avancar', 'operacao-cozinha-cancelar',
-  'operacao-cozinha-confirmar-cancelamento', 'operacao-estoque-ajustar', 'operacao-estoque-ajuste-confirmar',
-  'operacao-estoque-busca', 'operacao-estoque-minimo', 'operacao-estoque-minimo-confirmar',
-  'operacao-estoque-repor', 'operacao-estoque-repor-confirmar', 'operacao-estoque-saida',
-  'operacao-estoque-saida-confirmar', 'venda-avulsa-pagar',
-]);
-
 function safeUiPath(value: string): string {
   const path = value.trim().split(/[?#]/, 1)[0] ?? '';
   return path.startsWith('/') ? path : '/unknown';
 }
 
-function safeUiLabel(value: string | undefined): string | undefined {
+const REDACTED = '[REDACTED]';
+
+/** Card-like digit runs and long mixed tokens never leave the browser text intact. */
+function redactSensitiveSequences(value: string): string {
+  return value
+    .replace(/[A-Za-z0-9_-]{32,}/g, (match) => (/\d/.test(match) && /[A-Za-z]/.test(match) ? REDACTED : match))
+    .replace(/\d(?:[ .-]?\d){12,18}/g, REDACTED);
+}
+
+export function safeUiText(value: string | undefined, maxLength: number): string | undefined {
   if (value === undefined) return undefined;
-  return SAFE_UI_ACTION_LABELS.has(value) ? value : 'unclassified-action';
+  const cleaned = redactSensitiveSequences(value.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim());
+  return cleaned ? cleaned.slice(0, maxLength) : undefined;
+}
+
+function safeMultilineText(value: string | undefined, maxLength: number): string | undefined {
+  if (value === undefined) return undefined;
+  const cleaned = redactSensitiveSequences(value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim());
+  return cleaned ? cleaned.slice(0, maxLength) : undefined;
+}
+
+function safeUiLabel(value: string | undefined): string | undefined {
+  return safeUiText(value, 120);
+}
+
+function safeUserAgent(value: string | string[] | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const cleaned = value.replace(/[\u0000-\u001F\u007F]/g, ' ').trim();
+  return cleaned ? cleaned.slice(0, 512) : undefined;
 }
 
 type AuditRouteDependencies = {
@@ -106,7 +144,36 @@ function safeUiMetadata(meta: Record<string, unknown> | undefined): Record<strin
   if (typeof line === 'number' && Number.isInteger(line) && line > 0 && line <= 10_000_000) out.line = line;
   const kind = meta.kind;
   if (kind === 'unhandledrejection') out.kind = kind;
+  const sinceLastMs = meta.sinceLastMs;
+  if (typeof sinceLastMs === 'number' && Number.isInteger(sinceLastMs) && sinceLastMs >= 0 && sinceLastMs <= 86_400_000) {
+    out.sinceLastMs = sinceLastMs;
+  }
+  const option = typeof meta.option === 'string' ? safeUiText(meta.option, 80) : undefined;
+  if (option) out.option = option;
   return out;
+}
+
+type UiEvent = z.infer<typeof uiEventSchema>;
+
+function describeUiEvent(event: UiEvent, label: string, page: string, screen: string, option: string | undefined): string {
+  switch (event.type) {
+    case 'page_view':
+      return describePageView(page);
+    case 'navigation':
+      return describeNavigation(screen);
+    case 'search':
+      return describeSearch(safeUiText(event.search, 200) ?? label, screen);
+    case 'web_vital':
+      return event.vitals
+        ? describeWebVital(event.vitals.name, event.vitals.value, event.vitals.rating, screen)
+        : describeUiAction(label, page);
+    case 'error':
+      return describeUiError(screen, safeUiText(event.error?.message, 500) ?? label);
+    default:
+      return option && label.startsWith('select:')
+        ? describeSelection(label.slice('select:'.length), option, page)
+        : describeUiAction(label, page);
+  }
 }
 
 export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestOptions = {}) {
@@ -163,7 +230,13 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
       return reply.status(400).send({ error: parsed.error.errors[0]?.message ?? 'Payload inválido' });
     }
 
+    const userAgent = safeUserAgent(request.headers['user-agent']);
+
     for (const event of events) {
+      const client = {
+        ...(event.sessionId ? { sessionId: event.sessionId } : {}),
+        ...(userAgent ? { userAgent } : {}),
+      };
       const customerKind = publicPortalKind(event.page);
       const customerSession = customerKind
         ? customerSessions.get(customerKind)
@@ -195,6 +268,7 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
           correlationId: event.http.correlationId,
           requestId: event.http.requestId,
           interactionId: event.http.interactionId,
+          client,
           metadata: {
             source,
             durationMs: event.http.durationMs,
@@ -206,30 +280,44 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
         continue;
       }
 
-      const label = safeUiLabel(event.label ?? event.element ?? event.type) ?? 'unclassified-action';
+      const label = safeUiLabel(event.label ?? event.element ?? event.type) ?? event.type;
       const page = safeUiPath(event.page);
-      const message =
-        event.type === 'page_view'
-          ? describePageView(page)
-          : event.type === 'error'
-            ? `Erro na interface: ${label}`
-            : describeUiAction(label, page);
+      const route = event.route !== undefined && safeHttpText(event.route) ? safeUiPath(event.route) : undefined;
+      const screen = route ?? page;
+      const metadata = safeUiMetadata(event.meta);
+      const option = typeof metadata.option === 'string' ? metadata.option : undefined;
+      const searchTerm = event.type === 'search' ? safeUiText(event.search, 200) : undefined;
+      const errorMessage = safeUiText(event.error?.message, 500);
 
       emit({
         action: `ui.${event.type}`,
         interactionId: event.interactionId,
-        message,
+        message: describeUiEvent(event, label, page, screen, option),
         outcome: event.type === 'error' ? 'failure' : 'success',
         ui: {
           page,
           element: safeUiLabel(event.element),
           label,
+          ...(route ? { route } : {}),
+          ...(searchTerm ? { searchTerm } : {}),
+          ...(event.viewport ? { viewport: `${event.viewport.w}x${event.viewport.h}` } : {}),
         },
+        ...(event.type === 'web_vital' && event.vitals ? { vital: event.vitals } : {}),
+        ...(event.type === 'error' && event.error
+          ? {
+            error: {
+              ...(errorMessage ? { message: errorMessage } : {}),
+              ...(event.error.stack ? { stackTrace: safeMultilineText(event.error.stack, 4000) } : {}),
+              ...(event.error.name ? { type: safeUiText(event.error.name, 100) } : {}),
+            },
+          }
+          : {}),
+        client,
         metadata: {
           source,
           clientTimestamp: event.timestamp,
           identitySource: 'authenticated_batch_session',
-          ...safeUiMetadata(event.meta),
+          ...metadata,
         },
       });
     }

@@ -21,7 +21,10 @@ export type AuditEventInput = {
   actor?: TelemetryActor;
   http?: { method?: string; route?: string; statusCode?: number; durationMs?: number };
   db?: { operation?: string; model?: string; query?: string; durationMs?: number; transactionId?: string; transactionState?: string };
-  ui?: { page?: string; element?: string; label?: string };
+  ui?: { page?: string; element?: string; label?: string; route?: string; searchTerm?: string; viewport?: string };
+  vital?: { name: string; value: number; rating?: string };
+  error?: { message?: string; stackTrace?: string; type?: string };
+  client?: { sessionId?: string; userAgent?: string };
   metadata?: Record<string, unknown>;
   slug?: string;
   requestId?: string;
@@ -38,6 +41,15 @@ function actorFields(actor: TelemetryActor): Record<string, string | undefined> 
     'actor.role': actor.role,
     'actor.cliente_id': actor.clienteId,
   };
+}
+
+function userFields(actor: TelemetryActor): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (actor.id) fields['user.id'] = actor.id;
+  if (actor.name) fields['user.name'] = actor.name;
+  if (actor.email) fields['user.email'] = actor.email;
+  if (actor.role) fields['user.roles'] = actor.role;
+  return fields;
 }
 
 export function buildAuditPayload(input: AuditEventInput): Record<string, unknown> {
@@ -68,6 +80,7 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
     'data_stream.dataset': `audit_${slugSafe}`,
     'data_stream.namespace': env,
     ...actorFields(actor),
+    ...userFields(actor),
     trace_id: traceId,
     span_id: spanId,
     requestId: input.requestId ?? ctx.requestId,
@@ -79,6 +92,10 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
   if (input.entityId) payload['entity.id'] = input.entityId;
   if (input.targetCervejariaId) payload['target.cervejaria.id'] = input.targetCervejariaId;
   if (ctx.clientCountryCode) payload['client.geo.country_iso_code'] = ctx.clientCountryCode;
+  if (ctx.clientIp) payload['client.address'] = ctx.clientIp;
+  if (ctx.clientIp && ctx.clientIpSource) payload['client.ip_source'] = ctx.clientIpSource;
+  if (input.client?.sessionId) payload['session.id'] = input.client.sessionId;
+  if (input.client?.userAgent) payload['user_agent.original'] = input.client.userAgent;
   if (input.http?.method) payload['http.request.method'] = input.http.method;
   if (input.http?.route) payload['http.route'] = input.http.route;
   if (input.http?.statusCode != null) payload['http.response.status_code'] = input.http.statusCode;
@@ -92,6 +109,17 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
   if (input.ui?.page) payload['ui.page'] = input.ui.page;
   if (input.ui?.element) payload['ui.element'] = input.ui.element;
   if (input.ui?.label) payload['ui.label'] = input.ui.label;
+  if (input.ui?.route) payload['ui.route'] = input.ui.route;
+  if (input.ui?.searchTerm) payload['ui.search.term'] = input.ui.searchTerm;
+  if (input.ui?.viewport) payload['ui.viewport'] = input.ui.viewport;
+  if (input.vital) {
+    payload['ui.vital.name'] = input.vital.name;
+    payload['ui.vital.value'] = input.vital.value;
+    if (input.vital.rating) payload['ui.vital.rating'] = input.vital.rating;
+  }
+  if (input.error?.message) payload['error.message'] = input.error.message;
+  if (input.error?.stackTrace) payload['error.stack_trace'] = input.error.stackTrace;
+  if (input.error?.type) payload['error.type'] = input.error.type;
   const metadata = input.metadata ? (redactObject(input.metadata) as Record<string, unknown>) : undefined;
   if (metadata && Object.keys(metadata).length > 0) {
     payload.metadata = metadata;

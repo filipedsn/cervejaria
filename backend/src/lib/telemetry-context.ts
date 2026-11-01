@@ -11,6 +11,7 @@ import {
 import { getReleaseContext } from './release-context.js';
 import { readPdvClienteSession } from './pdv-client-session.js';
 import { trustedGeoCountryForRequest } from './trusted-geolocation.js';
+import { resolveClientNetwork, type ClientNetworkSource } from './client-network.js';
 
 export type AuditActorType = 'usuario' | 'cliente' | 'cliente-pdv' | 'system' | 'anonymous';
 
@@ -19,6 +20,9 @@ export type TelemetryActor = {
   id?: string;
   role?: string;
   clienteId?: string;
+  /** Staff only; customer names are never resolved per request. */
+  name?: string;
+  email?: string;
 };
 
 export type TelemetryContext = {
@@ -31,9 +35,27 @@ export type TelemetryContext = {
   slug: string;
   env: 'dev' | 'prd';
   actor: TelemetryActor;
-  /** ISO country only; no client IP is retained. */
   clientCountryCode?: string;
+  /** Kept for access records (Marco Civil art. 15); never used for authorization. */
+  clientIp?: string;
+  clientIpSource?: ClientNetworkSource;
 };
+
+type RequestNetworkContext = Pick<TelemetryContext, 'clientCountryCode' | 'clientIp' | 'clientIpSource'>;
+
+export function networkContextForRequest(request: FastifyRequest): RequestNetworkContext {
+  const input = {
+    remoteAddress: request.raw?.socket?.remoteAddress,
+    headers: request.headers ?? {},
+  };
+  const geo = trustedGeoCountryForRequest(input);
+  const network = resolveClientNetwork(input);
+  const countryCode = geo.countryCode ?? network.countryCode;
+  return {
+    ...(countryCode ? { clientCountryCode: countryCode } : {}),
+    ...(network.ip ? { clientIp: network.ip, clientIpSource: network.source } : {}),
+  };
+}
 
 const storage = new AsyncLocalStorage<TelemetryContext>();
 
@@ -164,6 +186,7 @@ export async function resolveTelemetryFromClienteSession(
     requestId: request.id,
     correlationId: request.correlationId,
     interactionId: request.interactionId,
+    ...networkContextForRequest(request),
     cervejariaId: session.cervejariaId,
     slug,
     env: getObservabilityEnv(),
@@ -205,11 +228,13 @@ async function resolvePublicRequestContext(
   };
 }
 
-function actorFromJwtUser(user: JwtPayload): TelemetryActor {
+export function actorFromJwtUser(user: JwtPayload): TelemetryActor {
   return {
     type: user.papel === 'ADMIN' ? 'system' : 'usuario',
     id: user.sub,
     role: user.papel,
+    ...(typeof user.nome === 'string' && user.nome.trim() ? { name: user.nome.trim() } : {}),
+    ...(typeof user.email === 'string' && user.email.trim() ? { email: user.email.trim() } : {}),
   };
 }
 
@@ -219,15 +244,11 @@ export async function resolveTelemetryFromRequest(
 ): Promise<TelemetryContext> {
   const env = getObservabilityEnv();
   const publicSlug = slugFromPublicPath(request.url);
-  const geo = trustedGeoCountryForRequest({
-    remoteAddress: request.raw?.socket?.remoteAddress,
-    headers: request.headers ?? {},
-  });
   const requestContext = {
     requestId: request.id,
     correlationId: request.correlationId,
     interactionId: request.interactionId,
-    ...(geo.countryCode ? { clientCountryCode: geo.countryCode } : {}),
+    ...networkContextForRequest(request),
   };
 
   const publicKind = publicPortalKind(request.url);
@@ -330,5 +351,10 @@ export function applyTelemetryContext(ctx: TelemetryContext): void {
   span.setAttribute('data_stream.namespace', ctx.env);
   if (ctx.actor.id) span.setAttribute('actor.id', ctx.actor.id);
   if (ctx.actor.type) span.setAttribute('actor.type', ctx.actor.type);
+  if (ctx.actor.id) span.setAttribute('enduser.id', ctx.actor.id);
+  if (ctx.actor.role) span.setAttribute('enduser.role', ctx.actor.role);
+  if (ctx.actor.name) span.setAttribute('user.name', ctx.actor.name);
+  if (ctx.actor.email) span.setAttribute('user.email', ctx.actor.email);
+  if (ctx.clientIp) span.setAttribute('client.address', ctx.clientIp);
   if (ctx.clientCountryCode) span.setAttribute('client.geo.country_iso_code', ctx.clientCountryCode);
 }
