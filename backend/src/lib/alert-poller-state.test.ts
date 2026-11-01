@@ -134,3 +134,79 @@ test('health reports the actual loop lifecycle while all transport is isolated',
     fs.rmSync(stateFile, { force: true });
   }
 });
+
+test('falha de envio nao avanca o cursor e o alerta e reentregue no ciclo seguinte', async () => {
+  const stateFile = path.join(os.tmpdir(), `alert-poller-retry-test-${process.pid}-${Date.now()}.json`);
+  const previousFile = process.env.KIBANA_ALERT_POLL_STATE_FILE;
+  const previousUrl = process.env.KIBANA_ALERT_ES_URL;
+  const originalFetch = globalThis.fetch;
+  process.env.KIBANA_ALERT_POLL_STATE_FILE = stateFile;
+  process.env.KIBANA_ALERT_ES_URL = 'http://poller-test.invalid';
+  const log = { warn() {}, info() {} };
+  const clock = () => new Date('2030-01-01T00:00:00.000Z');
+  const alertA = { _id: 'alert-a', _source: { ruleName: 'A', alertState: 'active', '@timestamp': '2029-12-31T23:59:00.000Z' } };
+  const alertB = { _id: 'alert-b', _source: { ruleName: 'B', alertState: 'active', '@timestamp': '2029-12-31T23:59:30.000Z' } };
+  try {
+    globalThis.fetch = async (input: string | URL | Request) => String(input).includes('/_update/')
+      ? new Response('{}', { status: 200 })
+      : new Response(JSON.stringify({ hits: { hits: [alertA, alertB] } }), { status: 200 });
+    const delivered: string[] = [];
+    await pollOnce(log, { now: clock, notify: async (_body, alertId) => {
+      if (alertId === 'alert-a') throw new Error('telegram fora');
+      delivered.push(String(alertId));
+      return { sent: true };
+    } });
+    let state = loadAlertPollerState();
+    assert.ok(state.lastPollIso <= alertA._source['@timestamp'], 'cursor nao passa do alerta com falha');
+    assert.equal(state.deliveryFailures?.['alert-a'], 1);
+    assert.equal(state.processedIds.includes('alert-b'), true);
+    assert.equal(getAlertPollerHealth(clock().getTime()).pendingRetries, 1);
+
+    await pollOnce(log, { now: clock, notify: async (_body, alertId) => {
+      delivered.push(String(alertId));
+      return { sent: true };
+    } });
+    state = loadAlertPollerState();
+    assert.deepEqual(delivered, ['alert-b', 'alert-a']);
+    assert.equal(state.processedIds.includes('alert-a'), true);
+    assert.equal(state.deliveryFailures, undefined);
+    assert.equal(state.lastPollIso, alertB._source['@timestamp']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousFile === undefined) delete process.env.KIBANA_ALERT_POLL_STATE_FILE; else process.env.KIBANA_ALERT_POLL_STATE_FILE = previousFile;
+    if (previousUrl === undefined) delete process.env.KIBANA_ALERT_ES_URL; else process.env.KIBANA_ALERT_ES_URL = previousUrl;
+    fs.rmSync(stateFile, { force: true });
+  }
+});
+
+test('alerta e descartado apos 10 falhas e deixa de bloquear o cursor', async () => {
+  const stateFile = path.join(os.tmpdir(), `alert-poller-abandon-test-${process.pid}-${Date.now()}.json`);
+  const previousFile = process.env.KIBANA_ALERT_POLL_STATE_FILE;
+  const previousUrl = process.env.KIBANA_ALERT_ES_URL;
+  const originalFetch = globalThis.fetch;
+  process.env.KIBANA_ALERT_POLL_STATE_FILE = stateFile;
+  process.env.KIBANA_ALERT_ES_URL = 'http://poller-test.invalid';
+  const log = { warn() {}, info() {} };
+  const clock = () => new Date('2030-01-01T00:00:00.000Z');
+  const alertA = { _id: 'alert-a', _source: { ruleName: 'A', alertState: 'active', '@timestamp': '2029-12-31T23:59:00.000Z' } };
+  try {
+    globalThis.fetch = async (input: string | URL | Request) => String(input).includes('/_update/')
+      ? new Response('{}', { status: 200 })
+      : new Response(JSON.stringify({ hits: { hits: [alertA] } }), { status: 200 });
+    let attempts = 0;
+    for (let i = 0; i < 10; i += 1) {
+      await pollOnce(log, { now: clock, notify: async () => { attempts += 1; throw new Error('telegram fora'); } });
+    }
+    const state = loadAlertPollerState();
+    assert.equal(attempts, 10);
+    assert.equal(state.processedIds.includes('alert-a'), true);
+    assert.equal(state.lastAbandonedAlertId, 'alert-a');
+    assert.equal(state.lastPollIso, alertA._source['@timestamp']);
+    assert.equal(getAlertPollerHealth(clock().getTime()).pendingRetries, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousFile === undefined) delete process.env.KIBANA_ALERT_POLL_STATE_FILE; else process.env.KIBANA_ALERT_POLL_STATE_FILE = previousFile;
+    if (previousUrl === undefined) delete process.env.KIBANA_ALERT_ES_URL; else process.env.KIBANA_ALERT_ES_URL = previousUrl;
+    fs.rmSync(stateFile, { force: true });
+  }
+});

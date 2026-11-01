@@ -11,6 +11,25 @@ import {
 
 const TELEGRAM_MAX_CHARS = 4000;
 const MISSING = 'Nao identificado';
+const TELEGRAM_ALLOWED_TAGS = ['b', 'i', 'code', 'pre', 'a'];
+
+/** Cuts Telegram HTML without leaving a partial tag/entity and closes open tags. */
+export function truncateTelegramHtml(text: string, max = TELEGRAM_MAX_CHARS): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 40).replace(/<[^>]*$/, '').replace(/&[a-zA-Z0-9#]*$/, '');
+  const open: string[] = [];
+  for (const match of cut.matchAll(/<(\/?)([a-z]+)(?:\s[^>]*)?>/gi)) {
+    const tag = (match[2] ?? '').toLowerCase();
+    if (!TELEGRAM_ALLOWED_TAGS.includes(tag)) continue;
+    if (match[1]) {
+      const index = open.lastIndexOf(tag);
+      if (index >= 0) open.splice(index, 1);
+    } else {
+      open.push(tag);
+    }
+  }
+  return `${cut}…${open.reverse().map((tag) => `</${tag}>`).join('')}`;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -160,14 +179,10 @@ function formatInfraTelegram(payload: KibanaAlertPayload): string {
 }
 
 export function formatObservabilityAlertTelegramText(payload: KibanaAlertPayload): string {
-  let text = isOperationalAlertRule(payload.ruleName)
+  const body = isOperationalAlertRule(payload.ruleName)
     ? formatOperationalTelegram(payload)
     : formatInfraTelegram(payload);
-
-  if (text.length > TELEGRAM_MAX_CHARS) {
-    text = `${text.slice(0, TELEGRAM_MAX_CHARS - 1)}…`;
-  }
-  return text;
+  return truncateTelegramHtml(`[KIBANA] ${body}`);
 }
 
 function formatOperationalEmailHtml(payload: KibanaAlertPayload): string {

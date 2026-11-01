@@ -1,7 +1,9 @@
 import {
+  clearDeliveryFailure,
   isAlertProcessed,
   loadAlertPollerState,
   markAlertProcessed,
+  recordDeliveryFailure,
   saveAlertPollerState,
   summarizeAlertPollerError,
   type AlertPollerState,
@@ -12,6 +14,8 @@ import { isTelegramAlertConfigured } from './telegram-alert.js';
 const DEFAULT_ES_URL = 'http://127.0.0.1:9200';
 const DEFAULT_INDEX = 'quiver-tap-alert-events';
 const DEFAULT_INTERVAL_MS = 30_000;
+/** About five minutes with the default 30s interval. */
+const MAX_DELIVERY_ATTEMPTS = 10;
 
 type EsHit = {
   _id?: string;
@@ -106,6 +110,9 @@ export type AlertPollerHealth = {
   lastEventProcessedAt?: string;
   lastSuccessfulDeliveryAt?: string;
   lastDeliveryError?: string;
+  pendingRetries: number;
+  lastAbandonedAlertId?: string;
+  lastAbandonedAt?: string;
   stale: boolean;
 };
 
@@ -117,6 +124,7 @@ export function getAlertPollerHealth(now = Date.now()): AlertPollerHealth {
   const errorAt = state.lastPollErrorAt ? Date.parse(state.lastPollErrorAt) : NaN;
   const errorIsHistorical = Boolean(state.lastPollError && (!Number.isFinite(errorAt) || now - errorAt > pollIntervalMs() * 3));
   const hasRecentError = Boolean(!errorIsHistorical && state.lastPollErrorAt && (!Number.isFinite(lastSuccess) || errorAt >= lastSuccess));
+  const pendingRetries = Object.keys(state.deliveryFailures ?? {}).length;
   let origin: string | null = null;
   let customPath = false;
   let queryPresent = false;
@@ -129,7 +137,7 @@ export function getAlertPollerHealth(now = Date.now()): AlertPollerHealth {
   const keyConfigured = Boolean(process.env.KIBANA_ALERT_ES_API_KEY?.trim() || process.env.ELASTIC_API_KEY_ALERT_POLLER?.trim());
   const passwordConfigured = Boolean(process.env.KIBANA_ALERT_ES_PASSWORD?.trim() || process.env.ELASTIC_PASSWORD?.trim());
   return {
-    status: stale || hasRecentError ? 'degraded' : 'healthy',
+    status: stale || hasRecentError || pendingRetries > 0 ? 'degraded' : 'healthy',
     process: 'up',
     elasticsearch: hasRecentError ? 'error' : !stale && Number.isFinite(lastSuccess) ? 'ok' : 'unknown',
     pollingActive: timer !== null,
@@ -145,6 +153,9 @@ export function getAlertPollerHealth(now = Date.now()): AlertPollerHealth {
     lastEventProcessedAt: state.lastEventProcessedAt,
     lastSuccessfulDeliveryAt: state.lastSuccessfulDeliveryAt,
     lastDeliveryError: state.lastDeliveryError,
+    pendingRetries,
+    lastAbandonedAlertId: state.lastAbandonedAlertId,
+    lastAbandonedAt: state.lastAbandonedAt,
     stale,
   };
 }
@@ -167,13 +178,14 @@ export async function pollOnce(log: {
     state = loadAlertPollerState();
     state = { ...state, lastPollAttemptAt: now().toISOString() };
 
+    // gte: an alert that failed delivery keeps the cursor at its timestamp and is read again.
     const res = await fetch(`${esUrl()}/${encodeURIComponent(esIndex())}/_search`, {
       method: 'POST',
       headers: esAuthHeaders(),
       body: JSON.stringify({
         query: {
           bool: {
-            must: [{ range: { '@timestamp': { gt: state.lastPollIso } } }],
+            must: [{ range: { '@timestamp': { gte: state.lastPollIso } } }],
             must_not: [{ term: { processed: true } }],
           },
         },
@@ -198,42 +210,57 @@ export async function pollOnce(log: {
       return;
     }
 
-    let maxTs = state.lastPollIso;
+    let safeCursor = state.lastPollIso;
+    let blocked = false;
+    const advance = (ts?: string) => {
+      if (!blocked && ts && ts > safeCursor) safeCursor = ts;
+    };
 
     for (const hit of hits) {
       const src = hit._source ?? {};
       const ts = typeof src['@timestamp'] === 'string' ? src['@timestamp'] : undefined;
-      if (ts && ts > maxTs) maxTs = ts;
-
-      if (isAlertProcessed(state, hit._id)) continue;
+      if (!hit._id || isAlertProcessed(state, hit._id)) {
+        advance(ts);
+        continue;
+      }
+      const alertId = hit._id;
 
       try {
         state = { ...state, lastDeliveryAttemptAt: now().toISOString() };
-        const result = await notify(src, hit._id);
+        const result = await notify(src, alertId);
         if (result.sent) {
           state = { ...state, lastSuccessfulDeliveryAt: now().toISOString(), lastDeliveryErrorAt: undefined, lastDeliveryError: undefined };
           log.info(
             {
               ruleName: src.ruleName ?? src.rule_name,
-              alertId: hit._id,
+              alertId,
               channels: result.channels,
             },
             'Alerta Kibana enviado (poller ES)',
           );
         }
-        if (hit._id) {
-          state = markAlertProcessed(state, hit._id);
-          state = { ...state, lastEventProcessedAt: now().toISOString() };
-          void markProcessedInEs(hit._id);
-        }
+        state = clearDeliveryFailure(markAlertProcessed(state, alertId), alertId);
+        state = { ...state, lastEventProcessedAt: now().toISOString() };
+        void markProcessedInEs(alertId);
+        advance(ts);
       } catch (err) {
         const msg = summarizeAlertPollerError(err);
-        state = { ...state, lastDeliveryErrorAt: now().toISOString(), lastDeliveryError: msg };
-        log.warn({ err: msg, alertId: hit._id }, 'Kibana alert poller: falha ao enviar alerta');
+        const failed = recordDeliveryFailure(state, alertId);
+        state = { ...failed.state, lastDeliveryErrorAt: now().toISOString(), lastDeliveryError: msg };
+        if (failed.attempts >= MAX_DELIVERY_ATTEMPTS) {
+          state = clearDeliveryFailure(markAlertProcessed(state, alertId), alertId);
+          state = { ...state, lastAbandonedAlertId: alertId, lastAbandonedAt: now().toISOString() };
+          void markProcessedInEs(alertId);
+          log.warn({ err: msg, alertId, attempts: failed.attempts }, 'Kibana alert poller: alerta DESCARTADO apos tentativas maximas');
+          advance(ts);
+        } else {
+          blocked = true;
+          log.warn({ err: msg, alertId, attempts: failed.attempts }, 'Kibana alert poller: falha ao enviar alerta; nova tentativa no proximo ciclo');
+        }
       }
     }
 
-    state = { ...state, lastPollIso: maxTs };
+    state = { ...state, lastPollIso: safeCursor };
     saveAlertPollerState(state);
   } catch (err) {
     const msg = summarizeAlertPollerError(err);

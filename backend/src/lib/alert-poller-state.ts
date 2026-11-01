@@ -10,6 +10,7 @@ const DEFAULT_STATE_FILE = path.join(
 );
 
 const MAX_PROCESSED_IDS = 2000;
+const MAX_DELIVERY_FAILURES = 200;
 
 export type AlertPollerState = {
   lastPollIso: string;
@@ -23,7 +24,16 @@ export type AlertPollerState = {
   lastSuccessfulDeliveryAt?: string;
   lastDeliveryErrorAt?: string;
   lastDeliveryError?: string;
+  deliveryFailures?: Record<string, number>;
+  lastAbandonedAlertId?: string;
+  lastAbandonedAt?: string;
 };
+
+const STRING_KEYS = [
+  'lastPollAttemptAt', 'lastSuccessfulPollAt', 'lastPollErrorAt', 'lastPollError',
+  'lastEventProcessedAt', 'lastDeliveryAttemptAt', 'lastSuccessfulDeliveryAt',
+  'lastDeliveryErrorAt', 'lastDeliveryError', 'lastAbandonedAlertId', 'lastAbandonedAt',
+] as const;
 
 function stateFilePath(): string {
   const custom = process.env.KIBANA_ALERT_POLL_STATE_FILE?.trim();
@@ -39,6 +49,14 @@ function defaultState(): AlertPollerState {
   };
 }
 
+function trimFailures(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0)
+    .slice(-MAX_DELIVERY_FAILURES);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
 export function loadAlertPollerState(): AlertPollerState {
   const file = stateFilePath();
   try {
@@ -49,13 +67,11 @@ export function loadAlertPollerState(): AlertPollerState {
       ? raw.processedIds.filter((id): id is string => typeof id === 'string')
       : [];
     const state: AlertPollerState = { lastPollIso: raw.lastPollIso, processedIds: ids.slice(-MAX_PROCESSED_IDS) };
-    for (const key of [
-      'lastPollAttemptAt', 'lastSuccessfulPollAt', 'lastPollErrorAt', 'lastPollError',
-      'lastEventProcessedAt', 'lastDeliveryAttemptAt', 'lastSuccessfulDeliveryAt',
-      'lastDeliveryErrorAt', 'lastDeliveryError',
-    ] as const) {
+    for (const key of STRING_KEYS) {
       if (typeof raw[key] === 'string') state[key] = raw[key];
     }
+    const failures = trimFailures(raw.deliveryFailures);
+    if (failures) state.deliveryFailures = failures;
     return state;
   } catch {
     return defaultState();
@@ -70,13 +86,11 @@ export function saveAlertPollerState(state: AlertPollerState): void {
     lastPollIso: state.lastPollIso,
     processedIds: state.processedIds.slice(-MAX_PROCESSED_IDS),
   };
-  for (const key of [
-    'lastPollAttemptAt', 'lastSuccessfulPollAt', 'lastPollErrorAt', 'lastPollError',
-    'lastEventProcessedAt', 'lastDeliveryAttemptAt', 'lastSuccessfulDeliveryAt',
-    'lastDeliveryErrorAt', 'lastDeliveryError',
-  ] as const) {
+  for (const key of STRING_KEYS) {
     if (state[key]) trimmed[key] = state[key];
   }
+  const failures = trimFailures(state.deliveryFailures);
+  if (failures) trimmed.deliveryFailures = failures;
   const temp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(temp, JSON.stringify(trimmed, null, 2), 'utf8');
   fs.renameSync(temp, file);
@@ -101,4 +115,16 @@ export function markAlertProcessed(state: AlertPollerState, alertId: string): Al
 export function isAlertProcessed(state: AlertPollerState, alertId: string | undefined): boolean {
   if (!alertId) return false;
   return state.processedIds.includes(alertId);
+}
+
+export function recordDeliveryFailure(state: AlertPollerState, alertId: string): { state: AlertPollerState; attempts: number } {
+  const attempts = (state.deliveryFailures?.[alertId] ?? 0) + 1;
+  return { state: { ...state, deliveryFailures: { ...(state.deliveryFailures ?? {}), [alertId]: attempts } }, attempts };
+}
+
+export function clearDeliveryFailure(state: AlertPollerState, alertId: string): AlertPollerState {
+  if (!state.deliveryFailures?.[alertId]) return state;
+  const rest = { ...state.deliveryFailures };
+  delete rest[alertId];
+  return { ...state, deliveryFailures: Object.keys(rest).length ? rest : undefined };
 }

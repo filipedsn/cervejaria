@@ -12,6 +12,10 @@ export function isTelegramAlertConfigured(): boolean {
 
 export { formatObservabilityAlertTelegramText };
 
+export function isTelegramAlertDryRun(): boolean {
+  return process.env.OBS_ALERT_TELEGRAM_DRY_RUN?.trim().toLowerCase() === 'true';
+}
+
 export async function sendObservabilityAlertTelegram(
   alert: ObservabilityAlertMessage,
 ): Promise<void> {
@@ -22,6 +26,10 @@ export async function sendObservabilityAlertTelegram(
   }
 
   const text = formatObservabilityAlertTelegramText(alert);
+  if (isTelegramAlertDryRun()) {
+    console.log(JSON.stringify({ telegramDryRun: true, text }));
+    return;
+  }
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
   const res = await fetch(url, {

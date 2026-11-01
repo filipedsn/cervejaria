@@ -8,7 +8,7 @@
   "params": {
     "index": ["metrics-httpcheckreceiver.otel-infra*"],
     "timeField": "@timestamp",
-    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.http.url\":\"*tap.quivercloud.com.br/api/ready*\"}}],\"must_not\":[{\"term\":{\"attributes.http.status_code\":200}}]}}}",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"wildcard\":{\"attributes.http.url\":\"*tap.quivercloud.com.br/api/ready*\"}}],\"should\":[{\"bool\":{\"filter\":[{\"exists\":{\"field\":\"attributes.http.status_code\"}}],\"must_not\":[{\"term\":{\"attributes.http.status_code\":200}}]}},{\"exists\":{\"field\":\"attributes.error.message\"}}],\"minimum_should_match\":1}}}",
     "size": 10,
     "timeWindowSize": 5,
     "timeWindowUnit": "m",

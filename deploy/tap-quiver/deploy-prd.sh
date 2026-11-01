@@ -75,10 +75,19 @@ PENDING="$(printf '%s\n' "$GUARD_OUT" | grep -c '^MIGRATION ' || true)"
 log "backup Postgres antes do deploy"
 BACKUP_ENV_FILE="$BACKUP_ENV" bash "$COMPOSE_DIR/backup-postgres.sh"
 
-COMPOSE=(docker compose -f docker-compose.yml)
-if [[ -f "$COMPOSE_DIR/docker-compose.observability.yml" && -f "$COMPOSE_DIR/.env.observability" ]]; then
-  COMPOSE+=(-f docker-compose.observability.yml)
-fi
+# Recalculado depois de cada sync_code: o conjunto de arquivos compose depende do SHA sincronizado.
+build_compose() {
+  COMPOSE=(docker compose -f docker-compose.yml)
+  if [[ -f "$COMPOSE_DIR/docker-compose.observability.yml" && -f "$COMPOSE_DIR/.env.observability" ]]; then
+    COMPOSE+=(-f docker-compose.observability.yml)
+  fi
+  ALERT_POLLER=0
+  if [[ -f "$COMPOSE_DIR/docker-compose.alerts.yml" && -f "$COMPOSE_DIR/.env.alert-poller" ]]; then
+    COMPOSE+=(-f docker-compose.alerts.yml)
+    ALERT_POLLER=1
+  fi
+}
+build_compose
 compose() { (cd "$COMPOSE_DIR" && "${COMPOSE[@]}" "$@"); }
 
 sync_code() {
@@ -88,6 +97,7 @@ sync_code() {
     --exclude '/deploy/tap-quiver/.env.staging' \
     --exclude '/deploy/tap-quiver/.env.staging.bak*' \
     --exclude '/deploy/tap-quiver/.env.observability' \
+    --exclude '/deploy/tap-quiver/.env.alert-poller' \
     --exclude '/deploy/tap-quiver/backup-postgres.*' \
     --exclude '/backups/' \
     --exclude 'node_modules/' \
@@ -199,6 +209,7 @@ rollback() {
   set +e
   sync_code "$PREV_SHA"
   set_release_sha "$PREV_SHA"
+  build_compose
   docker tag "$IMAGE:rollback" "$IMAGE:staging"
   if ((MIGRATED == 1)); then
     # shellcheck disable=SC2012
@@ -206,6 +217,7 @@ rollback() {
   fi
   if ((API_RECREATED == 1)); then
     recreate_api
+    if ((ALERT_POLLER == 1)); then compose up -d --no-build --force-recreate alert-poller || log "AVISO: alert poller nao subiu no rollback"; fi
     if wait_healthy "$PREV_SHA"; then
       history "rolled-back"
       log "rollback ok: produção segue em $PREV_SHA"
@@ -231,6 +243,7 @@ ROLLBACK_READY=1
 log "sincronizando código"
 sync_code "$SHA"
 set_release_sha "$SHA"
+build_compose
 
 log "build da imagem"
 compose build api
@@ -255,6 +268,10 @@ wait_healthy "$SHA"
 
 trap - ERR
 history "ok"
+if ((ALERT_POLLER == 1)); then
+  log "recriando o alert poller"
+  compose up -d --no-build --force-recreate alert-poller || log "AVISO: alert poller nao subiu; a API segue publicada. Veja: docker logs quiver-tap-alert-poller"
+fi
 
 {
   for img in "$IMAGE" "$MIGRATOR_IMAGE"; do

@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-disk-high-prd",
+  "tags": ["quiver-tap", "observability", "production", "infra", "disco"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "5m" },
+  "enabled": true,
+  "params": {
+    "index": ["metrics-hostmetricsreceiver.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"term\":{\"attributes.mountpoint\":\"/etc/hostname\"}},{\"range\":{\"system.filesystem.utilization\":{\"gte\":0.85}}}]}}}",
+    "size": 1,
+    "timeWindowSize": 15,
+    "timeWindowUnit": "m",
+    "thresholdComparator": ">",
+    "threshold": [5],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}

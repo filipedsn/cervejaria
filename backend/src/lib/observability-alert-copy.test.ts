@@ -6,7 +6,7 @@ import {
   formatAlertStateLabel,
   isOperationalAlertRule,
 } from './observability-alert-copy.js';
-import { formatObservabilityAlertTelegramText } from './observability-alert-format.js';
+import { formatObservabilityAlertTelegramText, truncateTelegramHtml } from './observability-alert-format.js';
 import { buildTechnicalDetailsFromLog } from './observability-alert-enrich.js';
 import { resolveOperationLabel } from './operation-labels.js';
 
@@ -125,5 +125,24 @@ describe('observability alert copy', () => {
     assert.ok(details.some((line) => line.includes('POST')));
     assert.ok(details.some((line) => line.includes('abc123')));
     assert.ok(details.some((line) => line.includes('cmd_01')));
+  });
+});
+
+describe('telegram [KIBANA] prefix and safe truncation', () => {
+  it('prefixes every Kibana telegram message', () => {
+    const text = formatObservabilityAlertTelegramText({ ruleName: 'quiver-tap-api-ready-down-prd', alertState: 'active', reason: 'teste' });
+    assert.equal(text.startsWith('[KIBANA] '), true);
+  });
+
+  it('truncates long HTML without partial tags and closes open tags', () => {
+    const long = `[KIBANA] <b>Titulo</b>\n<code>${'x'.repeat(5000)}</code>`;
+    const out = truncateTelegramHtml(long);
+    assert.ok(out.length <= 4000);
+    assert.ok(out.endsWith('</code>'));
+    assert.equal(/<[^>]*$/.test(out), false);
+  });
+
+  it('keeps short text unchanged', () => {
+    assert.equal(truncateTelegramHtml('[KIBANA] curto'), '[KIBANA] curto');
   });
 });

@@ -1,5 +1,6 @@
 # EDOT Collector PRD — VPS Hostinger
-# Rede: elasticsearch-kibana_elastic (mesmo stack ES/Kibana do VPS).
+# Redes: elasticsearch-kibana_elastic (mesmo stack ES/Kibana do VPS) e banco-de-dados_default
+# (Postgres PRD `cervejaria-db`, publicado só em 127.0.0.1 do host; o tcpcheck usa cervejaria-db:5432).
 # OTLP só em loopback; a API usa network_mode: host → 127.0.0.1:4318.
 
 services:
@@ -19,8 +20,12 @@ services:
       - "127.0.0.1:4318:4318"
     networks:
       - elastic
+      - banco
 
 networks:
   elastic:
     external: true
     name: elasticsearch-kibana_elastic
+  banco:
+    external: true
+    name: banco-de-dados_default
