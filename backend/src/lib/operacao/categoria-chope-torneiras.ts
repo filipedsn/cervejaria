@@ -74,7 +74,7 @@ export async function syncCategoriaChopeComTorneiras(
   });
   if (!brewery) return;
 
-  const strip = (value: unknown): string[] | null | undefined => {
+  const strip = (value: unknown): string[] | undefined => {
     if (!Array.isArray(value)) return undefined;
     return value.filter((item): item is string => typeof item === 'string' && !isNomeChope(item));
   };

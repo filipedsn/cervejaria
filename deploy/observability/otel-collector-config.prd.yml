@@ -135,6 +135,20 @@ receivers:
         field: attributes["data_stream.dataset"]
         value: docker_state
 
+  filelog/backup:
+    include: [/var/log/host/quiver-backup-status.log]
+    start_at: end
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.ts
+          layout_type: gotime
+          layout: '2006-01-02T15:04:05Z07:00'
+        on_error: send_quiet
+      - type: add
+        field: attributes["data_stream.dataset"]
+        value: backup_status
+
 processors:
   transform/dataset:
     error_mode: propagate
@@ -255,8 +269,8 @@ processors:
 exporters:
   elasticsearch:
     endpoint: ${env:ELASTICSEARCH_URL}
-    user: ${env:ELASTIC_USER}
-    password: ${env:ELASTIC_PASSWORD}
+    # Chave so de escrita (deploy/observability/roles/quiver-collector-prd-key.json); nunca o superusuario.
+    api_key: ${env:ELASTIC_API_KEY}
     mapping:
       mode: otel
     logs_dynamic_index:
@@ -285,6 +299,6 @@ service:
       processors: [transform/namespace, filter/prd-only, transform/dataset, batch]
       exporters: [elasticsearch]
     logs/infra:
-      receivers: [filelog/nginx, filelog/ssh, filelog/docker]
+      receivers: [filelog/nginx, filelog/ssh, filelog/docker, filelog/backup]
       processors: [transform/infra-logs, batch]
       exporters: [elasticsearch]

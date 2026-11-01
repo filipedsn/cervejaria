@@ -10,7 +10,7 @@ import { ageMinutes, backoffDelayMs, brasiliaParts, elasticPing, FileLock, inBoo
 
 const baseConfig: WatchConfig = { enabled: true, publicUrl: 'https://tap.example.test', networkCheckUrl: 'https://net.example.test/trace', freshnessMaxMinutes: 10, errorLogThreshold: 20, reminderMinutes: 60, digestHour: 23, intervalMs: 60_000, bootQuietMinutes: 10 };
 type Sent = { kind: string; text: string; detectorId?: string };
-type World = { network: boolean; site: boolean; release: string; latestAgeMinutes: number; esError?: ElasticSourceError; errors: number };
+type World = { network: boolean; site: boolean; release: string; latestAgeMinutes: number; esError?: ElasticSourceError; errors: number; poller?: { status: string; health: string } | 'none' };
 type Clock = { now: Date };
 
 const healthy = (): World => ({ network: true, site: true, release: 'abc1234def', latestAgeMinutes: 1, errors: 0 });
@@ -37,6 +37,9 @@ function setup(dir: string, world: World, clock: Clock, config: WatchConfig = ba
       return world.errors;
     },
     errorContext: async () => ({ routes: [{ route: '/api/comandas/123', count: 30 }], correlationIds: ['corr-abc-1'] }),
+    ...(world.poller === undefined ? {} : {
+      latestContainerState: async () => (world.poller === 'none' || world.poller === undefined ? undefined : { timestamp: clock.now.toISOString(), ...world.poller }),
+    }),
   };
   const notifications = {
     send: async (kind: string, text: string, detectorId?: string) => { sent.push({ kind, text, detectorId }); },
@@ -99,6 +102,29 @@ test('site down holds the api-telemetry-stale notification', () => withDir(async
   const ids = sent.filter((s) => s.kind === 'FIRING').map((s) => s.detectorId);
   assert.equal(ids.includes('public-site-down'), true);
   assert.equal(ids.includes('api-telemetry-stale'), false);
+}));
+
+test('unhealthy alert poller fires alert-path-unhealthy once and a healthy poller resolves it', () => withDir(async (dir) => {
+  const world: World = { ...healthy(), poller: { status: 'running', health: 'unhealthy' } };
+  const clock = { now: new Date('2026-10-27T15:00:00.000Z') };
+  const { runner, sent } = setup(dir, world, clock);
+  await cycles(runner, clock, 4);
+  const firing = sent.filter((s) => s.kind === 'FIRING' && s.detectorId === 'alert-path-unhealthy');
+  assert.equal(firing.length, 1);
+  assert.match(firing[0]!.text, /Caminho de alertas parado/);
+  world.poller = { status: 'running', health: 'healthy' };
+  await cycles(runner, clock, 2);
+  assert.equal(sent.filter((s) => s.kind === 'RESOLVED' && s.detectorId === 'alert-path-unhealthy').length, 1);
+}));
+
+test('stale collector holds the alert-path-unhealthy notification', () => withDir(async (dir) => {
+  const world: World = { ...healthy(), latestAgeMinutes: 30, poller: 'none' };
+  const clock = { now: new Date('2026-10-27T15:00:00.000Z') };
+  const { runner, sent } = setup(dir, world, clock);
+  await cycles(runner, clock, 4);
+  const ids = sent.filter((s) => s.kind === 'FIRING').map((s) => s.detectorId);
+  assert.equal(ids.includes('collector-telemetry-stale'), true);
+  assert.equal(ids.includes('alert-path-unhealthy'), false);
 }));
 
 test('reminder after the configured minutes', () => withDir(async (dir) => {

@@ -73,7 +73,7 @@ esac
 PENDING="$(printf '%s\n' "$GUARD_OUT" | grep -c '^MIGRATION ' || true)"
 
 log "backup Postgres antes do deploy"
-BACKUP_ENV_FILE="$BACKUP_ENV" bash "$COMPOSE_DIR/backup-postgres.sh"
+BACKUP_ENV_FILE="$BACKUP_ENV" BACKUP_TRIGGER=deploy bash "$COMPOSE_DIR/backup-postgres.sh"
 
 # Recalculado depois de cada sync_code: o conjunto de arquivos compose depende do SHA sincronizado.
 build_compose() {
@@ -88,7 +88,8 @@ build_compose() {
   fi
 }
 build_compose
-compose() { (cd "$COMPOSE_DIR" && "${COMPOSE[@]}" "$@"); }
+# RELEASE_SHA exportado do .env.staging (já atualizado por set_release_sha) para a interpolação do compose do poller.
+compose() { (cd "$COMPOSE_DIR" && RELEASE_SHA="$(sed -n 's/^RELEASE_SHA=//p' "$ENV_FILE" | tail -n1)" "${COMPOSE[@]}" "$@"); }
 
 sync_code() {
   local target="$1"
@@ -98,7 +99,7 @@ sync_code() {
     --exclude '/deploy/tap-quiver/.env.staging.bak*' \
     --exclude '/deploy/tap-quiver/.env.observability' \
     --exclude '/deploy/tap-quiver/.env.alert-poller' \
-    --exclude '/deploy/tap-quiver/backup-postgres.*' \
+    --exclude '/deploy/tap-quiver/backup-postgres.env*' \
     --exclude '/backups/' \
     --exclude 'node_modules/' \
     "$REPO_DIR/" "$APP_DIR/"

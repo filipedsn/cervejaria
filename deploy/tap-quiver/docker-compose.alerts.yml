@@ -11,6 +11,7 @@ services:
       - .env.alert-poller
     environment:
       NODE_ENV: production
+      RELEASE_SHA: ${RELEASE_SHA:-unknown}
       KIBANA_ALERT_POLL_ENABLED: "true"
       KIBANA_ALERT_POLL_IN_API: "false"
       KIBANA_ALERT_POLL_STATE_FILE: /app/state/alert-poller-state.json

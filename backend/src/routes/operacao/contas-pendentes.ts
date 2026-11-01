@@ -167,6 +167,7 @@ export async function contasPendentesOperacaoRoutes(app: FastifyInstance) {
               identificador: true,
               tipo: true,
               fechadaEm: true,
+              diaOperacional: true,
               pontoVenda: { select: { id: true, nome: true } },
               itens: { select: { nome: true, quantidade: true, observacao: true }, orderBy: { createdAt: 'asc' } },
             },

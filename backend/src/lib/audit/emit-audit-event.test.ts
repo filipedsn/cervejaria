@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import { buildAuditPayload } from './emit-audit-event.js';
+import test, { mock } from 'node:test';
+import { logs } from '@opentelemetry/api-logs';
+import { buildAuditPayload, emitAuditEvent } from './emit-audit-event.js';
 import { runWithTelemetryContext, type TelemetryContext } from '../telemetry-context.js';
 
 const staffContext: TelemetryContext = {
@@ -48,6 +49,18 @@ test('jornada: web vital e erro de interface viram campos próprios', () => {
   assert.equal(payload['error.message'], 'boom');
   assert.equal(payload['error.stack_trace'], 'Error: boom\n    at x');
   assert.equal(payload['error.type'], 'TypeError');
+});
+
+test('cada evento de audit vira um único registro OTLP (sem cópia via Pino)', () => {
+  const emitted: Array<{ attributes?: Record<string, unknown> }> = [];
+  const getLogger = mock.method(logs, 'getLogger', () => ({ emit: (record: { attributes?: Record<string, unknown> }) => emitted.push(record) }));
+  try {
+    runWithTelemetryContext(staffContext, () => emitAuditEvent({ action: 'ui.error', message: 'boom', outcome: 'failure' }));
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].attributes?.['event.action'], 'ui.error');
+  } finally {
+    getLogger.mock.restore();
+  }
 });
 
 test('cliente do portal não ganha nome nem e-mail e contexto sem IP não cria campos vazios', () => {

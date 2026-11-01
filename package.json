@@ -11,7 +11,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev:start": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File scripts/dev/supervisor.ps1 -Detached",
+    "dev:start": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File scripts/dev/supervisor.ps1",
     "dev:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/status-dev.ps1",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/stop-dev.ps1",
     "prisma:generate:unlocked": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/prisma-generate-unlocked.ps1",

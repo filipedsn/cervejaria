@@ -14,7 +14,7 @@ $script:ObsEnvFile = if ($script:ObsTarget -eq 'prd') {
 
 if ($script:ObsTarget -eq 'prd') {
   if (-not (Test-Path -LiteralPath $ObsEnvFile)) { throw 'Alvo PRD exige deploy\observability\.env.observability.prd (nao versionado). Peca ao Filipe para criar.' }
-  foreach ($n in 'ELASTICSEARCH_URL', 'KIBANA_URL', 'ELASTIC_API_KEY', 'ELASTIC_USER', 'ELASTIC_PASSWORD') {
+  foreach ($n in 'ELASTICSEARCH_URL', 'KIBANA_URL', 'ELASTIC_API_KEY', 'ELASTIC_USER', 'ELASTIC_PASSWORD', 'ELASTIC_ADMIN_USER', 'ELASTIC_ADMIN_PASSWORD') {
     Remove-Item -Path "env:$n" -ErrorAction SilentlyContinue
   }
 }
@@ -118,9 +118,15 @@ function Get-ElasticCurlAuthArgs {
   return @('-H', "Authorization: $ElasticAuthHeader")
 }
 
+# PRD: leitura usa ELASTIC_API_KEY (somente leitura); mutacao confirmada troca para o usuario
+# quiver-obs-admin (scripts/observability/rotate-prd-credentials.ps1).
 function Assert-PrdMutationConfirmed {
   param([bool]$Confirmed)
   if ($script:ObsTarget -eq 'prd' -and -not $Confirmed) {
     throw 'Mutacao em PRD exige -ConfirmPrd (e GATE autorizado pelo Filipe).'
+  }
+  if ($script:ObsTarget -eq 'prd' -and $env:ELASTIC_ADMIN_USER -and $env:ELASTIC_ADMIN_PASSWORD) {
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($env:ELASTIC_ADMIN_USER):$($env:ELASTIC_ADMIN_PASSWORD)"))
+    $script:ElasticAuthHeader = "Basic $b64"
   }
 }

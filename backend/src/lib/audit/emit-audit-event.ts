@@ -2,7 +2,6 @@ import { trace } from '@opentelemetry/api';
 import { randomUUID } from 'node:crypto';
 import { afterTransactionCommit, currentTransactionTelemetry } from '../transaction-telemetry.js';
 import { BRAZIL_TZ, formatBrazilDateTime } from '../event-datetime.js';
-import { logger } from '../logger.js';
 import { getReleaseContext } from '../release-context.js';
 import { emitAuditLogRecord } from './emit-otel-log.js';
 import { redactObject } from './redact.js';
@@ -147,8 +146,9 @@ export function emitAuditEvent(input: AuditEventInput): void {
       payload['db.transaction.id'] = transaction.id;
       payload['db.transaction.state'] = (input.outcome ?? 'success') === 'success' ? 'committed' : transaction.state;
     }
+    // Single sink: the pino instrumentation also forwards logger.* to OTLP, so logging the payload
+    // here as well would index every audit event twice.
     try { emitAuditLogRecord(payload, input.message, input.outcome ?? 'success'); } catch { /* fail open */ }
-    try { logger.info(payload, input.message); } catch { /* fail open */ }
   };
   if ((input.outcome ?? 'success') === 'success') afterTransactionCommit(publish);
   else publish();

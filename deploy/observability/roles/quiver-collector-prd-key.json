@@ -1,0 +1,15 @@
+{
+  "name": "quiver-collector-prd",
+  "role_descriptors": {
+    "quiver_collector_prd": {
+      "cluster": ["monitor"],
+      "indices": [
+        {
+          "names": ["logs-*", "metrics-*", "traces-*"],
+          "privileges": ["auto_configure", "create_doc"]
+        }
+      ]
+    }
+  },
+  "metadata": { "owner": "TAP-164", "purpose": "EDOT collector PRD (write-only)" }
+}

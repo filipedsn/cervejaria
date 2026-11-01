@@ -5,13 +5,16 @@ import { ElasticSourceError } from '../sources/elastic.js';
 import { probeUrl, readReleaseSha, type FetchLike } from './probes.js';
 import { inBootQuietWindow } from './startup.js';
 import type { WatchStateStore } from './state.js';
-import { DETECTOR_RULES, type DetectorId, type DetectorRule, type DetectorStateEntry, type ErrorContext, type Observation, type WatchState } from './types.js';
+import { DETECTOR_RULES, type ContainerState, type DetectorId, type DetectorRule, type DetectorStateEntry, type ErrorContext, type Observation, type WatchState } from './types.js';
+
+const ALERT_POLLER_CONTAINER = 'quiver-tap-alert-poller';
 
 export type WatchElasticReader = {
   indexNames(): AnalystIndices;
   latestTimestamp(index: string): Promise<string | undefined>;
   countLastMinutes(index: string, minutes: number, filters: unknown[]): Promise<number>;
   errorContext?(index: string, minutes: number): Promise<ErrorContext>;
+  latestContainerState?(index: string, container: string): Promise<ContainerState | undefined>;
 };
 export type WatchNotifications = { send(kind: string, text: string, detectorId?: string): Promise<void>; flushPending(): Promise<void> };
 export type WatchEvent = { kind: 'FIRING' | 'RESOLVED'; detectorId: DetectorId };
@@ -67,10 +70,13 @@ export class WatchRunner {
     let apiLatest: string | undefined;
     let collectorLatest: string | undefined;
     let errorCount = 0;
+    const watchAlertPath = Boolean(indices.dockerState && this.deps.elastic.latestContainerState);
+    let poller: ContainerState | undefined;
     try {
       apiLatest = await this.deps.elastic.latestTimestamp(indices.appMetrics);
       collectorLatest = await this.deps.elastic.latestTimestamp(indices.infraHttpcheck);
       errorCount = await this.deps.elastic.countLastMinutes(indices.technical, 5, ERROR_FILTER);
+      if (watchAlertPath) poller = await this.deps.elastic.latestContainerState!(indices.dockerState!, ALERT_POLLER_CONTAINER);
     } catch (error) {
       failure = error instanceof ElasticSourceError ? error : new ElasticSourceError('request_failed', 'Elasticsearch request failed');
     }
@@ -84,6 +90,10 @@ export class WatchRunner {
       const collectorAge = ageMinutes(collectorLatest, now);
       observe({ id: 'api-telemetry-stale', bad: apiAge === undefined || apiAge > max, detail: apiAge === undefined ? 'nenhuma métrica da API nas últimas 6h' : `última métrica da API há ${apiAge} min` });
       observe({ id: 'collector-telemetry-stale', bad: collectorAge === undefined || collectorAge > max, detail: collectorAge === undefined ? 'nenhum httpcheck nas últimas 6h' : `último httpcheck há ${collectorAge} min` });
+      if (watchAlertPath) {
+        const healthy = poller?.status === 'running' && poller.health === 'healthy';
+        observe({ id: 'alert-path-unhealthy', bad: !healthy, detail: poller ? `poller status=${poller.status} health=${poller.health}` : 'nenhum estado do poller nos últimos 10 min' });
+      }
       const surge = errorCount > this.deps.config.errorLogThreshold;
       if (surge && this.deps.elastic.errorContext) {
         try { surgeContext = await this.deps.elastic.errorContext(indices.technical, 5); } catch { surgeContext = undefined; }
@@ -91,14 +101,17 @@ export class WatchRunner {
       observe({ id: 'error-log-surge', bad: surge, detail: `${errorCount} logs ERROR nos últimos 5 min (limite ${this.deps.config.errorLogThreshold})`, context: surgeContext });
     }
 
-    // 4. Notifications. API telemetry stale is a consequence while the site is failing: hold it.
+    // 4. Notifications. API telemetry stale is a consequence while the site is failing, and a missing
+    //    poller state is a consequence while the collector is stale: hold them.
     //    During the post-boot quiet window nothing fires; detectors keep counting and fire afterwards.
     const siteBad = (state.detectors['public-site-down']?.consecutiveBad ?? 0) > 0;
+    const collectorBad = state.detectors['collector-telemetry-stale']?.status === 'FIRING';
     for (const id of Object.keys(DETECTOR_RULES) as DetectorId[]) {
       const rule = DETECTOR_RULES[id];
       const entry = state.detectors[id];
       if (quiet || !rule.notify || !entry || entry.status !== 'FIRING') continue;
       if (id === 'api-telemetry-stale' && siteBad) continue;
+      if (id === 'alert-path-unhealthy' && collectorBad) continue;
       if (!entry.lastNotifiedAt) {
         const context = id === 'error-log-surge' ? surgeContext : undefined;
         await this.deps.notifications.send('FIRING', formatFiring(rule, entry.firingSince ?? now.toISOString(), entry.lastDetail ?? '', { context, kibanaUrl: this.deps.config.kibanaUrl, environment: this.deps.environment }), id);

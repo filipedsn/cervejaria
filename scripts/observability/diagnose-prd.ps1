@@ -14,7 +14,8 @@ $ExpectedRules = @(
   'quiver-tap-public-ready-down-prd', 'quiver-tap-postgres-tcp-down-prd', 'quiver-tap-eventloop-high-prd',
   'quiver-tap-api-ready-down-prd', 'quiver-tap-5xx-rate-prd', 'quiver-tap-401-surge-prd',
   'quiver-tap-disk-high-prd', 'quiver-tap-ssh-bruteforce-prd', 'quiver-tap-ssh-login-prd',
-  'quiver-tap-nginx-5xx-surge-prd', 'quiver-tap-container-restart-prd'
+  'quiver-tap-nginx-5xx-surge-prd', 'quiver-tap-container-restart-prd',
+  'quiver-tap-backup-failed-prd', 'quiver-tap-backup-missing-prd'
 )
 
 $results = New-Object System.Collections.Generic.List[object]
@@ -139,6 +140,16 @@ if ($alt -and -not $alt.error -and (Get-Count $alt) -gt 0) {
   Add-Result 'ALT-01' 'Indice quiver-tap-alert-events' 'PASS' "docs=$(@($alt)[0].'docs.count')"
 } else {
   Add-Result 'ALT-01' 'Indice quiver-tap-alert-events' 'WARN' 'ausente (sera criado no WI-B, GATE G8)'
+}
+
+# SLM-01 snapshot diario do cluster (deploy/observability/slm-policy-prd.json)
+$slm = Invoke-ReadOnly -Api es -Path '/_slm/policy/quiver-daily-prd'
+$lastOk = if ($slm -and $slm.'quiver-daily-prd'.last_success) { [DateTimeOffset]::FromUnixTimeMilliseconds([int64]$slm.'quiver-daily-prd'.last_success.time).UtcDateTime } else { $null }
+if (-not $lastOk) {
+  Add-Result 'SLM-01' 'Snapshot diario do Elasticsearch' 'FAIL' 'politica quiver-daily-prd ausente ou sem sucesso registrado'
+} else {
+  $ageH = [math]::Round(((Get-Date).ToUniversalTime() - $lastOk).TotalHours, 1)
+  Add-Result 'SLM-01' 'Snapshot diario do Elasticsearch' $(if ($ageH -le 30) { 'PASS' } else { 'FAIL' }) "ultimo sucesso ha ${ageH}h"
 }
 
 # KB-01..05

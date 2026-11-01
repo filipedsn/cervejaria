@@ -28,20 +28,20 @@ gh pr create --base main               # ou pela interface do GitHub
 1. Validar no DEV local (`http://localhost:5202` / API `http://localhost:3002`) quando a mudança tiver efeito visível. `tapdev.quivercloud.com.br` e o tunnel de DEV não são caminhos vigentes.
 2. Esperar o check remoto **build-and-unit** verde no PR (branch protection). Rodar `npm run ci` local continua recomendado (suite Windows + atestado legado).
 3. Merge por **Squash and merge**. Exceção: quando o PR apenas leva `main` a um commit que já está em produção, o merge é fast-forward para preservar o SHA publicado.
-4. Com autorização explícita para **produção pública** (`tap.quivercloud.com.br`): publicar no **VPS** (Docker), hoje manualmente por SSH via Tailscale; o caminho futuro de CD está no handoff §7.1. O `deploy.cmd` / `scripts/prod/deploy.ps1` no PC são **legado** e **não** publicam o site público.
+4. Com autorização explícita para **produção pública** (`tap.quivercloud.com.br`): o merge na `main` dispara a esteira **Deploy PRD (VPS)**, que espera aprovação humana no environment `production` (painel Ops ou GitHub; handoff §7.1). Deploy manual por SSH via Tailscale só como contingência. O `deploy.cmd` / `scripts/prod/deploy.ps1` no PC são **legado** e **não** publicam o site público.
 
 ## Publicar no DEV
 
-O DEV oficial roda um pacote compilado em `deploy/dev-artifacts`, montado a partir de um commit já enviado ao GitHub (branch do PR ou `main`). Editar arquivos não muda a tela. Em PowerShell elevado (os processos do DEV rodam elevados):
+O DEV roda da pasta canônica do projeto (TAP-136), sem elevação. A versão é trocada pelo painel Ops ("Testar o PR", "Igualar ao site", "Trazer a versão oficial") ou direto pelos scripts, que param o DEV, trocam o código, aplicam migrations no banco DEV e religam:
 
 ```powershell
-$sha = git rev-parse HEAD
-$ativo = (Invoke-RestMethod http://127.0.0.1:3002/api/health).releaseSha
-.\scripts\dev\prepare-dev-release.ps1 -ExpectedReleaseSha $sha
-.\scripts\dev\swap-dev-release.ps1 -FromSha $ativo -ToSha $sha
+.\scripts\dev\sync-dev-main.ps1                                   # versão oficial (origin/main)
+.\scripts\dev\switch-dev-code.ps1 -Sha <sha> -Kind pr -Pr <número> # head de um PR com build-and-unit verde
 ```
 
-`swap-dev-release.ps1` para o DEV, publica o pacote, sobe a API e o frontend e confere `/api/health` e `/api/ready`. Se falhar, volta sozinho para a versão anterior. Nunca toca na porta `:3001` nem em `deploy/prod-artifacts`.
+Rode em PowerShell **sem** elevação: processos do DEV elevados ficam invisíveis para o supervisor e para o `stop-dev.ps1` de um usuário comum.
+
+Modo alternativo (pacote compilado em `deploy/dev-artifacts`): `prepare-dev-release.ps1 -ExpectedReleaseSha <sha>` e `swap-dev-release.ps1 -FromSha <ativo> -ToSha <sha>`. O swap só funciona quando já existe um pacote compilado ativo; no modo pasta canônica ele recusa com mensagem explícita. Nunca toca na porta `:3001` nem em `deploy/prod-artifacts`.
 
 ## Convenção de branches
 

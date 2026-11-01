@@ -9,7 +9,8 @@ export const ANALYST_LIMITS = {
   maximumAroundMinutes: 15,
 } as const;
 
-export type AnalystIndices = { alerts: string; audit: string; technical: string; traces: string; appMetrics: string; infraHttpcheck: string };
+/** dockerState só existe no PRD: o DEV não roda o cron docker-state.sh. */
+export type AnalystIndices = { alerts: string; audit: string; technical: string; traces: string; appMetrics: string; infraHttpcheck: string; dockerState?: string };
 
 export const DEV_INDICES: AnalystIndices = {
   alerts: 'quiver-tap-alert-events-dev',
@@ -28,6 +29,7 @@ export const PRD_INDICES: AnalystIndices = {
   traces: 'traces-*.otel-prd*',
   appMetrics: 'metrics-generic.otel-prd*',
   infraHttpcheck: 'metrics-httpcheckreceiver.otel-infra*',
+  dockerState: 'logs-docker_state.otel-infra*',
 };
 
 export function indicesFor(environment: 'dev' | 'prd'): AnalystIndices {

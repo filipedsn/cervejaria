@@ -57,9 +57,11 @@ export function assertSafeEndpoint(url, target) {
   if (target === 'dev' && !loopback) throw new Error('Alvo DEV precisa apontar para localhost.');
 }
 
-export function createRequest(baseUrl, env, fetchImpl = fetch) {
+export function createRequest(baseUrl, env, fetchImpl = fetch, { admin = false } = {}) {
   const headers = { 'content-type': 'application/json' };
-  if (env.ELASTIC_API_KEY) headers.authorization = `ApiKey ${env.ELASTIC_API_KEY}`;
+  // PRD: ELASTIC_API_KEY e somente leitura; mutacoes usam o usuario quiver-obs-admin (rotate-prd-credentials.ps1).
+  if (admin && env.ELASTIC_ADMIN_USER && env.ELASTIC_ADMIN_PASSWORD) headers.authorization = `Basic ${Buffer.from(`${env.ELASTIC_ADMIN_USER}:${env.ELASTIC_ADMIN_PASSWORD}`).toString('base64')}`;
+  else if (env.ELASTIC_API_KEY) headers.authorization = `ApiKey ${env.ELASTIC_API_KEY}`;
   else if (env.ELASTIC_PASSWORD) headers.authorization = `Basic ${Buffer.from(`${env.ELASTIC_USER || 'elastic'}:${env.ELASTIC_PASSWORD}`).toString('base64')}`;
   return async function request(path, body, allowFail = false, method = body === undefined ? 'GET' : 'POST') {
     if (method === 'DELETE') throw new Error('apply-retention nunca executa DELETE');
@@ -82,7 +84,7 @@ export async function main(argv, { fetchImpl = fetch, log = console.log } = {}) 
   const baseUrl = env.ELASTICSEARCH_URL || (args.target === 'dev' ? 'http://localhost:9200' : '');
   if (!baseUrl) throw new Error('ELASTICSEARCH_URL obrigatorio no alvo PRD');
   assertSafeEndpoint(baseUrl, args.target);
-  const request = createRequest(baseUrl, env, fetchImpl);
+  const request = createRequest(baseUrl, env, fetchImpl, { admin: args.apply });
   const specifications = specsForTarget(args.target);
   const inventory = await request('/_data_stream');
   const streams = streamsForTarget((inventory.data_streams ?? []).map((stream) => stream.name), args.target);

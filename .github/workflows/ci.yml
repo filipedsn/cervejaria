@@ -96,6 +96,12 @@ jobs:
       - name: Backend unit tests
         run: npm run test:unit --prefix backend
 
+      # build:deploy usa --noCheck (velocidade/memória no VPS); a checagem de tipos acontece aqui.
+      - name: Typecheck (backend + frontend)
+        run: |
+          (cd backend && npx --no-install tsc --noEmit -p tsconfig.json)
+          (cd frontend && npx --no-install tsc --noEmit -p tsconfig.json)
+
       - name: Backend typecheck/build
         run: npm run build:deploy --prefix backend
 

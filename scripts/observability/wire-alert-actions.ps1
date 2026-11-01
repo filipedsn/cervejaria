@@ -20,7 +20,8 @@ $canonical = @(
   'quiver-tap-telemetry-gap-prd', 'quiver-tap-slo-cozinha-slow-prd',
   'quiver-tap-disk-high-prd', 'quiver-tap-ssh-bruteforce-prd',
   'quiver-tap-ssh-login-prd', 'quiver-tap-nginx-5xx-surge-prd',
-  'quiver-tap-container-restart-prd'
+  'quiver-tap-container-restart-prd', 'quiver-tap-backup-failed-prd',
+  'quiver-tap-backup-missing-prd'
 )
 # Somente regras temporarias de teste (prefixo quiver-tap-TESTE-) podem ser incluidas por parametro.
 $canonical = @($canonical) + @($IncludeRule | Where-Object { $_ -match '^quiver-tap-TESTE-' })

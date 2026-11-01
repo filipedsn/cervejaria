@@ -91,7 +91,9 @@ function Start-DevService {
     Start-Sleep -Seconds 2
   } while ((Get-Date) -lt $deadline)
 
-  Write-DevLog -Paths $paths -Message "$Label falhou ao abrir porta $Port."
+  & taskkill.exe /PID $proc.Id /T /F 2>$null | Out-Null
+  Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
+  Write-DevLog -Paths $paths -Message "$Label falhou ao abrir porta $Port; arvore PID $($proc.Id) encerrada."
   return $false
 }
 

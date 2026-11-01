@@ -1,0 +1,64 @@
+# Monitor externo do site público: roda fora do VPS e do PC, então avisa mesmo quando o VPS inteiro
+# (Kibana + poller) ou o PC (analista local) estão fora. O agendamento do GitHub pode atrasar alguns
+# minutos; é a rede de segurança, não o alerta primário.
+name: Uptime externo (PRD)
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: uptime-external
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Estado anterior (conclusão da última execução)
+        id: prev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh run list -R "$GITHUB_REPOSITORY" -w uptime-external.yml -s completed -L 1 --json conclusion -q '.[0].conclusion' || true)
+          if [ "$last" = failure ]; then echo "state=down" >> "$GITHUB_OUTPUT"; else echo "state=up" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Sondar /api/ready
+        id: probe
+        run: |
+          code=000
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://tap.quivercloud.com.br/api/ready || true)
+            [ "$code" = 200 ] && break
+            sleep 20
+          done
+          if [ "$code" = 200 ]; then echo "state=up" >> "$GITHUB_OUTPUT"; else echo "state=down" >> "$GITHUB_OUTPUT"; fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "anterior=${{ steps.prev.outputs.state }} atual=$([ "$code" = 200 ] && echo up || echo down) http=$code"
+
+      - name: Avisar no Telegram (só na mudança de estado)
+        if: steps.prev.outputs.state != steps.probe.outputs.state
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATE: ${{ steps.probe.outputs.state }}
+          CODE: ${{ steps.probe.outputs.code }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$CHAT" ]; then echo "::error::secrets TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes"; exit 1; fi
+          if [ "$STATE" = down ]; then
+            text="[MONITOR EXTERNO] SEV1 — Site fora do ar: /api/ready respondeu HTTP ${CODE} em 3 tentativas. Visto pelo GitHub Actions, independente do VPS e do PC. Próximo passo: painel Ops e cervejaria-api no VPS."
+          else
+            text="[MONITOR EXTERNO] OK — Site voltou: /api/ready respondeu HTTP 200."
+          fi
+          curl -fsS -o /dev/null -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=${text}"
+
+      - name: Marcar a execução como falha enquanto o site estiver fora
+        if: steps.probe.outputs.state == 'down'
+        run: exit 1

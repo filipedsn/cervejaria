@@ -22,7 +22,7 @@ function getAuditOtelLogger() {
   return logs.getLogger('quiver-tap-audit', '1.0.0');
 }
 
-/** Emissão direta OTLP — reserva para uso futuro; hoje audit exporta via Pino + OTel instrumentation. */
+/** Único caminho do audit para o OTLP (scope quiver-tap-audit); não logar o mesmo payload via Pino. */
 export function emitAuditLogRecord(
   payload: Record<string, unknown>,
   message: string,
