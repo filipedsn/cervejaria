@@ -151,7 +151,8 @@ rehearse_migrations() (
   # openssl evita pipeline quebrada por pipefail (head|base64|tr|head).
   pass="$(openssl rand -hex 12)"
   url="postgresql://$PGUSER:$pass@127.0.0.1:$REHEARSAL_PORT/$PGDATABASE?schema=public"
-  cleanup() { docker rm -f "$REHEARSAL_CONTAINER" >/dev/null 2>&1 || true; }
+  # -v: o volume anônimo do Postgres descartável sai junto com o contêiner.
+  cleanup() { docker rm -f -v "$REHEARSAL_CONTAINER" >/dev/null 2>&1 || true; }
   trap cleanup EXIT
   cleanup
   log "ensaio: restaurando $(basename "$dump") em Postgres descartável ($pg_image)"

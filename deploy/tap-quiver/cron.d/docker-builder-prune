@@ -1,0 +1,9 @@
+# Limpeza semanal do cache de build do Docker: quarta 04:00 America/Sao_Paulo (07:00 UTC).
+# Instalado no VPS em /etc/cron.d/docker-builder-prune (TAP-158).
+# O servidor está em UTC e o cron do Ubuntu ignora CRON_TZ: horários abaixo são UTC.
+# -a remove todo o cache sem uso (sem -a só sai o cache "dangling").
+# flock -n pula a rodada se houver publicação em andamento (mesmo lock do deploy-prd.sh).
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+# min hora dom mes dow user comando
+0 7 * * 3 root flock -n /var/lock/quiver-tap-deploy.lock docker builder prune -af >/dev/null 2>&1

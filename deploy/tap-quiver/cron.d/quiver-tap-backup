@@ -1,0 +1,7 @@
+# Quiver Tap — backup Postgres diário 01:00 America/Sao_Paulo (04:00 UTC).
+# Instalado no VPS em /etc/cron.d/quiver-tap-backup (TAP-158).
+# O servidor está em UTC e o cron do Ubuntu ignora CRON_TZ: horários abaixo são UTC.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+# min hora dom mes dow user comando
+0 4 * * * root BACKUP_ENV_FILE=/opt/quiver-tap/deploy/tap-quiver/backup-postgres.env /opt/quiver-tap/deploy/tap-quiver/backup-postgres.sh >/dev/null 2>&1
