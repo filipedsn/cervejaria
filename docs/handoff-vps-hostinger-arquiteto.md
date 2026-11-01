@@ -402,8 +402,11 @@ branch → PR → CI remoto obrigatório (build-and-unit) → merge main
 ### Fase D — Operação
 1. [x] Backup Postgres no VPS (cron 01:00 BRT, 30 dumps) + rclone OneDrive PRD.  
 2. [x] Restore ensaiado (2026-10-26, TAP-129).  
-3. [ ] Alertas (uptime `/api/ready`, disco, restarts): regras no Kibana PRD ligadas ao índice `quiver-tap-alert-events` desde 2026-11-01, incluindo restarts de contêiner, SSH e 5xx do nginx (`docs/observability/seguranca-vps.md`); falta a entrega no Telegram pelo alert-poller, que espera o token do bot (TAP-139).  
-4. [ ] Rollback imagem n-1 documentado.  
+3. [x] Alertas no Telegram (bot `@Tap_Quiver_Bot`, desde 2026-11-01), em três camadas independentes:
+   - **Kibana PRD** (21 regras: uptime, API, Postgres, 5xx, disco, contêineres, SSH, nginx, backup, SLO) → índice `quiver-tap-alert-events` → `quiver-tap-alert-poller` → Telegram. Regras ligadas por `scripts/observability/wire-alert-actions.ps1`.
+   - **Analista local** (PC, tarefa `QuiverTap-SupportAnalyst-Watch-PRD`, chave somente leitura): site visto de fora, Elastic inacessível/chave recusada, telemetria parada, surto de erros e **caminho de alertas parado** (`alert-path-unhealthy`, lê o estado do poller no `docker_state`). Manda direto ao Telegram, sem passar pelo poller.
+   - **Monitor externo** (`.github/workflows/uptime-external.yml`, GitHub Actions a cada 5 min): `/api/ready` público; Telegram só na mudança de estado. Cobre VPS inteiro fora com o PC desligado. Teste manual: *Run workflow* com `teste_telegram`.
+4. [x] Rollback: automático no `deploy-prd.sh` (imagem `quiver-tap-api:rollback` se falhar depois do sync) e manual pela esteira com um SHA antigo da `main` (painel Ops).  
 5. [x] EDOT collector PRD ativo (logs do host, traces a 100%); Elastic PRD 9.5.5 desde 2026-11-01, heap 4 GB, repositório de snapshot `quiver-fs` em disco (`docs/observability/upgrade-elastic-9.md`).
 
 ```mermaid
