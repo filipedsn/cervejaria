@@ -1,0 +1,16 @@
+{
+  "name": "quiver-support-analyst-heartbeat-prd",
+  "expiration": "365d",
+  "role_descriptors": {
+    "support_analyst_heartbeat_prd_write": {
+      "cluster": [],
+      "indices": [
+        {
+          "names": ["logs-support_analyst.heartbeat-prd"],
+          "privileges": ["create_doc", "auto_configure"]
+        }
+      ]
+    }
+  },
+  "metadata": { "owner": "support-analyst", "purpose": "heartbeat do watch PRD (TAP-169)", "environment": "prd" }
+}

@@ -15,7 +15,8 @@ $ExpectedRules = @(
   'quiver-tap-api-ready-down-prd', 'quiver-tap-5xx-rate-prd', 'quiver-tap-401-surge-prd',
   'quiver-tap-disk-high-prd', 'quiver-tap-ssh-bruteforce-prd', 'quiver-tap-ssh-login-prd',
   'quiver-tap-nginx-5xx-surge-prd', 'quiver-tap-container-restart-prd',
-  'quiver-tap-backup-failed-prd', 'quiver-tap-backup-missing-prd'
+  'quiver-tap-backup-failed-prd', 'quiver-tap-backup-missing-prd',
+  'quiver-tap-api-latency-p95-prd', 'quiver-tap-analyst-heartbeat-missing-prd'
 )
 
 $results = New-Object System.Collections.Generic.List[object]

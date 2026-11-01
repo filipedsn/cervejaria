@@ -6,7 +6,7 @@ import test from 'node:test';
 import type { WatchConfig } from '../src/config.js';
 import { PRD_INDICES } from '../src/sources/constants.js';
 import { ElasticSourceError } from '../src/sources/elastic.js';
-import { ageMinutes, backoffDelayMs, brasiliaParts, elasticPing, FileLock, inBootQuietWindow, machineBootTime, waitForElastic, WatchRunner, WatchStateStore, type WatchElasticReader } from '../src/watch/index.js';
+import { ageMinutes, backoffDelayMs, brasiliaParts, ElasticHeartbeat, elasticPing, FileLock, inBootQuietWindow, machineBootTime, readHeartbeatConfig, waitForElastic, WatchRunner, WatchStateStore, type HeartbeatDoc, type HeartbeatSender, type WatchElasticReader } from '../src/watch/index.js';
 
 const baseConfig: WatchConfig = { enabled: true, publicUrl: 'https://tap.example.test', networkCheckUrl: 'https://net.example.test/trace', freshnessMaxMinutes: 10, errorLogThreshold: 20, reminderMinutes: 60, digestHour: 23, intervalMs: 60_000, bootQuietMinutes: 10 };
 type Sent = { kind: string; text: string; detectorId?: string };
@@ -15,7 +15,7 @@ type Clock = { now: Date };
 
 const healthy = (): World => ({ network: true, site: true, release: 'abc1234def', latestAgeMinutes: 1, errors: 0 });
 
-function setup(dir: string, world: World, clock: Clock, config: WatchConfig = baseConfig, bootTime?: Date) {
+function setup(dir: string, world: World, clock: Clock, config: WatchConfig = baseConfig, bootTime?: Date, heartbeat?: HeartbeatSender) {
   const sent: Sent[] = [];
   const fetchImpl = async (url: string): Promise<Response> => {
     if (url.startsWith('https://net.example.test')) {
@@ -45,7 +45,7 @@ function setup(dir: string, world: World, clock: Clock, config: WatchConfig = ba
     send: async (kind: string, text: string, detectorId?: string) => { sent.push({ kind, text, detectorId }); },
     flushPending: async () => undefined,
   };
-  const runner = new WatchRunner({ config, elastic, notifications, store: new WatchStateStore(dir), fetchImpl, now: () => clock.now, environment: 'prd', bootTime });
+  const runner = new WatchRunner({ config, elastic, notifications, store: new WatchStateStore(dir), fetchImpl, now: () => clock.now, environment: 'prd', bootTime, heartbeat });
   return { runner, sent };
 }
 
@@ -125,6 +125,59 @@ test('stale collector holds the alert-path-unhealthy notification', () => withDi
   const ids = sent.filter((s) => s.kind === 'FIRING').map((s) => s.detectorId);
   assert.equal(ids.includes('collector-telemetry-stale'), true);
   assert.equal(ids.includes('alert-path-unhealthy'), false);
+}));
+
+test('remote heartbeat is optional and must use a dedicated key', () => {
+  assert.deepEqual(readHeartbeatConfig({}, 'prd'), { ok: true });
+  const same = readHeartbeatConfig({ SUPPORT_ANALYST_ES_URL: 'https://es.example.test', SUPPORT_ANALYST_ES_API_KEY: 'k1', SUPPORT_ANALYST_REMOTE_HEARTBEAT_API_KEY: 'k1' }, 'prd');
+  assert.equal(same.ok, false);
+  const missingUrl = readHeartbeatConfig({ SUPPORT_ANALYST_REMOTE_HEARTBEAT_API_KEY: 'k2' }, 'prd');
+  assert.equal(missingUrl.ok, false);
+  const ok = readHeartbeatConfig({ SUPPORT_ANALYST_ES_URL: 'https://es.example.test/', SUPPORT_ANALYST_ES_API_KEY: 'k1', SUPPORT_ANALYST_REMOTE_HEARTBEAT_API_KEY: 'k2' }, 'prd');
+  assert.deepEqual(ok, { ok: true, config: { url: 'https://es.example.test', apiKey: 'k2', index: 'logs-support_analyst.heartbeat-prd' } });
+});
+
+test('ElasticHeartbeat posts a minimal document with the write key and never throws', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  let status = 201;
+  let fail = false;
+  const fetchImpl = async (url: string, init?: RequestInit): Promise<Response> => {
+    calls.push({ url, init });
+    if (fail) throw new TypeError('fetch failed');
+    return new Response('{}', { status });
+  };
+  const beat = new ElasticHeartbeat({ url: 'https://es.example.test', apiKey: 'k2', index: 'logs-support_analyst.heartbeat-prd' }, 'prd', fetchImpl);
+  const now = new Date('2026-11-01T23:00:00.000Z');
+  assert.equal(await beat.send({ firing: 1, skipped: false, quiet: false, releaseSha: 'abc1234' }, now), 'ok');
+  assert.equal(calls[0]!.url, 'https://es.example.test/logs-support_analyst.heartbeat-prd/_doc');
+  assert.equal((calls[0]!.init!.headers as Record<string, string>).Authorization, 'ApiKey k2');
+  const body = JSON.parse(String(calls[0]!.init!.body)) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(body).sort(), ['@timestamp', 'analyst.environment', 'analyst.firing', 'analyst.quiet', 'analyst.release_sha', 'analyst.skipped', 'event.dataset', 'service.name']);
+  assert.equal(body['@timestamp'], now.toISOString());
+  status = 403;
+  assert.equal(await beat.send({ firing: 0, skipped: false, quiet: false }, now), 'failed');
+  fail = true;
+  assert.equal(await beat.send({ firing: 0, skipped: false, quiet: false }, now), 'failed');
+});
+
+test('runner sends one heartbeat per completed cycle, none when the PC network is down, and survives failures', () => withDir(async (dir) => {
+  const beats: HeartbeatDoc[] = [];
+  let result: 'ok' | 'failed' = 'ok';
+  const heartbeat: HeartbeatSender = { send: async (doc) => { beats.push(doc); return result; } };
+  const world = { ...healthy(), site: false };
+  const clock = { now: new Date('2026-10-27T15:00:00.000Z') };
+  const { runner } = setup(dir, world, clock, baseConfig, undefined, heartbeat);
+  await cycles(runner, clock, 3);
+  assert.equal(beats.length, 3);
+  assert.equal(beats[2]!.firing, 1);
+  world.network = false;
+  await cycles(runner, clock, 2);
+  assert.equal(beats.length, 3);
+  world.network = true;
+  result = 'failed';
+  const cycle = await runner.runCycle();
+  assert.equal(cycle.heartbeat, 'failed');
+  assert.equal(beats.length, 4);
 }));
 
 test('reminder after the configured minutes', () => withDir(async (dir) => {

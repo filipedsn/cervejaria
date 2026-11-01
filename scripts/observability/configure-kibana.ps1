@@ -266,6 +266,7 @@ Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-nginx-5xx-surge-p
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-container-restart-prd.json') -SearchName 'quiver-tap-container-restart-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-backup-failed-prd.json') -SearchName 'quiver-tap-backup-failed-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-backup-missing-prd.json') -SearchName 'quiver-tap-backup-missing-prd' | Out-Null
+Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-analyst-heartbeat-missing-prd.json') -SearchName 'quiver-tap-analyst-heartbeat-missing-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-postgres-tcp-down-dev.json') -SearchName 'quiver-tap-postgres-tcp-down-dev' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-es-cluster.json') -SearchName 'quiver-tap-es-cluster-not-green' | Out-Null
 
@@ -286,6 +287,7 @@ Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-5xx-rate-prd.json
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-401-surge-prd.json') -SearchName 'quiver-tap-401-surge-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-ui-error-prd.json') -SearchName 'quiver-tap-ui-error-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-transacao-failure-prd.json') -SearchName 'quiver-tap-transacao-failure-prd' | Out-Null
+Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-api-latency-p95-prd.json') -SearchName 'quiver-tap-api-latency-p95-prd' | Out-Null
 
 # 4c. Alertas SLO
 Write-Host '4c. Alertas SLO (PRD)...' -ForegroundColor Yellow
