@@ -167,6 +167,8 @@ Se for equalizar DEV em Docker, proponha PR pequeno (compose dev) sem tocar PRD.
 
 80/443 aceitam apenas as faixas publicadas em [cloudflare.com/ips](https://www.cloudflare.com/ips/) (15 IPv4 + 7 IPv6, uma regra TCP `80:443` por faixa, desde 2026-11-01, TAP-164). Acesso direto ao IP de origem com o Host do site **não responde**, então WAF/DDoS da Cloudflare não podem ser contornados. Se a Cloudflare publicar faixa nova, acrescentar a regra no firewall e sincronizar (`vps_firewall_create-rule` + `vps_firewall_sync-to-all-assigned-v-ms`), senão parte do tráfego da borda falha com 52x.
 
+**Vigilância das faixas (TAP-165):** a lista canônica fica em `docs/infra/cloudflare-ips.txt` (igual às regras do firewall). O workflow `.github/workflows/cloudflare-ips.yml` compara todo dia com `https://api.cloudflare.com/client/v4/ips` e, havendo diferença, manda `[MONITOR EXTERNO] SEV3 — Faixas da Cloudflare mudaram` no Telegram com as faixas novas/retiradas (repete diariamente e o run fica vermelho até resolver). A aplicação é manual e aprovada: criar/remover as regras `80:443` no firewall `quiver-vps`, sincronizar (leva ~1 min), conferir que o site responde via Cloudflare e atualizar o arquivo canônico por PR. Teste do aviso: "Run workflow" com `simular_divergencia`.
+
 ---
 
 ## 2. Cloudflare — configuração atual
