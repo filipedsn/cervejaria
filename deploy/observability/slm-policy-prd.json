@@ -1,0 +1,17 @@
+{
+  "schedule": "0 30 6 * * ?",
+  "name": "<quiver-daily-{now/d}>",
+  "repository": "quiver-fs",
+  "config": {
+    "indices": ["*"],
+    "include_global_state": true,
+    "feature_states": ["kibana"],
+    "ignore_unavailable": true,
+    "partial": false
+  },
+  "retention": {
+    "expire_after": "14d",
+    "min_count": 3,
+    "max_count": 14
+  }
+}

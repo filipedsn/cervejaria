@@ -19,7 +19,7 @@ const DEFAULT_COPY: AlertCopy = {
   impact: 'Pode afetar o uso do Quiver Tap ate a causa ser verificada.',
   actions: [
     'Abra o ops-panel (npm run ops:open) e confira o status de producao.',
-    'Veja os logs em deploy/logs/api-error.log e deploy/logs/alert-poller.log.',
+    'No Kibana (Discover), filtre service.name e log.level=error na janela do alerta.',
   ],
 };
 
@@ -33,8 +33,8 @@ const RULE_COPY: Record<string, AlertCopy> = {
     impact:
       'Operacoes podem falhar para a equipe e clientes: comandas, pagamentos, ranking e operacao.',
     actions: [
-      'Rode npm run prod:status e confira se a API esta no ar.',
-      'Abra deploy/logs/api-error.log e procure o erro mais recente.',
+      'Abra o ops-panel (npm run ops:open) e confira se a API de producao esta no ar.',
+      'No Kibana, filtre service.name=quiver-tap-api e log.level=error e veja o erro mais recente.',
       'Se comecou apos um deploy, avalie rollback no ops-panel.',
     ],
   },
@@ -88,9 +88,9 @@ const RULE_COPY: Record<string, AlertCopy> = {
     impact:
       'O Quiver Tap em producao fica indisponivel — ninguem consegue usar o sistema.',
     actions: [
-      'Rode npm run prod:status.',
-      'Se a API nao subir, veja deploy/logs/api-error.log.',
-      'Reinicie com npm run prod:restart (ou deploy se houver codigo novo).',
+      'Abra o ops-panel (npm run ops:open) e confira o estado de producao.',
+      'No VPS (via Tailscale): docker ps e docker logs --tail 200 cervejaria-api.',
+      'Se nao voltar sozinha, docker restart cervejaria-api; se comecou apos deploy, rollback pelo ops-panel.',
     ],
   },
   'quiver-tap-public-ready-down-prd': {
@@ -102,9 +102,9 @@ const RULE_COPY: Record<string, AlertCopy> = {
     impact:
       'Clientes e equipe nao conseguem abrir o app pela internet.',
     actions: [
-      'Confira npm run prod:status (API, tunnel Cloudflare).',
-      'Verifique se o servico Cloudflared esta Running.',
-      'Teste http://127.0.0.1:3001/ localmente para isolar rede vs aplicacao.',
+      'Se o alerta de API (porta 3001) tambem disparou, o problema e a aplicacao; senao, e nginx ou Cloudflare.',
+      'No VPS (via Tailscale): systemctl status nginx e curl http://127.0.0.1:3001/api/ready.',
+      'Confira o status da Cloudflare e se a faixa de IP da borda continua liberada no firewall da Hostinger.',
     ],
   },
   'quiver-tap-public-ready-down-dev': {
@@ -123,7 +123,7 @@ const RULE_COPY: Record<string, AlertCopy> = {
     impact: 'A API nao consegue ler nem gravar dados — o sistema para de funcionar.',
     actions: [
       'Verifique se o container cervejaria-db esta rodando (docker ps).',
-      'Confira deploy/logs/api-error.log por erros de conexao Prisma.',
+      'No VPS: docker logs --tail 200 cervejaria-db; no Kibana, erros de conexao Prisma da API.',
       'Nao faca deploy ate o banco voltar.',
     ],
   },
@@ -157,8 +157,8 @@ const RULE_COPY: Record<string, AlertCopy> = {
     impact:
       'Alertas e dashboards podem ficar cegos; o app pode estar no ar sem monitoramento.',
     actions: [
-      'Confira se a API e o collector OTel estao rodando (npm run obs:status).',
-      'Veja deploy/logs/api-error.log por falhas de exportacao.',
+      'No VPS: docker ps (cervejaria-api e quiver-edot-collector-prd devem estar Up).',
+      'docker logs --tail 200 quiver-edot-collector-prd para falhas de exportacao ao Elasticsearch.',
     ],
   },
   'quiver-tap-telemetry-gap-dev': {
@@ -178,7 +178,7 @@ const RULE_COPY: Record<string, AlertCopy> = {
     impact: 'Telas demoram, timeouts e erros 5xx podem aparecer em cascata.',
     actions: [
       'Veja metricas de CPU e event loop no dashboard de infra no Kibana.',
-      'Considere reiniciar a API (npm run prod:restart) se nao houver deploy recente.',
+      'Se nao houver deploy recente, considere docker restart cervejaria-api no VPS.',
     ],
   },
   'quiver-tap-eventloop-high-dev': {
@@ -188,6 +188,80 @@ const RULE_COPY: Record<string, AlertCopy> = {
     summary: 'Event loop alto no ambiente de desenvolvimento.',
     impact: 'Desenvolvimento fica lento; nao afeta producao.',
     actions: ['Reinicie o dev e investigue queries ou loops no codigo em teste.'],
+  },
+  'quiver-tap-disk-high-prd': {
+    title: 'Disco do servidor quase cheio',
+    severity: 'high',
+    category: 'infra',
+    summary: 'O uso de disco do VPS de producao passou do limite configurado.',
+    impact: 'Banco, backups e logs podem parar de gravar; a API pode falhar.',
+    actions: [
+      'No VPS: df -h e docker system df para ver o que cresceu.',
+      'Confira backups locais antigos e a retencao dos indices no Elasticsearch.',
+    ],
+  },
+  'quiver-tap-container-restart-prd': {
+    title: 'Container reiniciou ou ficou doente',
+    severity: 'high',
+    category: 'infra',
+    summary: 'Um container do VPS reiniciou, foi morto por falta de memoria, ficou unhealthy ou parou.',
+    impact: 'O servico afetado pode ter ficado fora do ar por alguns segundos ou continuar fora.',
+    actions: [
+      'No VPS: docker ps -a e docker logs --tail 200 do container citado no motivo.',
+      'Se foi OOM, confira memoria do host (free -h) e limites do container.',
+    ],
+  },
+  'quiver-tap-nginx-5xx-surge-prd': {
+    title: 'Pico de erros 5xx no nginx',
+    severity: 'high',
+    category: 'infra',
+    summary: 'O nginx do VPS devolveu muitas respostas 5xx em pouco tempo.',
+    impact: 'Usuarios podem ver erro 502/504 ao abrir o app.',
+    actions: [
+      'Veja se a API respondeu (alerta de API na porta 3001) e docker logs cervejaria-api.',
+      'No Kibana, filtre logs-nginx_access por http.response.status_code >= 500.',
+    ],
+  },
+  'quiver-tap-ssh-bruteforce-prd': {
+    title: 'Tentativas de invasao por SSH',
+    severity: 'high',
+    category: 'infra',
+    summary: 'Muitas tentativas de login SSH falharam no VPS.',
+    impact: 'Indica varredura ou ataque; o SSH publico deveria estar fechado no firewall.',
+    actions: [
+      'Confirme no painel da Hostinger que a porta 22 segue fechada para a internet.',
+      'No Kibana, veja source.address nos logs ssh_auth.',
+    ],
+  },
+  'quiver-tap-ssh-login-prd': {
+    title: 'Login SSH no servidor de producao',
+    severity: 'medium',
+    category: 'infra',
+    summary: 'Alguem entrou no VPS por SSH.',
+    impact: 'Esperado se foi voce (via Tailscale); inesperado indica acesso indevido.',
+    actions: ['Se nao foi voce, troque as chaves SSH e revise o Tailscale imediatamente.'],
+  },
+  'quiver-tap-backup-failed-prd': {
+    title: 'Backup do banco falhou',
+    severity: 'critical',
+    category: 'infra',
+    summary: 'O backup diario do PostgreSQL de producao terminou com erro.',
+    impact: 'Sem backup recente, uma perda de dados nao teria como ser recuperada ate o ultimo dump bom.',
+    actions: [
+      'No VPS: tail -n 50 /opt/quiver-tap/backups/logs/backup-postgres.log.',
+      'Rode o backup manualmente (deploy/tap-quiver/backup-postgres.sh) depois de corrigir a causa.',
+    ],
+  },
+  'quiver-tap-backup-missing-prd': {
+    title: 'Backup do banco nao rodou',
+    severity: 'critical',
+    category: 'infra',
+    summary: 'Nenhum backup do PostgreSQL de producao terminou com sucesso nas ultimas 26 horas.',
+    impact: 'O cron pode ter parado; a protecao contra perda de dados esta vencendo.',
+    actions: [
+      'No VPS: confira /etc/cron.d e o log do backup em /opt/quiver-tap/backups/logs.',
+      'Rode o backup manualmente e confirme a copia off-site.',
+    ],
   },
   'quiver-tap-slo-availability-burn-prd': {
     title: 'Meta de disponibilidade em risco (SLO)',

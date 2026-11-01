@@ -1,7 +1,7 @@
 import { requireRuntimeElasticsearchConfig, type AnalystConfig } from '../config.js';
 import { toSafeErrorContext } from '../notify/privacy.js';
 import type { RawEventDocument } from '../types.js';
-import type { ErrorContext } from '../watch/types.js';
+import type { ContainerState, ErrorContext } from '../watch/types.js';
 import { ALERT_SOURCE_FIELDS, ANALYST_LIMITS, DEV_INDICES, indicesFor, SIGNAL_SOURCE_FIELDS, type AnalystIndices } from './constants.js';
 import { ElasticReadOnlyClient, ElasticSourceError, type FetchLike } from './elastic.js';
 import type { AlertSource, AroundOptions, FindAlertsOptions, LookupOptions, ReleaseServiceOptions, SignalSource, TimeRange } from './types.js';
@@ -88,6 +88,19 @@ export class ElasticsearchSources implements AlertSource, SignalSource {
     const response = await this.client.search(index, { size: 1, timeout: ANALYST_LIMITS.elasticTimeout, track_total_hits: false, _source: ['@timestamp'], sort: [{ '@timestamp': 'desc' }], query: { range: { '@timestamp': { gte: 'now-6h' } } } }) as { hits?: { hits?: Array<{ _source?: { '@timestamp'?: unknown } }> } };
     const value = response.hits?.hits?.[0]?._source?.['@timestamp'];
     return typeof value === 'string' ? value : undefined;
+  }
+
+  /** Watch read: newest docker-state line of one container in the last 10 min, or undefined. */
+  async latestContainerState(index: string, container: string): Promise<ContainerState | undefined> {
+    const response = await this.client.search(index, {
+      size: 1, timeout: ANALYST_LIMITS.elasticTimeout, track_total_hits: false,
+      _source: ['@timestamp', 'attributes'], sort: [{ '@timestamp': 'desc' }],
+      query: { bool: { filter: [{ range: { '@timestamp': { gte: 'now-10m' } } }, { term: { 'attributes.container': container } }] } },
+    }) as { hits?: { hits?: Array<{ _source?: { '@timestamp'?: unknown; attributes?: Record<string, unknown> } }> } };
+    const source = response.hits?.hits?.[0]?._source;
+    if (!source) return undefined;
+    const text = (value: unknown) => (typeof value === 'string' ? value : '');
+    return { timestamp: text(source['@timestamp']), status: text(source.attributes?.status), health: text(source.attributes?.health) };
   }
 
   /** Watch read: bounded count over the last N minutes (1..1440). */

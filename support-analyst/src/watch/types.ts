@@ -7,6 +7,7 @@ export type DetectorId =
   | 'elastic-auth-failed'
   | 'api-telemetry-stale'
   | 'collector-telemetry-stale'
+  | 'alert-path-unhealthy'
   | 'error-log-surge';
 
 export type DetectorRule = {
@@ -28,6 +29,7 @@ export const DETECTOR_RULES: Record<DetectorId, DetectorRule> = {
   'elastic-auth-failed': { id: 'elastic-auth-failed', title: 'Chave do analyst recusada pelo Elastic (expirada?)', severity: 'SEV2', fireAfter: 1, resolveAfter: 1, notify: true, nextStep: 'Renovar a API key quiver-support-analyst-prd (docs/support-analyst/prd-readonly-role.json).' },
   'api-telemetry-stale': { id: 'api-telemetry-stale', title: 'Telemetria da API parou de chegar', severity: 'SEV2', fireAfter: 2, resolveAfter: 2, notify: true, nextStep: 'Conferir as variáveis OTEL do cervejaria-api e o collector PRD.' },
   'collector-telemetry-stale': { id: 'collector-telemetry-stale', title: 'Collector PRD parou de enviar', severity: 'SEV2', fireAfter: 2, resolveAfter: 2, notify: true, nextStep: 'Conferir o contêiner quiver-edot-collector-prd no VPS.' },
+  'alert-path-unhealthy': { id: 'alert-path-unhealthy', title: 'Caminho de alertas parado (poller do Telegram)', severity: 'SEV2', fireAfter: 3, resolveAfter: 2, notify: true, nextStep: 'No VPS: docker ps e docker logs quiver-tap-alert-poller. Enquanto isso, alertas do Kibana não chegam ao Telegram.' },
   'error-log-surge': { id: 'error-log-surge', title: 'Surto de logs de erro na API', severity: 'SEV3', fireAfter: 1, resolveAfter: 3, notify: true, nextStep: 'Abrir o Discover em logs-technical*.otel-prd e filtrar severity_text: ERROR, ou rodar o comando jornada com um correlationId.' },
 };
 
@@ -62,5 +64,8 @@ export type WatchState = {
 
 /** Technical context only: counts, route templates and technical ids. Never personal data. */
 export type ErrorContext = { routes: Array<{ route: string; count: number }>; correlationIds: string[] };
+
+/** Latest docker-state line of a container (deploy/tap-quiver/docker-state.sh). */
+export type ContainerState = { timestamp: string; status: string; health: string };
 
 export type Observation = { id: DetectorId; bad: boolean; detail: string; context?: ErrorContext };

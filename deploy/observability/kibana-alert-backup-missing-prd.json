@@ -1,0 +1,23 @@
+{
+  "name": "quiver-tap-backup-missing-prd",
+  "tags": ["quiver-tap", "observability", "production", "infra", "backup"],
+  "rule_type_id": ".es-query",
+  "consumer": "stackAlerts",
+  "schedule": { "interval": "15m" },
+  "enabled": true,
+  "params": {
+    "index": ["logs-backup_status.otel-infra*"],
+    "timeField": "@timestamp",
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"term\":{\"attributes.job\":\"postgres_backup\"}},{\"term\":{\"attributes.status\":\"ok\"}}]}}}",
+    "size": 10,
+    "timeWindowSize": 26,
+    "timeWindowUnit": "h",
+    "thresholdComparator": "<",
+    "threshold": [1],
+    "aggType": "count",
+    "groupBy": "all",
+    "searchType": "esQuery"
+  },
+  "actions": [],
+  "notify_when": "onActionGroupChange"
+}
