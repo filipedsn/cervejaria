@@ -81,7 +81,7 @@ DEV  →  Elasticsearch no PC     →  data streams / índices de desenvolviment
 PRD  →  Elasticsearch no VPS    →  telemetria/ops de produção (ex.: *.otel-prd) quando ligado
 ```
 
-1. **São clusters distintos.** Mesmo que a versão do ES seja a mesma (ex. 8.17), os dados **não** são compartilhados.  
+1. **São clusters distintos.** Mesmo que a versão do ES seja a mesma (ex. 9.5.5), os dados **não** são compartilhados.  
 2. App em DEV deve usar `ELASTICSEARCH_URL` (ou equivalente) apontando para **127.0.0.1:9200 do PC**, nunca para `100.120.170.89`.  
 3. App em PRD (container no VPS, host network) fala com **127.0.0.1:9200 do VPS**.  
 4. Abrir Kibana PRD pelo browser do PC (`http://100.120.170.89:5601` com Tailscale) é **só leitura/ops** — não significa que o app DEV possa indexar lá.  
@@ -399,9 +399,9 @@ branch → PR → CI remoto obrigatório (build-and-unit) → merge main
 ### Fase D — Operação
 1. [x] Backup Postgres no VPS (cron 01:00 BRT, 30 dumps) + rclone OneDrive PRD.  
 2. [x] Restore ensaiado (2026-10-26, TAP-129).  
-3. [ ] Alertas (uptime `/api/ready`, disco, restarts).  
+3. [ ] Alertas (uptime `/api/ready`, disco, restarts): regras no Kibana PRD ligadas ao índice `quiver-tap-alert-events` desde 2026-11-01, incluindo restarts de contêiner, SSH e 5xx do nginx (`docs/observability/seguranca-vps.md`); falta a entrega no Telegram pelo alert-poller, que espera o token do bot (TAP-139).  
 4. [ ] Rollback imagem n-1 documentado.  
-5. [ ] OTEL/EDOT opcional no VPS (ES já disponível via Tailscale).
+5. [x] EDOT collector PRD ativo (logs do host, traces a 100%); Elastic PRD 9.5.5 desde 2026-11-01, heap 4 GB, repositório de snapshot `quiver-fs` em disco (`docs/observability/upgrade-elastic-9.md`).
 
 ```mermaid
 flowchart LR

@@ -63,7 +63,7 @@ case "${1:-}" in
     es '/?filter_path=version.number'; echo
     ;;
   up9)
-    crit="$(es '/_migration/deprecations' | grep -o '"level":"critical"' | wc -l)"
+    crit="$(es '/_migration/deprecations' | { grep -o '"level":"critical"' || true; } | wc -l)"
     [[ "$crit" == 0 ]] || { log "ha $crit deprecations criticas; abortando"; exit 3; }
     set_images 9.5.5; docker compose up -d; wait_es; wait_kb
     es '/?filter_path=version.number'; echo
