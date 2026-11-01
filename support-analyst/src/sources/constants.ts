@@ -9,11 +9,30 @@ export const ANALYST_LIMITS = {
   maximumAroundMinutes: 15,
 } as const;
 
-export const DEV_INDICES = {
+export type AnalystIndices = { alerts: string; audit: string; technical: string; traces: string; appMetrics: string; infraHttpcheck: string };
+
+export const DEV_INDICES: AnalystIndices = {
   alerts: 'quiver-tap-alert-events-dev',
   audit: 'logs-audit*.otel-dev*',
   technical: 'logs-technical*.otel-dev*',
-} as const;
+  traces: 'traces-*.otel-dev*',
+  appMetrics: 'metrics-generic.otel-dev*',
+  infraHttpcheck: 'metrics-httpcheckreceiver.otel-infra*',
+};
+
+/** PRD: full read of the PRD streams (decision of 2026-11-01); never DEV, never write. */
+export const PRD_INDICES: AnalystIndices = {
+  alerts: 'quiver-tap-alert-events',
+  audit: 'logs-audit*.otel-prd*',
+  technical: 'logs-technical*.otel-prd*',
+  traces: 'traces-*.otel-prd*',
+  appMetrics: 'metrics-generic.otel-prd*',
+  infraHttpcheck: 'metrics-httpcheckreceiver.otel-infra*',
+};
+
+export function indicesFor(environment: 'dev' | 'prd'): AnalystIndices {
+  return environment === 'prd' ? PRD_INDICES : DEV_INDICES;
+}
 
 export const ALERT_SOURCE_FIELDS = [
   '@timestamp', 'severity_text', 'ruleName', 'alertState', 'reason', 'viewInAppUrl', 'environment',
