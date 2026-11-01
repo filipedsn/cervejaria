@@ -18,7 +18,9 @@ $canonical = @(
   'quiver-tap-5xx-rate-prd', 'quiver-tap-ui-error-prd',
   'quiver-tap-transacao-failure-prd', 'quiver-tap-401-surge-prd',
   'quiver-tap-telemetry-gap-prd', 'quiver-tap-slo-cozinha-slow-prd',
-  'quiver-tap-disk-high-prd'
+  'quiver-tap-disk-high-prd', 'quiver-tap-ssh-bruteforce-prd',
+  'quiver-tap-ssh-login-prd', 'quiver-tap-nginx-5xx-surge-prd',
+  'quiver-tap-container-restart-prd'
 )
 # Somente regras temporarias de teste (prefixo quiver-tap-TESTE-) podem ser incluidas por parametro.
 $canonical = @($canonical) + @($IncludeRule | Where-Object { $_ -match '^quiver-tap-TESTE-' })
@@ -26,6 +28,7 @@ $skipped = @{
   'quiver-tap-api-down-prd' = 'LEGACY'
   'quiver-tap-slo-availability-burn-prd' = 'DUPLICATED: public-ready-down e o sinal canonico'
   'quiver-tap-slo-transacao-failure-rate-prd' = 'DUPLICATED: transacao-failure e o sinal canonico'
+  'quiver-tap-ui-error-surge-prd' = 'DUPLICATED: ui-error e o sinal canonico'
   'quiver-tap-es-cluster-not-green' = 'NOT_FOR_DELIVERY: regra desabilitada; Elastic e dependencia circular'
 }
 
