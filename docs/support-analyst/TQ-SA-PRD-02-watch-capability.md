@@ -5,7 +5,7 @@
 
 ## Identidade e escopo
 
-O watch PRD roda no PC (DEV físico) e lê o Elastic PRD pela Tailscale com a API key `quiver-support-analyst-prd`, somente leitura. O corpo de criação da chave está em [`prd-readonly-role.json`](prd-readonly-role.json): role `support_analyst_prd_read`, sem privilégio de cluster, `read` + `view_index_metadata` e validade de **180 dias**.
+Desde o TAP-171 o watch PRD roda no contêiner `quiver-tap-support-analyst` do VPS e lê o Elastic PRD pela rede Docker do Elastic (`http://elasticsearch:9200`) com a API key `quiver-support-analyst-prd-vps`, somente leitura e criada no próprio VPS. A chave `quiver-support-analyst-prd` do PC fica para o `jornada` e para a tarefa de reserva. O corpo de criação da chave está em [`prd-readonly-role.json`](prd-readonly-role.json): role `support_analyst_prd_read`, sem privilégio de cluster, `read` + `view_index_metadata` e validade de **180 dias**.
 
 | Padrão | Uso |
 |---|---|
@@ -44,9 +44,19 @@ Há lembrete a cada 60 min enquanto o alerta continua ativo, resumo diário às 
 
 Ao fim de cada ciclo com rede, o watch grava um documento em `logs-support_analyst.heartbeat-prd` (horário, ambiente, quantidade de detectores disparados, se o ciclo foi pulado/silencioso e o `releaseSha` visto; nada pessoal). A gravação usa a chave `quiver-support-analyst-heartbeat-prd` ([`prd-heartbeat-writer-role.json`](prd-heartbeat-writer-role.json): só `create_doc`/`auto_configure` nesse data stream, 365 dias), em `SUPPORT_ANALYST_REMOTE_HEARTBEAT_API_KEY`; ela precisa ser diferente da chave de leitura. Falha ao gravar não interrompe o ciclo (aparece como `heartbeat: failed` no log). O template `quiver-tap-analyst-heartbeat` guarda 30 dias, sem réplica.
 
-A regra `quiver-tap-analyst-heartbeat-missing-prd` (a cada 5 min, nenhum batimento em 15 min) vai pelo poller do VPS ao Telegram **uma vez por queda**, com mensagem de recuperação quando o PC volta. Como o PC às vezes é desligado (decisão do Filipe, 01/11), o aviso significa "PC desligado, sem internet ou analista parado", não necessariamente defeito. Configuração: `scripts/observability/setup-analyst-heartbeat.ps1 -Apply -ConfirmPrd`, depois `configure-kibana.ps1 -Target prd -ConfirmPrd` e `wire-alert-actions.ps1 -Target prd -ConfirmPrd -Apply`, e reinício da tarefa do analista.
+A regra `quiver-tap-analyst-heartbeat-missing-prd` (a cada 5 min, nenhum batimento em 15 min) vai pelo poller do VPS ao Telegram **uma vez por queda**, com mensagem de recuperação quando o PC volta. Com o watch no VPS, o aviso significa contêiner parado, travado ou sem acesso ao Elastic. Configuração: `scripts/observability/setup-analyst-heartbeat.ps1 -Apply -ConfirmPrd`, depois `configure-kibana.ps1 -Target prd -ConfirmPrd` e `wire-alert-actions.ps1 -Target prd -ConfirmPrd -Apply`, e reinício da tarefa do analista.
 
-## Partida com o Windows e janela pós-boot
+## Contêiner no VPS (TAP-171)
+
+- Imagem `quiver-tap-support-analyst` (`support-analyst/Dockerfile`, só o `dist`, usuário `node`), serviço em `deploy/tap-quiver/docker-compose.analyst.yml`: rede externa `elasticsearch-kibana_elastic`, `mem_limit: 256m`, `restart: unless-stopped`, volume `support_analyst_runtime` em `/app/runtime` e healthcheck que exige `watch/state.json` regravado há menos de 3 min.
+- Configuração em `deploy/tap-quiver/.env.support-analyst` (600, fora do Git e preservado pelo `rsync` do deploy; modelo `.env.support-analyst.example`). Telegram é o mesmo bot/chat do poller; `SUPPORT_ANALYST_TELEGRAM_DRY_RUN=true` deixa em sombra.
+- O `deploy-prd.sh` monta e recria o serviço depois da API; falha nele só gera AVISO. Para recriar à mão: `docker compose -f docker-compose.yml -f docker-compose.analyst.yml up -d support-analyst` em `/opt/quiver-tap/deploy/tap-quiver`.
+- Dentro do contêiner o processo sempre tem o mesmo PID; o lock trata um arquivo com o próprio PID como sobra de reinício.
+- A janela pós-boot usa o uptime do VPS (o contêiner enxerga o do host): após reboot do servidor, 10 min sem alerta enquanto o Elastic sobe.
+
+## Reserva no PC (tarefa desabilitada) e janela pós-boot
+
+Desde o TAP-171 a tarefa abaixo fica desabilitada (`Disable-ScheduledTask`), sem apagar. Para usá-la como reserva: deixe o contêiner em `SUPPORT_ANALYST_TELEGRAM_DRY_RUN=true` (ou parado) e rode `Enable-ScheduledTask` + `Start-ScheduledTask`, para não haver dois plantões enviando ao Telegram.
 
 `scripts/support-analyst/install-watch-task.ps1` registra a tarefa `QuiverTap-SupportAnalyst-Watch-PRD`. Ela dispara na partida do Windows (60 s depois) e no logon, roda como S4U (sem sessão aberta e sem guardar senha) e tem RestartCount 999 com intervalo de 1 min, sem limite de tempo e IgnoreNew.
 
