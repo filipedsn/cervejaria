@@ -89,6 +89,8 @@ Com `SUPPORT_ANALYST_TELEGRAM_DRY_RUN=true` nada sai do PC: as mensagens ficam e
 
 ### Partida com o Windows
 
+> Desde o TAP-171 o watch PRD roda no contêiner do VPS e o agente PRD foi removido do PC (2026-11-02). No PC a tarefa e os comandos abaixo valem só com `-Target dev`; com `prd` o instalador recusa e o `run-analyst.ps1` não sobe o watch. Ver [TQ-SA-PRD-02](TQ-SA-PRD-02-watch-capability.md).
+
 ```powershell
 .\scripts\support-analyst\install-watch-task.ps1 -Status            # tarefa, última execução e estado do watch
 .\scripts\support-analyst\install-watch-task.ps1 -Install -WhatIf   # confere a definição sem registrar

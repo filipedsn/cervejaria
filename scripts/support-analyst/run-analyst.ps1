@@ -10,11 +10,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-# TAP-171: o plantao PRD roda no VPS. Com este marcador o PC nao sobe o watch (evita dois plantoes no Telegram);
-# Disable-ScheduledTask exige elevacao porque a tarefa foi registrada elevada.
-$disabledMarker = Join-Path $root "deploy\runtime\support-analyst-$Target.disabled"
-if ($Mode -in @('watch', 'pilot') -and (Test-Path -LiteralPath $disabledMarker)) {
-  Write-Host "Watch $Target desabilitado no PC ($disabledMarker existe). Apague o arquivo para usar a reserva."
+# O plantao PRD roda so no conteiner do VPS; um segundo plantao no PC duplicaria os avisos no Telegram.
+if ($Target -eq 'prd' -and $Mode -in @('watch', 'pilot')) {
+  Write-Host "O watch PRD roda no conteiner quiver-tap-support-analyst do VPS (TAP-171), nao no PC."
   exit 0
 }
 $envFile = Join-Path $root "deploy\runtime\support-analyst-$Target.env"
