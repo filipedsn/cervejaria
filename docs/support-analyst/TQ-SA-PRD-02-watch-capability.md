@@ -50,6 +50,8 @@ A regra `quiver-tap-analyst-heartbeat-missing-prd` (a cada 5 min, nenhum batimen
 
 `scripts/support-analyst/install-watch-task.ps1` registra a tarefa `QuiverTap-SupportAnalyst-Watch-PRD`. Ela dispara na partida do Windows (60 s depois) e no logon, roda como S4U (sem sessão aberta e sem guardar senha) e tem RestartCount 999 com intervalo de 1 min, sem limite de tempo e IgnoreNew.
 
+A tarefa executa `support-analyst/dist`. Antes de cada partida, `run-analyst.ps1` recompila (`npm run build`) quando algum `src/*.ts` está mais novo que o `dist` e registra no log `build do analista: atual|recompilado|falhou`. Se a compilação falhar, ele segue com o `dist` anterior. Para trocar de versão: atualize a pasta e reinicie a tarefa. Como o processo roda na sessão da tarefa, um terminal sem elevação não consegue encerrá-lo; depois de `Stop-ScheduledTask`, o node antigo sai sozinho em poucos minutos e o novo assume o lock.
+
 Ao subir, o processo espera o Elastic com backoff de 5, 10, 30 e 60 s e depois tenta a cada 60 s. Nesse período o estado local fica como "aguardando rede". Durante os primeiros 10 min após o boot (`SUPPORT_ANALYST_BOOT_QUIET_MINUTES`) nenhum alerta é enviado; os detectores continuam contando. Um lock com PID de processo morto é removido sozinho.
 
 ## Telegram sem dados pessoais
