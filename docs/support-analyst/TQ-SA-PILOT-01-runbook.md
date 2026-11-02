@@ -109,11 +109,13 @@ Depois de mudar o arquivo, reinicie a tarefa (`Stop-ScheduledTask` e `Start-Sche
 
 ### Jornada de um cliente
 
+PRD roda no contêiner do VPS (o PC não guarda chave PRD); DEV roda no PC:
+
 ```powershell
-npm run journey --prefix support-analyst -- --usuario cliente@exemplo.com --desde 24h
-npm run journey --prefix support-analyst -- --sessao <session.id> --desde 7d --resumo
-npm run journey --prefix support-analyst -- --correlacao <correlationId> --env prd
-npm run journey --prefix support-analyst -- --usuario <actor.id> --desde 2026-11-01T08:00-03:00 --ate 2026-11-01T12:00-03:00 --env dev
+.\scripts\support-analyst\jornada-prd.ps1 --usuario cliente@exemplo.com --desde 24h
+.\scripts\support-analyst\jornada-prd.ps1 --sessao <session.id> --desde 7d
+.\scripts\support-analyst\jornada-prd.ps1 --correlacao <correlationId>
+npm run journey --prefix support-analyst -- --usuario <actor.id> --desde 2026-11-01T08:00-03:00 --ate 2026-11-01T12:00-03:00 --env dev --resumo
 ```
 
 A saída é uma linha do tempo em horário de Brasília, agrupada por sessão, com tela, ação, status/tempo, erros e último passo. `--correlacao` inclui os traces. `--resumo` pede um resumo ao Ollama local (loopback); se ele não estiver rodando, sai só a linha do tempo. O arquivo vai para `deploy/runtime/support-analyst/journeys/`, e arquivos com mais de 30 dias são apagados a cada execução. A jornada tem dados pessoais: fica só no PC, nunca vai para Telegram, ticket ou commit.
