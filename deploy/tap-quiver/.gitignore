@@ -1,4 +1,5 @@
 ﻿.env.staging
 .env.observability
 .env.alert-poller
+.env.support-analyst
 

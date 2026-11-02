@@ -23,9 +23,9 @@ export type DetectorRule = {
 };
 
 export const DETECTOR_RULES: Record<DetectorId, DetectorRule> = {
-  'local-network-down': { id: 'local-network-down', title: 'Rede do PC fora', severity: 'SEV3', fireAfter: 2, resolveAfter: 1, notify: false, nextStep: 'Nenhum: o agente pula os ciclos até a rede voltar.' },
+  'local-network-down': { id: 'local-network-down', title: 'Rede do analista fora', severity: 'SEV3', fireAfter: 2, resolveAfter: 1, notify: false, nextStep: 'Nenhum: o agente pula os ciclos até a rede voltar.' },
   'public-site-down': { id: 'public-site-down', title: 'Site fora do ar (visto de fora)', severity: 'SEV1', fireAfter: 3, resolveAfter: 2, notify: true, nextStep: 'Abrir o painel Ops e conferir o cervejaria-api no VPS.' },
-  'elastic-unreachable': { id: 'elastic-unreachable', title: 'Elastic PRD inacessível pelo PC', severity: 'SEV2', fireAfter: 3, resolveAfter: 2, notify: true, nextStep: 'Conferir a Tailscale no PC e o contêiner do Elasticsearch no VPS.' },
+  'elastic-unreachable': { id: 'elastic-unreachable', title: 'Elastic PRD inacessível pelo analista', severity: 'SEV2', fireAfter: 3, resolveAfter: 2, notify: true, nextStep: 'Conferir o contêiner do Elasticsearch no VPS (docker ps; docker logs elasticsearch).' },
   'elastic-auth-failed': { id: 'elastic-auth-failed', title: 'Chave do analyst recusada pelo Elastic (expirada?)', severity: 'SEV2', fireAfter: 1, resolveAfter: 1, notify: true, nextStep: 'Renovar a API key quiver-support-analyst-prd (docs/support-analyst/prd-readonly-role.json).' },
   'api-telemetry-stale': { id: 'api-telemetry-stale', title: 'Telemetria da API parou de chegar', severity: 'SEV2', fireAfter: 2, resolveAfter: 2, notify: true, nextStep: 'Conferir as variáveis OTEL do cervejaria-api e o collector PRD.' },
   'collector-telemetry-stale': { id: 'collector-telemetry-stale', title: 'Collector PRD parou de enviar', severity: 'SEV2', fireAfter: 2, resolveAfter: 2, notify: true, nextStep: 'Conferir o contêiner quiver-edot-collector-prd no VPS.' },

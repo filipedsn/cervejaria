@@ -1,4 +1,4 @@
-import { mkdir, open, rm } from 'node:fs/promises';
+import { mkdir, open, readFile, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { removeStaleLock } from '../incidents/store.js';
 
@@ -13,7 +13,7 @@ export class FileLock {
       try { this.handle = await open(this.path, 'wx'); await this.handle.writeFile(String(process.pid)); return; }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        if (attempt === 0 && await removeStaleLock(this.path)) continue;
+        if (attempt === 0 && (await this.removeOwnLeftover() || await removeStaleLock(this.path))) continue;
         throw new Error(`Watch lock in use: ${this.path} (another watch process is active).`);
       }
     }
@@ -24,5 +24,14 @@ export class FileLock {
     await this.handle.close();
     this.handle = undefined;
     await rm(this.path, { force: true });
+  }
+
+  /** In a container the restarted process gets the same PID (usually 1), so a lock with our PID is a leftover. */
+  private async removeOwnLeftover(): Promise<boolean> {
+    let raw: string;
+    try { raw = (await readFile(this.path, 'utf8')).trim(); } catch { return false; }
+    if (raw !== String(process.pid)) return false;
+    await rm(this.path, { force: true });
+    return true;
   }
 }

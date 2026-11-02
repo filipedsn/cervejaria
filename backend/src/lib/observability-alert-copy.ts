@@ -277,15 +277,15 @@ const RULE_COPY: Record<string, AlertCopy> = {
     ],
   },
   'quiver-tap-analyst-heartbeat-missing-prd': {
-    title: 'Analista local sem sinal',
+    title: 'Analista sem sinal',
     severity: 'medium',
     category: 'infra',
-    summary: 'O Support Analyst do PC nao manda batimento ha mais de 15 minutos.',
+    summary: 'O Support Analyst (conteiner no VPS) nao manda batimento ha mais de 15 minutos.',
     impact:
-      'A camada local de vigilancia esta fora (PC desligado, sem internet ou analista parado); Kibana e o monitor externo seguem ativos.',
+      'A vigilancia complementar do analista esta fora (conteiner parado, travado ou sem acesso ao Elastic); Kibana e o monitor externo seguem ativos.',
     actions: [
-      'Se o PC esta ligado: confira a tarefa QuiverTap-SupportAnalyst-Watch-PRD no Agendador de Tarefas.',
-      'Veja o log do dia em deploy/runtime/support-analyst-prd/logs.',
+      'No VPS: docker ps --filter name=quiver-tap-support-analyst e docker logs --tail 50 quiver-tap-support-analyst.',
+      'Se o conteiner sumiu, publique de novo pela esteira ou rode docker compose up -d support-analyst em /opt/quiver-tap/deploy/tap-quiver.',
     ],
   },
   'quiver-tap-slo-availability-burn-prd': {
