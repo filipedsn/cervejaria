@@ -460,8 +460,22 @@ test('publicação recusada não é falha: versão fica pendente', () => {
   const s = deriveState(snap({ runs, prd: { releaseSha: OLD } }), NOW);
   assert.equal(s.delivery.state, 'atrasada');
   assert.equal(s.cards.pipeline.state, 'ociosa');
-  assert.equal(s.cards.pipeline.runs[0].label, 'você não autorizou');
+  assert.equal(s.cards.pipeline.runs[0].label, 'publicação recusada');
+  assert.equal(s.cards.pipeline.runs[0].reason, 'Recusada no portão de aprovação; nada foi publicado.');
   assert.equal(s.flow.columns[2][0].status, 'skipped');
+});
+
+test('publicação recusada mostra o motivo registrado na recusa', () => {
+  const jobs = [{ name: 'deploy-prd', status: 'completed', conclusion: 'failure', url: 'u' }];
+  const runs = [run({ conclusion: 'failure', rejected: true, rejectedReason: 'Sem mudanca de runtime', jobs })];
+  const s = deriveState(snap({ runs, prd: { releaseSha: OLD } }), NOW);
+  const publish = s.flow.columns[2][0];
+  assert.equal(publish.status, 'rejected');
+  assert.equal(publish.statusText, 'publicação recusada');
+  assert.equal(publish.reason, 'Motivo da recusa: Sem mudanca de runtime');
+  assert.equal(s.flow.label, 'publicação recusada');
+  assert.equal(s.flow.reason, 'Motivo da recusa: Sem mudanca de runtime');
+  assert.equal(s.cards.pipeline.runs[0].reason, 'Motivo da recusa: Sem mudanca de runtime');
 });
 
 test('gráfico da esteira: colunas, progresso e duração', () => {
