@@ -35,7 +35,7 @@ export async function verifyPdvClienteSession(
   const comanda = await dependencies.findOpenComanda({
       id: session.comandaId,
       origem: 'CAIXA',
-      pontoVenda: { cervejariaId: session.cervejariaId },
+      pontoVenda: { cervejariaId: session.cervejariaId, cervejaria: { ativo: true } },
       pontoVendaId: session.pontoVendaId,
       clienteId: session.clienteId,
       status: 'ABERTA',

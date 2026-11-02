@@ -35,7 +35,7 @@ test('a valid signed PDV session queries an open comanda constrained to tenant, 
   assert.deepEqual(calls, [{
     id: validSession.comandaId,
     origem: 'CAIXA',
-    pontoVenda: { cervejariaId: validSession.cervejariaId },
+    pontoVenda: { cervejariaId: validSession.cervejariaId, cervejaria: { ativo: true } },
     pontoVendaId: validSession.pontoVendaId,
     clienteId: validSession.clienteId,
     status: 'ABERTA',

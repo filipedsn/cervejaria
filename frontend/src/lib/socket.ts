@@ -3,6 +3,12 @@ import { io, Socket } from 'socket.io-client';
 let socket: Socket | null = null;
 const joinedEventoIds = new Set<string>();
 let joinedCervejariaId: string | null = null;
+let onServerDisconnect: (() => void) | null = null;
+
+/** Socket.IO does not reconnect after a server-side disconnect, so the session must be revalidated. */
+export function setServerDisconnectHandler(handler: (() => void) | null): void {
+  onServerDisconnect = handler;
+}
 
 function rejoinRooms(s: Socket): void {
   if (joinedCervejariaId) {
@@ -25,6 +31,9 @@ export function getSocket(): Socket {
       reconnectionDelayMax: 5000,
     });
     socket.on('connect', () => rejoinRooms(socket!));
+    socket.on('disconnect', (reason) => {
+      if (reason === 'io server disconnect') onServerDisconnect?.();
+    });
   }
   return socket;
 }

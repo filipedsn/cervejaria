@@ -35,6 +35,7 @@ import {
 
 } from '../lib/security-config.js';
 import { emitAuthEvent } from '../lib/auth-observability.js';
+import { CODE_CERVEJARIA_INATIVA, MSG_CERVEJARIA_INATIVA } from '../lib/cervejaria.js';
 import { PERMISSOES_OPERACAO, permissoesIndividuaisAtivas } from '../lib/operacao/permissoes.js';
 
 
@@ -146,11 +147,7 @@ export async function authRoutes(app: FastifyInstance) {
 
         emitAuthEvent(request, 'auth.login.rejected', { reasonCode: 'TENANT_INACTIVE', user: usuario, role: usuario.papel, statusCode: 403 });
 
-        return reply.status(403).send({
-
-          error: 'Cervejaria desativada. Entre em contato com o administrador do sistema.',
-
-        });
+        return reply.status(403).send({ error: MSG_CERVEJARIA_INATIVA, code: CODE_CERVEJARIA_INATIVA });
 
       }
 
@@ -350,11 +347,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     if (usuario.cervejaria && !usuario.cervejaria.ativo) {
 
-      return reply.status(403).send({
-
-        error: 'Cervejaria desativada. Entre em contato com o administrador do sistema.',
-
-      });
+      return reply.status(403).send({ error: MSG_CERVEJARIA_INATIVA, code: CODE_CERVEJARIA_INATIVA });
 
     }
 

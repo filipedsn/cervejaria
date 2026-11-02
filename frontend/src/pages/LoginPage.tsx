@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppLogo } from '../components/AppLogo';
 import { InstallAppBanner } from '../components/InstallAppBanner';
 import { IconEye, IconEyeOff } from '../components/NavIcons';
 import { useAuth } from '../contexts/AuthContext';
+import { clearLoginNotice, readLoginNotice } from '../lib/auth-session';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(readLoginNotice);
+  useEffect(clearLoginNotice, []);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();

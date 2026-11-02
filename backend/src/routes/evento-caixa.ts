@@ -17,6 +17,7 @@ import { lockComandaItemsInTx } from '../lib/comanda-service.js';
 import { centavos, reais } from '../lib/operacao/venda.js';
 import { emitFinancialToEvento, emitToEvento } from '../lib/realtime.js';
 import { requirePermissao, usuarioPode } from '../lib/operacao/permissoes.js';
+import { assertCervejariaAtivaEmTx } from '../lib/cervejaria.js';
 
 const abrirSchema = z.object({ trocoInicial: z.number().finite().min(0).max(1_000_000) });
 const movimentoSchema = z.object({
@@ -90,6 +91,7 @@ export async function eventoCaixaRoutes(app: FastifyInstance) {
     try {
       const session = await prisma.$transaction(async (tx) => {
         await bloquearCaixaEvento(tx, eventoId);
+        await assertCervejariaAtivaEmTx(tx, user.cervejariaId);
         const activeEvent = await tx.evento.findFirst({
           where: { id: eventoId, cervejariaId: user.cervejariaId, status: 'ABERTO', recorrencia: 'NENHUMA' },
           select: { id: true },

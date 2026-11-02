@@ -1,6 +1,7 @@
 import { trackHttpRequest, type HttpRequestOutcome } from './audit-tracker';
 import { CORRELATION_ID_HEADER, createCorrelationId, isCorrelationId } from './correlation-id';
 import { currentInteractionId, INTERACTION_ID_HEADER } from './interaction-context';
+import { notifyUnauthorized, saveLoginNotice, TENANT_INACTIVE_CODE } from './auth-session';
 
 const API_BASE = import.meta.env?.VITE_API_URL ?? '';
 
@@ -160,10 +161,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const body = await res.json().catch(() => ({ error: null }));
     // Client-portal 401 responses belong to its anonymous session, never to
     // the staff session that controls the internal-login redirect.
-    if (res.status === 401 && !path.startsWith('/api/auth/login') && !path.startsWith('/api/public/')) {
+    const tenantInactive = res.status === 403 && body.code === TENANT_INACTIVE_CODE;
+    if ((res.status === 401 || tenantInactive) && !path.startsWith('/api/auth/login') && !path.startsWith('/api/public/')) {
+      if (tenantInactive && typeof body.error === 'string') saveLoginNotice(body.error);
       if (!unauthorizedNotified) {
         unauthorizedNotified = true;
-        const { notifyUnauthorized } = await import('./auth-session.js');
         await notifyUnauthorized();
         unauthorizedNotified = false;
       }

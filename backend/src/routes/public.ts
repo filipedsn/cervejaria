@@ -107,7 +107,12 @@ async function getPdvClienteSession(app: FastifyInstance, request: FastifyReques
     throw app.httpErrors.unauthorized('Sessão inválida.');
   }
   const comanda = await prisma.comanda.findFirst({
-    where: { ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }), clienteId: session.clienteId, pontoVendaId: session.pontoVendaId },
+    where: {
+      ...whereComandaOperacao(session.cervejariaId, { id: session.comandaId, status: 'ABERTA' }),
+      clienteId: session.clienteId,
+      pontoVendaId: session.pontoVendaId,
+      pontoVenda: { cervejariaId: session.cervejariaId, cervejaria: { ativo: true } },
+    },
     include: INCLUDE_COMANDA_OPERACAO,
   });
   if (!comanda) throw app.httpErrors.unauthorized('Comanda encerrada. Identifique-se novamente.');
