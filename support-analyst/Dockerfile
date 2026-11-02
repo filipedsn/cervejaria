@@ -14,6 +14,7 @@ FROM node:24-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SUPPORT_ANALYST_RUNTIME_DIR=/app/runtime
+ENV SUPPORT_ANALYST_JOURNEY_DIR=/app/runtime/journeys
 COPY package.json ./
 COPY --from=build /src/dist ./dist
 RUN mkdir -p /app/runtime && chown node:node /app/runtime
