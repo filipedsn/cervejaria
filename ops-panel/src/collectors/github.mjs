@@ -63,9 +63,11 @@ async function runDetails(run) {
     gh(['run', 'view', String(run.id), '--repo', R, '--json', 'jobs']),
     done && run.conclusion === 'failure' ? gh(['api', `repos/${R}/actions/runs/${run.id}/approvals`]) : null,
   ]);
+  const rejection = (approvals ?? []).find((a) => a.state === 'rejected');
   const details = {
     jobs: (view.jobs ?? []).map(normalizeJob),
-    rejected: (approvals ?? []).some((a) => a.state === 'rejected'),
+    rejected: Boolean(rejection),
+    rejectedReason: rejection?.comment?.trim().slice(0, 200) || null,
   };
   if (done) finishedRuns.set(run.id, details);
   return details;

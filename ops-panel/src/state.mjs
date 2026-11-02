@@ -119,7 +119,7 @@ const ciLabel = (ci) =>
 
 function runLabel(run) {
   if (run.status !== 'completed') return run.status === 'waiting' ? 'esperando sua autorização' : 'em andamento';
-  if (run.rejected) return 'você não autorizou';
+  if (run.rejected) return 'publicação recusada';
   return { success: 'concluída', failure: 'falhou', cancelled: 'cancelada', skipped: 'pulada' }[run.conclusion] ?? run.conclusion;
 }
 
@@ -432,7 +432,7 @@ function pipelineCard(snapshot) {
     title,
     subtitle: 'Linha automática que testa, monta e publica cada nova versão oficial. Sempre para e pede sua autorização antes de publicar.',
     facts: [],
-    runs: runs.slice(0, 4).map((r) => ({ ...r, short: short(r.sha), version: ver(r.sha), label: runLabel(r) })),
+    runs: runs.slice(0, 4).map((r) => ({ ...r, short: short(r.sha), version: ver(r.sha), label: runLabel(r), reason: r.rejected ? rejectionHint(r) : '' })),
     actions,
   };
 }
@@ -452,7 +452,7 @@ const JOB_TEXT = {
   running: 'em andamento',
   waiting: 'esperando sua autorização',
   failed: 'falhou',
-  rejected: 'você não autorizou',
+  rejected: 'publicação recusada',
   cancelled: 'cancelado',
   skipped: 'não executado',
   todo: 'na fila',
@@ -494,8 +494,11 @@ function flowJob(job, spec, run, now) {
     time: started && ended ? duration(ended - started) : '',
     progress: status === 'running' && steps.length ? { done: steps.filter((s) => s.status === 'completed').length, total: steps.length } : null,
     url: job?.url ?? run.url,
+    reason: status === 'rejected' ? rejectionHint(run) : '',
   };
 }
+
+const rejectionHint = (run) => (run.rejectedReason ? `Motivo da recusa: ${run.rejectedReason}` : 'Recusada no portão de aprovação; nada foi publicado.');
 
 /** Run em foco (o ativo ou o mais recente) desenhado como no GitHub Actions. */
 export function flowView(runs, now = Date.now(), subjects = new Map()) {
@@ -523,6 +526,7 @@ export function flowView(runs, now = Date.now(), subjects = new Map()) {
     title: subjects.get(run.sha) ?? run.title,
     url: run.url,
     label: runLabel(run),
+    reason: run.rejected ? rejectionHint(run) : '',
     level: run.status === 'waiting' ? 'warn' : run.status !== 'completed' ? 'run' : runFailed(run) ? 'bad' : run.conclusion === 'success' ? 'ok' : 'off',
     trigger: run.event === 'workflow_dispatch' ? 'iniciada pelo painel' : 'automática, depois de aceitar um PR',
     startedAt: run.createdAt,

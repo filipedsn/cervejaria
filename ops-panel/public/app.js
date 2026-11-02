@@ -124,7 +124,7 @@ function runList(runs) {
     .map(
       (r) => `<li>
         <a href="${esc(r.url)}" target="_blank" rel="noopener" title="Abrir no GitHub">${versionTag(r.version, r.short)} ${esc(plain(r.title))}</a>
-        <span class="chip" data-run="${esc(r.rejected ? 'rejected' : (r.conclusion ?? r.status))}">${esc(r.label)}</span>
+        <span class="chip" data-run="${esc(r.rejected ? 'rejected' : (r.conclusion ?? r.status))}"${r.reason ? ` title="${esc(r.reason)}"` : ''}>${esc(r.label)}</span>
       </li>`,
     )
     .join('')}</ul>`;
@@ -299,7 +299,7 @@ const FLOW_ICON = { done: '✓', waiting: '!', failed: '✕', rejected: '–', c
 
 function jobBox(job) {
   const pct = job.progress ? Math.round((100 * job.progress.done) / job.progress.total) : 0;
-  return `<a class="job" data-status="${esc(job.status)}" data-level="${esc(job.level)}" href="${esc(job.url)}" target="_blank" rel="noopener" title="Abrir esta etapa no GitHub">
+  return `<a class="job" data-status="${esc(job.status)}" data-level="${esc(job.level)}" href="${esc(job.url)}" target="_blank" rel="noopener" title="${esc(job.reason ? `${job.reason} (clique para abrir no GitHub)` : 'Abrir esta etapa no GitHub')}">
     <span class="job-icon" aria-hidden="true">${FLOW_ICON[job.status] ?? ''}</span>
     <span class="job-body">
       <strong>${esc(job.label)}</strong>
@@ -314,7 +314,7 @@ function renderFlow(flow) {
   $('flow').hidden = !flow;
   if (!flow) return;
   const took = flow.total ? ` · ${flow.live ? 'rodando há' : 'levou'} ${esc(flow.total)}` : '';  $('h-flow').textContent = flow.live ? 'Esteira por dentro (agora)' : 'Esteira por dentro (última passagem)';
-  $('flow-meta').innerHTML = `<span class="chip" data-level="${esc(flow.level)}">${esc(flow.label)}</span>
+  $('flow-meta').innerHTML = `<span class="chip" data-level="${esc(flow.level)}"${flow.reason ? ` title="${esc(flow.reason)}"` : ''}>${esc(flow.label)}</span>
     versão ${versionTag(flow.version, flow.sha)} · ${esc(plain(flow.title))} · ${esc(flow.trigger)} · ${esc(when(flow.startedAt))}${took}`;
   $('flow-link').href = flow.url;
   $('flow-graph').innerHTML = flow.columns
