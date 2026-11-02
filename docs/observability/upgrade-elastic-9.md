@@ -21,7 +21,7 @@ O compose do Elastic PRD fica fora do repositório, no VPS. O script `deploy/tap
 
 | Ordem | Fase | O que faz |
 |---|---|---|
-| 1 | `prep` | Guarda cópias do compose e do `.env` fora da pasta, cria o repositório de snapshot em disco (`path.repo` e bind `./snapshots`), sobe o heap para 4 GB, corrige `SERVER_PUBLICBASEURL`, recria ES e Kibana ainda em 8.17.0 e registra o repositório `quiver-fs`. Aborta se alguma alteração do compose não pegar. |
+| 1 | `prep` | Guarda cópias do compose e do `.env` fora da pasta, cria o repositório de snapshot em disco (`path.repo` e bind `./snapshots`), fixa o heap do Elasticsearch em 1 GB com teto de container 2 GB e o Kibana em heap 1 GB com teto 1,5 GB (TAP-170), corrige `SERVER_PUBLICBASEURL`, recria ES e Kibana ainda em 8.17.0 e registra o repositório `quiver-fs`. Aborta se alguma alteração do compose não pegar. |
 | 2 | `snap pre-819` | Snapshot completo com estado global e espera terminar. |
 | 3 | `up819` | Imagens 8.19.23, recria, espera o cluster green/yellow e o Kibana available. |
 | 4 | `snap pre-9` | Novo snapshot completo. |
@@ -29,7 +29,7 @@ O compose do Elastic PRD fica fora do repositório, no VPS. O script `deploy/tap
 
 Durante cada recriação o Elastic fica alguns minutos fora; a aplicação continua atendendo, o collector segura o que couber na fila em memória (o excedente se perde) e os alertas de telemetria podem disparar.
 
-O VPS tem 16 GB de RAM com cerca de 12 GB livres e disco em 9%, o que comporta o heap de 4 GB e os snapshots.
+O VPS tem 16 GB de RAM. O heap começou em 4 GB, mas o que fica vivo é ~200 MB (271 MB de índices em 2026-11-01); com 4 GB o Elasticsearch ocupava 4,9 GB só por acumular lixo jovem. Desde o TAP-170 fica em 1 GB (ES ~1,6 GB no total, Kibana ~1 GB). Suba o heap só se o diagnose mostrar heap alto de forma sustentada ou coletas old frequentes.
 
 ## Verificação depois do `up9`
 
