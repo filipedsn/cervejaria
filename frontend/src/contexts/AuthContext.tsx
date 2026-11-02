@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import type { Usuario, Cervejaria, AuthResponse } from '../types';
 import { api } from '../lib/api';
 import { clearSessionQueryCache } from '../lib/query-client';
-import { connectSocket, disconnectSocket } from '../lib/socket';
+import { connectSocket, disconnectSocket, getSocket, setServerDisconnectHandler } from '../lib/socket';
 import { resetBreweryTheme, syncBreweryTheme } from '../lib/theme';
 import { ensureAppShellBranding } from '../lib/app-branding';
 import { isPublicPath, setUnauthorizedHandler } from '../lib/auth-session';
@@ -77,7 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.location.href = '/login';
       }
     });
-    return () => setUnauthorizedHandler(() => {});
+    // A 403 TENANT_INACTIVE from /me reaches the unauthorized handler above;
+    // any other server-side disconnect simply reconnects.
+    setServerDisconnectHandler(() => {
+      if (isPublicPath(window.location.pathname)) return;
+      api.get('/api/auth/me').then(() => getSocket().connect()).catch(() => {});
+    });
+    return () => {
+      setUnauthorizedHandler(() => {});
+      setServerDisconnectHandler(null);
+    };
   }, [logout]);
 
   useEffect(() => {

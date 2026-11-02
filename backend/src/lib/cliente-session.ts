@@ -12,6 +12,7 @@ const CLIENTE_SESSION_MAX_AGE = 12 * 60 * 60; // 12h
 
 export type ClienteSessionFailureReason =
   | 'evento_invalido'
+  | 'empresa_inativa'
   | 'evento_fechado'
   | 'portal_generation_invalida'
   | 'contexto_portal_invalido'
@@ -95,12 +96,20 @@ export async function validateClienteSession(
       status: true,
       trailerId: true,
       portalGeneration: true,
+      cervejaria: { select: { ativo: true } },
     },
   });
 
   if (!evento) {
     throw new ClienteSessionValidationError(
       'evento_invalido',
+      'Sessão encerrada. Escaneie o QR Code novamente.',
+    );
+  }
+
+  if (!evento.cervejaria.ativo) {
+    throw new ClienteSessionValidationError(
+      'empresa_inativa',
       'Sessão encerrada. Escaneie o QR Code novamente.',
     );
   }

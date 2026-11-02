@@ -157,6 +157,33 @@ export function emitToComanda(
   io?.to(`comanda:${comandaId}`).emit(event.type, event.data);
 }
 
+type SocketSessionData = {
+  user?: { papel?: string; cervejariaId?: string | null };
+  clienteSession?: { cervejariaId?: string };
+};
+
+/** O admin da plataforma acompanha várias empresas e nunca é desconectado por uma delas. */
+export function socketPertenceACervejaria(data: SocketSessionData | undefined, cervejariaId: string): boolean {
+  if (data?.clienteSession?.cervejariaId === cervejariaId) return true;
+  return Boolean(data?.user && data.user.papel !== 'ADMIN' && data.user.cervejariaId === cervejariaId);
+}
+
+/** Encerra as conexões em tempo real de equipe e portal de uma empresa recém-inativada. */
+export async function desconectarSocketsDaCervejaria(
+  io: SocketIOServer | undefined,
+  cervejariaId: string,
+): Promise<number> {
+  if (!io) return 0;
+  const sockets = await io.fetchSockets();
+  let desconectados = 0;
+  for (const socket of sockets) {
+    if (!socketPertenceACervejaria(socket.data as SocketSessionData, cervejariaId)) continue;
+    socket.disconnect(true);
+    desconectados += 1;
+  }
+  return desconectados;
+}
+
 /** Notifica telas de ranking após venda, remoção ou ajuste de chope no evento. */
 export function emitRankingUpdated(
   io: SocketIOServer | undefined,

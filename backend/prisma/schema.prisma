@@ -184,6 +184,10 @@ model Cervejaria {
   comandasAlarmeIntervaloSegundos Int @default(10)
   /** Cardápios com preço por evento (ligado) ou só catálogo tradicional (desligado). */
   usaCardapio Boolean @default(false)
+  /** Início do contrato com a plataforma (data civil). */
+  dataInicioContrato DateTime? @db.Date
+  /** Dia do mês (1–31) do vencimento da mensalidade; meses mais curtos vencem no último dia. */
+  diaVencimento Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

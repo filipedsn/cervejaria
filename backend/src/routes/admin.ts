@@ -4,10 +4,16 @@ import fs from 'node:fs';
 import { prisma } from '../lib/prisma.js';
 import { hashPassword, slugify } from '../lib/utils.js';
 import {
-  getStatsMesAtualPorCervejaria,
-  emptyMesAtualStats,
-  getMesAtualLabel,
+  getMetricasMesPorCervejaria,
+  getPrimeiraVendaFechada,
+  listarMesesAdmin,
+  metricasVazias,
+  resolverMesAdmin,
+  type MesAdmin,
+  type MetricasMes,
 } from '../lib/cervejaria-stats.js';
+import { getCaixasAbertosPorCervejaria, proximoVencimento, type CaixaAbertoAdmin } from '../lib/admin-empresas.js';
+import { desconectarSocketsDaCervejaria } from '../lib/realtime.js';
 import {
   formatCervejariaAuth,
   reextractBrandingFromLogo,
@@ -66,7 +72,51 @@ const createCervejariaSchema = z
     }
   });
 
+/// Multipart envia campos vazios como "" quando o admin limpa o valor.
+const dataContratoField = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((valor, ctx) => {
+    if (valor === undefined) return undefined;
+    if (valor === null || valor.trim() === '') return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor.trim());
+    const data = match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))) : null;
+    if (!data || data.toISOString().slice(0, 10) !== valor.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Data de início do contrato inválida' });
+      return z.NEVER;
+    }
+    return data;
+  });
+
+const diaVencimentoField = z
+  .union([z.number(), z.string(), z.null()])
+  .optional()
+  .transform((valor, ctx) => {
+    if (valor === undefined) return undefined;
+    if (valor === null || (typeof valor === 'string' && valor.trim() === '')) return null;
+    const dia = typeof valor === 'number' ? valor : Number(valor);
+    if (!Number.isInteger(dia) || dia < 1 || dia > 31) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Dia de vencimento deve estar entre 1 e 31' });
+      return z.NEVER;
+    }
+    return dia;
+  });
+
+const contratoSchema = z.object({
+  dataInicioContrato: dataContratoField,
+  diaVencimento: diaVencimentoField,
+});
+
+function contratoData(contrato: z.output<typeof contratoSchema>) {
+  return {
+    ...(contrato.dataInicioContrato !== undefined ? { dataInicioContrato: contrato.dataInicioContrato } : {}),
+    ...(contrato.diaVencimento !== undefined ? { diaVencimento: contrato.diaVencimento } : {}),
+  };
+}
+
 const updateCervejariaSchema = z.object({
+  dataInicioContrato: dataContratoField,
+  diaVencimento: diaVencimentoField,
   cervejariaNome: z.string().min(2),
   donoNome: z.string().min(2),
   donoEmail: z.string().email(),
@@ -156,6 +206,8 @@ function formatAdminCervejaria(
     comandasAlarmeIntervaloSegundos: number;
     usaCardapio: boolean;
     updatedAt: Date;
+    dataInicioContrato?: Date | null;
+    diaVencimento?: number | null;
     configuracaoOperacao?: {
       ativo: boolean;
       exclusivo: boolean;
@@ -170,7 +222,8 @@ function formatAdminCervejaria(
     _count?: { usuarios: number; eventos: number };
     usuarios?: Array<{ id: string; nome: string; email: string }>;
   },
-  mesAtual?: ReturnType<typeof emptyMesAtualStats>,
+  metricasMes?: MetricasMes,
+  caixasAbertos: CaixaAbertoAdmin[] = [],
 ) {
   const branding = formatCervejariaAuth(c);
   const operacao = c.configuracaoOperacao;
@@ -189,14 +242,31 @@ function formatAdminCervejaria(
       operacaoControlaEstoque: operacional?.inventoryEnabled ?? (temOperacao && operacao?.controlaEstoque === true),
       operacaoTemCozinha: operacional?.kitchenEnabled ?? (temOperacao && operacao?.temCozinha === true),
     },
-    mesAtual,
+    contrato: {
+      dataInicio: c.dataInicioContrato ? c.dataInicioContrato.toISOString().slice(0, 10) : null,
+      diaVencimento: c.diaVencimento ?? null,
+      proximoVencimento: proximoVencimento(c.diaVencimento ?? null, c.dataInicioContrato ?? null),
+    },
+    metricasMes,
+    caixasAbertos,
     _count: c._count,
     usuarios: c.usuarios,
   };
 }
 
-async function mapCervejariasList() {
-  const [cervejarias, statsMap] = await Promise.all([
+async function formatAdminCervejariaComMes(
+  c: Parameters<typeof formatAdminCervejaria>[0],
+  mes: MesAdmin = resolverMesAdmin(undefined)!,
+) {
+  const [metricas, caixas] = await Promise.all([
+    getMetricasMesPorCervejaria(mes, c.id),
+    getCaixasAbertosPorCervejaria(c.id),
+  ]);
+  return formatAdminCervejaria(c, metricas.get(c.id) ?? metricasVazias(mes), caixas.get(c.id) ?? []);
+}
+
+async function mapCervejariasList(mes: MesAdmin) {
+  const [cervejarias, metricasMap, caixasMap] = await Promise.all([
     prisma.cervejaria.findMany({
       orderBy: { nome: 'asc' },
       select: {
@@ -213,6 +283,8 @@ async function mapCervejariasList() {
         comandasAlarmeIntervaloSegundos: true,
         usaCardapio: true,
         updatedAt: true,
+        dataInicioContrato: true,
+        diaVencimento: true,
         _count: { select: { usuarios: true, eventos: true } },
         configuracaoOperacao: {
           select: {
@@ -236,13 +308,12 @@ async function mapCervejariasList() {
         },
       },
     }),
-    getStatsMesAtualPorCervejaria(),
+    getMetricasMesPorCervejaria(mes),
+    getCaixasAbertosPorCervejaria(),
   ]);
 
-  const mesLabel = getMesAtualLabel();
-
   return cervejarias.map((c) =>
-    formatAdminCervejaria(c, statsMap.get(c.id) ?? emptyMesAtualStats(mesLabel)),
+    formatAdminCervejaria(c, metricasMap.get(c.id) ?? metricasVazias(mes), caixasMap.get(c.id) ?? []),
   );
 }
 
@@ -250,7 +321,16 @@ export async function adminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', app.requireAdmin);
 
-  app.get('/cervejarias', async () => mapCervejariasList());
+  app.get('/cervejarias', async (request, reply) => {
+    const { mes: chave } = request.query as { mes?: string };
+    const mes = resolverMesAdmin(chave);
+    if (!mes) return reply.status(400).send({ error: 'Mês inválido. Use o formato AAAA-MM e um mês até o atual.' });
+    return mapCervejariasList(mes);
+  });
+
+  app.get('/metricas/meses', async () => ({
+    meses: listarMesesAdmin(await getPrimeiraVendaFechada()),
+  }));
 
   app.get('/cervejarias/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -304,6 +384,7 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/cervejarias/provision', async (request, reply) => {
     const canonical = canonicalPdvQaActivationEnabled();
     const body = provisionEstablishmentRequestSchema.parse(request.body);
+    const contrato = contratoData(contratoSchema.parse(request.body ?? {}));
     const existing = await prisma.usuario.findUnique({ where: { email: body.dono.email }, select: { id: true } });
     if (existing) return reply.status(409).send({ error: 'E-mail do proprietário já cadastrado' });
     let slug = slugify(body.nome);
@@ -311,11 +392,17 @@ export async function adminRoutes(app: FastifyInstance) {
     const senhaHash = await hashPassword(body.dono.senha);
     let result: Awaited<ReturnType<typeof provisionEstablishment>>;
     try {
-      result = await prisma.$transaction((tx) => provisionEstablishment(tx, {
-        ...body,
-        slug,
-        dono: { ...body.dono, senhaHash },
-      }, { mode: canonical ? 'CANONICAL' : 'LEGACY' }));
+      result = await prisma.$transaction(async (tx) => {
+        const provisioned = await provisionEstablishment(tx, {
+          ...body,
+          slug,
+          dono: { ...body.dono, senhaHash },
+        }, { mode: canonical ? 'CANONICAL' : 'LEGACY' });
+        if (Object.keys(contrato).length > 0) {
+          await tx.cervejaria.update({ where: { id: provisioned.cervejaria.id }, data: contrato, select: { id: true } });
+        }
+        return provisioned;
+      });
     } catch (error) {
       if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'Empresa ou proprietário já cadastrado.' });
       throw error;
@@ -416,7 +503,11 @@ export async function adminRoutes(app: FastifyInstance) {
     await prisma.$transaction(async (tx) => {
       await tx.cervejaria.update({
         where: { id },
-        data: { nome: body.cervejariaNome, slug },
+        data: {
+          nome: body.cervejariaNome,
+          slug,
+          ...contratoData({ dataInicioContrato: body.dataInicioContrato, diaVencimento: body.diaVencimento }),
+        },
       });
 
       const donoData: { nome: string; email: string; senhaHash?: string; passwordChangedAt?: Date } = {
@@ -467,8 +558,7 @@ export async function adminRoutes(app: FastifyInstance) {
     });
 
     if (!updated) return reply.status(404).send({ error: 'Cervejaria não encontrada' });
-    const statsMap = await getStatsMesAtualPorCervejaria();
-    return formatAdminCervejaria(updated, statsMap.get(id) ?? emptyMesAtualStats(getMesAtualLabel()));
+    return formatAdminCervejariaComMes(updated);
   });
 
   app.post('/cervejarias/:id/branding/reextract', async (request, reply) => {
@@ -477,7 +567,6 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!existing) return reply.status(404).send({ error: 'Cervejaria não encontrada' });
 
     await reextractBrandingFromLogo(id);
-    const statsMap = await getStatsMesAtualPorCervejaria();
     const withOwner = await prisma.cervejaria.findUnique({
       where: { id },
       include: {
@@ -486,32 +575,54 @@ export async function adminRoutes(app: FastifyInstance) {
       },
     });
     if (!withOwner) return reply.status(404).send({ error: 'Cervejaria não encontrada' });
-    return formatAdminCervejaria(withOwner, statsMap.get(id) ?? emptyMesAtualStats(getMesAtualLabel()));
+    return formatAdminCervejariaComMes(withOwner);
   });
 
   app.patch('/cervejarias/:id/ativo', async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = toggleAtivoSchema.parse(request.body);
 
-    const existing = await prisma.cervejaria.findUnique({ where: { id } });
-    if (!existing) {
-      return reply.status(404).send({ error: 'Cervejaria não encontrada' });
-    }
+    const resultado = await prisma.$transaction(async (tx) => {
+      // FOR UPDATE espera aberturas de caixa em andamento (que travam a linha em FOR SHARE).
+      const linhas = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM public."Cervejaria" WHERE "id" = ${id} FOR UPDATE
+      `;
+      if (linhas.length === 0) return { status: 'nao_encontrada' as const };
 
-    const cervejaria = await prisma.cervejaria.update({
-      where: { id },
-      data: { ativo: body.ativo },
-      include: {
-        _count: { select: { usuarios: true, eventos: true } },
-        usuarios: {
-          where: { papel: 'DONO' },
-          select: { id: true, nome: true, email: true },
-          take: 1,
+      if (!body.ativo) {
+        const caixas = (await getCaixasAbertosPorCervejaria(id, tx)).get(id) ?? [];
+        if (caixas.length > 0) return { status: 'caixa_aberto' as const, caixas };
+      }
+
+      const cervejaria = await tx.cervejaria.update({
+        where: { id },
+        data: { ativo: body.ativo },
+        include: {
+          _count: { select: { usuarios: true, eventos: true } },
+          usuarios: {
+            where: { papel: 'DONO' },
+            select: { id: true, nome: true, email: true },
+            take: 1,
+          },
         },
-      },
+      });
+      return { status: 'ok' as const, cervejaria };
     });
 
-    return cervejaria;
+    if (resultado.status === 'nao_encontrada') {
+      return reply.status(404).send({ error: 'Cervejaria não encontrada' });
+    }
+    if (resultado.status === 'caixa_aberto') {
+      const locais = resultado.caixas.map((caixa) => caixa.local).join(', ');
+      return reply.status(409).send({
+        error: `Não é possível desativar: há caixa aberto (${locais}). Feche o caixa antes de desativar a empresa.`,
+        code: 'CASH_REGISTER_OPEN',
+        caixasAbertos: resultado.caixas,
+      });
+    }
+
+    if (!body.ativo) await desconectarSocketsDaCervejaria(app.io, id);
+    return resultado.cervejaria;
   });
 
   app.get('/settings', async () => getAdminSettingsResponse());

@@ -14,6 +14,7 @@ import { validateCashOccurrenceSelection } from './contexto-ocorrencia.js';
 import { lockAgendaResource } from './agenda.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 import { lockCaixaEmTx } from './caixa-lock.js';
+import { assertCervejariaAtivaEmTx } from '../cervejaria.js';
 import { resolveUniqueOpenCashSession } from './cash-session-resolution.js';
 import { FechadoEmCaixaInvalidoError, resolverFechadoEmInformado } from './fechado-em-caixa.js';
 export { lockCaixaEmTx } from './caixa-lock.js';
@@ -454,6 +455,7 @@ export async function abrirCaixa(params: {
 
   const sessao = await prisma.$transaction(async (tx) => {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
+    await assertCervejariaAtivaEmTx(tx, params.cervejariaId);
     if (canonicalPdv && params.ocorrenciaId) await lockAgendaResource(tx, params, 'ocorrencia', params.ocorrenciaId);
     const ocorrenciaId = await validateCashOccurrenceSelection(tx, {
       cervejariaId: params.cervejariaId,
