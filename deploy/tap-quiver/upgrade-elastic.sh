@@ -43,9 +43,13 @@ case "${1:-}" in
     install -d -m 775 "$SNAPDIR"; chown 1000:0 "$SNAPDIR"
     grep -q 'path.repo' docker-compose.yml || sed -i -E 's#^(\s+)- discovery.type=single-node#&\n\1- path.repo=/usr/share/elasticsearch/snapshots#' docker-compose.yml
     grep -qF './snapshots:' docker-compose.yml || sed -i -E 's#^(\s+)- es_data:/usr/share/elasticsearch/data#&\n\1- ./snapshots:/usr/share/elasticsearch/snapshots#' docker-compose.yml
-    sed -i -E 's#-Xms512m -Xmx512m#-Xms4g -Xmx4g#' docker-compose.yml
+    # TAP-170: heap 1g (vivo ~200 MB) e teto por container; nao voltar a 4g sem medir.
+    sed -i -E 's#-Xms[0-9]+[mg] -Xmx[0-9]+[mg]#-Xms1g -Xmx1g#' docker-compose.yml
+    grep -q 'mem_limit: 2g' docker-compose.yml || sed -i -E 's#^(\s+)container_name: elasticsearch$#&\n\1mem_limit: 2g#' docker-compose.yml
+    grep -q 'mem_limit: 1536m' docker-compose.yml || sed -i -E 's#^(\s+)container_name: kibana$#&\n\1mem_limit: 1536m#' docker-compose.yml
     sed -i -E 's#^(\s+- SERVER_PUBLICBASEURL=).*#\1http://127.0.0.1:5601#' docker-compose.yml
-    for want in 'path.repo=/usr/share/elasticsearch/snapshots' './snapshots:/usr/share/elasticsearch/snapshots' '-Xms4g -Xmx4g' 'SERVER_PUBLICBASEURL=http://127.0.0.1:5601'; do
+    grep -q 'max-old-space-size' docker-compose.yml || sed -i -E 's#^(\s+)- SERVER_PUBLICBASEURL=(.*)$#&\n\1- NODE_OPTIONS=--max-old-space-size=1024#' docker-compose.yml
+    for want in 'path.repo=/usr/share/elasticsearch/snapshots' './snapshots:/usr/share/elasticsearch/snapshots' '-Xms1g -Xmx1g' 'mem_limit: 2g' 'mem_limit: 1536m' 'NODE_OPTIONS=--max-old-space-size=1024' 'SERVER_PUBLICBASEURL=http://127.0.0.1:5601'; do
       grep -qF -- "$want" docker-compose.yml || { log "compose sem '$want'; ajuste manual e rode prep de novo"; exit 4; }
     done
     docker compose config -q

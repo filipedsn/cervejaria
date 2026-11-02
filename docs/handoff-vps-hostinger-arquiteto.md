@@ -410,7 +410,7 @@ branch → PR → CI remoto obrigatório (build-and-unit) → merge main
    - **Latência:** `quiver-tap-api-latency-p95-prd` (ES|QL nos spans de servidor): p95 > 1 s em 15 min com ≥ 20 requisições; base de 7 dias em 01/11: p95 26 ms, pior janela 53 ms — TAP-168.
    - **Monitor externo** (`.github/workflows/uptime-external.yml`, GitHub Actions a cada 5 min): `/api/ready` público; Telegram só na mudança de estado. Cobre VPS inteiro fora com o PC desligado. Teste manual: *Run workflow* com `teste_telegram`.
 4. [x] Rollback: automático no `deploy-prd.sh` (imagem `quiver-tap-api:rollback` se falhar depois do sync) e manual pela esteira com um SHA antigo da `main` (painel Ops).  
-5. [x] EDOT collector PRD ativo (logs do host, traces a 100%); Elastic PRD 9.5.5 desde 2026-11-01, heap 4 GB, repositório de snapshot `quiver-fs` em disco (`docs/observability/upgrade-elastic-9.md`).
+5. [x] EDOT collector PRD ativo (logs do host, traces a 100%); Elastic PRD 9.5.5 desde 2026-11-01; memória limitada (TAP-170): Elasticsearch com heap 1 GB e teto de container 2 GB, Kibana com heap do Node 1 GB e teto 1,5 GB (heap vivo medido ~200 MB; um OOM aparece como reinício de container no alerta `container-restart`); repositório de snapshot `quiver-fs` em disco (`docs/observability/upgrade-elastic-9.md`).
 
 ```mermaid
 flowchart LR
