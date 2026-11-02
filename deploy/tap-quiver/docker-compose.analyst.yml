@@ -1,0 +1,35 @@
+# Support Analyst PRD (plantão): detectores a cada 60 s, Telegram [ANALISTA] e batimento no Elastic.
+# Incluido pelo deploy-prd.sh somente quando .env.support-analyst existe neste diretorio.
+# Fica na rede do Elastic (elasticsearch:9200): a trava de PRD do analista recusa loopback.
+services:
+  support-analyst:
+    build:
+      context: ../../support-analyst
+    image: quiver-tap-support-analyst:staging
+    container_name: quiver-tap-support-analyst
+    restart: unless-stopped
+    mem_limit: 256m
+    env_file:
+      - .env.support-analyst
+    environment:
+      NODE_ENV: production
+      SUPPORT_ANALYST_RUNTIME_DIR: /app/runtime
+    networks:
+      - elastic
+    volumes:
+      - support_analyst_runtime:/app/runtime
+    healthcheck:
+      # O plantão regrava watch/state.json a cada ciclo (60 s), inclusive enquanto espera a rede.
+      test: ["CMD", "node", "-e", "const s=require('fs').statSync('/app/runtime/watch/state.json');process.exit(Date.now()-s.mtimeMs<180000?0:1)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+networks:
+  elastic:
+    external: true
+    name: elasticsearch-kibana_elastic
+
+volumes:
+  support_analyst_runtime:

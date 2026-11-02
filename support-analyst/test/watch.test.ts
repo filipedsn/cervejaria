@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -322,10 +322,20 @@ test('watch lock replaces a lock from a dead process and refuses a live one', ()
   const path = join(dir, 'watch', 'watch.lock');
   const first = new FileLock(path);
   await first.acquire();
-  await assert.rejects(new FileLock(path).acquire(), /Watch lock in use/);
   await first.release();
+  await writeFile(path, String(process.ppid));
+  await assert.rejects(new FileLock(path).acquire(), /Watch lock in use/);
   await writeFile(path, '2147483646');
   const second = new FileLock(path);
   await second.acquire();
   await second.release();
+}));
+
+test('watch lock left with our own PID (container restart) is replaced', () => withDir(async (dir) => {
+  const path = join(dir, 'watch', 'watch.lock');
+  await mkdir(join(dir, 'watch'), { recursive: true });
+  await writeFile(path, String(process.pid));
+  const lock = new FileLock(path);
+  await lock.acquire();
+  await lock.release();
 }));

@@ -90,6 +90,11 @@ build_compose() {
     COMPOSE+=(-f docker-compose.alerts.yml)
     ALERT_POLLER=1
   fi
+  ANALYST=0
+  if [[ -f "$COMPOSE_DIR/docker-compose.analyst.yml" && -f "$COMPOSE_DIR/.env.support-analyst" ]]; then
+    COMPOSE+=(-f docker-compose.analyst.yml)
+    ANALYST=1
+  fi
 }
 build_compose
 # RELEASE_SHA exportado do .env.staging (já atualizado por set_release_sha) para a interpolação do compose do poller.
@@ -103,6 +108,7 @@ sync_code() {
     --exclude '/deploy/tap-quiver/.env.staging.bak*' \
     --exclude '/deploy/tap-quiver/.env.observability' \
     --exclude '/deploy/tap-quiver/.env.alert-poller' \
+    --exclude '/deploy/tap-quiver/.env.support-analyst' \
     --exclude '/deploy/tap-quiver/backup-postgres.env*' \
     --exclude '/backups/' \
     --exclude 'node_modules/' \
@@ -277,9 +283,15 @@ if ((ALERT_POLLER == 1)); then
   log "recriando o alert poller"
   compose up -d --no-build --force-recreate alert-poller || log "AVISO: alert poller nao subiu; a API segue publicada. Veja: docker logs quiver-tap-alert-poller"
 fi
+if ((ANALYST == 1)); then
+  log "build e recriacao do support analyst"
+  { compose build support-analyst && docker tag quiver-tap-support-analyst:staging "quiver-tap-support-analyst:$SHA" &&
+    compose up -d --no-build --force-recreate support-analyst; } ||
+    log "AVISO: support analyst nao subiu; a API segue publicada. Veja: docker logs quiver-tap-support-analyst"
+fi
 
 {
-  for img in "$IMAGE" "$MIGRATOR_IMAGE"; do
+  for img in "$IMAGE" "$MIGRATOR_IMAGE" quiver-tap-support-analyst; do
     docker images "$img" --format '{{.Tag}}' | grep -E '^[0-9a-f]{40}$' | tail -n "+$((KEEP_SHA_IMAGES + 1))" |
       while read -r old; do docker rmi "$img:$old" >/dev/null 2>&1 || true; done
   done
