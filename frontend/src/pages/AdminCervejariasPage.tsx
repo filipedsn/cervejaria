@@ -1,6 +1,13 @@
 import { useState, useMemo, useEffect, type FormEvent } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, formatCurrency, assetUrl } from '../lib/api';
+import {
+  CAIXA_ABERTO_ALERTA_MS,
+  descreverVencimento,
+  formatDataCivil,
+  formatTempoAberto,
+  tempoAbertoMs,
+} from '../lib/admin-empresas';
 import { Modal } from '../components/Modal';
 import { Loading } from '../components/Loading';
 import { ToggleAtivo } from '../components/ToggleAtivo';
@@ -9,12 +16,26 @@ import { PasswordWithConfirmFields, validatePasswordPair } from '../components/P
 import { mensagemConfirmacaoEstoque } from '../lib/operacao-capacidades';
 import type { BrandTheme } from '../types';
 
-interface MesAtualStats {
+interface MetricasMes {
+  chave: string;
   mes: string;
   faturamento: number;
   comandasAtendidas: number;
   tiposProduto: number;
   produtoMaisVende: string | null;
+}
+
+interface CaixaAberto {
+  id: string;
+  tipo: 'CAIXA' | 'EVENTO';
+  local: string;
+  abertoEm: string;
+}
+
+interface ContratoAdmin {
+  dataInicio: string | null;
+  diaVencimento: number | null;
+  proximoVencimento: { data: string; diasRestantes: number } | null;
 }
 
 interface ModulosAdmin {
@@ -34,7 +55,9 @@ interface CervejariaAdmin {
   corSecundaria?: string | null;
   corPaleta?: BrandTheme | null;
   modulos: ModulosAdmin;
-  mesAtual: MesAtualStats;
+  metricasMes: MetricasMes;
+  caixasAbertos: CaixaAberto[];
+  contrato: ContratoAdmin;
   _count: { usuarios: number; eventos: number };
   usuarios: Array<{ id: string; nome: string; email: string }>;
 }
@@ -62,7 +85,97 @@ function CervejariaLogo({ nome, logoUrl }: { nome: string; logoUrl?: string | nu
   );
 }
 
-function MesAtualResumo({ stats }: { stats: MesAtualStats }) {
+function useAgora(intervaloMs = 60_000): number {
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setAgora(Date.now()), intervaloMs);
+    return () => window.clearInterval(id);
+  }, [intervaloMs]);
+  return agora;
+}
+
+function OperacaoStatus({ caixas, agora }: { caixas: CaixaAberto[]; agora: number }) {
+  if (caixas.length === 0) return <span className="badge-inactive">Fechado</span>;
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      {caixas.map((caixa) => {
+        const ms = tempoAbertoMs(caixa.abertoEm, agora);
+        const alerta = ms >= CAIXA_ABERTO_ALERTA_MS;
+        return (
+          <div key={caixa.id} className="min-w-0">
+            <span
+              className={alerta ? 'badge-warning' : 'badge-live'}
+              title={`Aberto em ${new Date(caixa.abertoEm).toLocaleString('pt-BR')}`}
+            >
+              {alerta ? '⚠ ' : ''}Operando · {formatTempoAberto(ms)}
+            </span>
+            <p className="text-xs text-ink-faint mt-1 truncate max-w-[180px]">
+              {caixa.tipo === 'EVENTO' ? 'Evento: ' : ''}{caixa.local}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ContratoResumo({ contrato }: { contrato: ContratoAdmin }) {
+  const vencimento = descreverVencimento(contrato.proximoVencimento);
+  if (!contrato.dataInicio && !vencimento) return <span className="text-ink-faint">—</span>;
+  return (
+    <div className="text-sm">
+      {contrato.dataInicio && <p className="text-ink-soft">Desde {formatDataCivil(contrato.dataInicio)}</p>}
+      {vencimento && (
+        <p className={`text-xs mt-0.5 ${contrato.proximoVencimento!.diasRestantes <= 3 ? 'text-orange-dark font-semibold' : 'text-ink-faint'}`}>
+          {vencimento}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ContratoFields({
+  dataInicio,
+  diaVencimento,
+  onDataInicioChange,
+  onDiaVencimentoChange,
+}: {
+  dataInicio: string;
+  diaVencimento: string;
+  onDataInicioChange: (valor: string) => void;
+  onDiaVencimentoChange: (valor: string) => void;
+}) {
+  return (
+    <>
+      <div>
+        <label className="label" htmlFor="contrato-inicio">Início do contrato</label>
+        <input
+          id="contrato-inicio"
+          type="date"
+          className="input"
+          value={dataInicio}
+          onChange={(e) => onDataInicioChange(e.target.value)}
+        />
+      </div>
+      <div>
+        <label className="label" htmlFor="contrato-vencimento">Dia de vencimento</label>
+        <input
+          id="contrato-vencimento"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={31}
+          placeholder="1 a 31"
+          className="input"
+          value={diaVencimento}
+          onChange={(e) => onDiaVencimentoChange(e.target.value)}
+        />
+      </div>
+    </>
+  );
+}
+
+function MesAtualResumo({ stats }: { stats: MetricasMes }) {
   return (
     <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-line text-sm">
       <div>
@@ -136,12 +249,16 @@ export function AdminCervejariasPage() {
   const [editing, setEditing] = useState<CervejariaAdmin | null>(null);
   const [error, setError] = useState('');
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [mesSelecionado, setMesSelecionado] = useState('');
+  const agora = useAgora();
   const [form, setForm] = useState({
     cervejariaNome: '',
     donoNome: '',
     donoEmail: '',
     donoSenha: '',
     donoSenhaConfirm: '',
+    dataInicioContrato: '',
+    diaVencimento: '',
   });
   const [corPrimaria, setCorPrimaria] = useState(BRANDING_DEFAULT_PRIMARY);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -176,7 +293,15 @@ export function AdminCervejariasPage() {
   );
 
   const resetForm = () => {
-    setForm({ cervejariaNome: '', donoNome: '', donoEmail: '', donoSenha: '', donoSenhaConfirm: '' });
+    setForm({
+      cervejariaNome: '',
+      donoNome: '',
+      donoEmail: '',
+      donoSenha: '',
+      donoSenhaConfirm: '',
+      dataInicioContrato: '',
+      diaVencimento: '',
+    });
     setCorPrimaria(BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
@@ -192,6 +317,8 @@ export function AdminCervejariasPage() {
       donoEmail: c.usuarios[0]?.email ?? '',
       donoSenha: '',
       donoSenhaConfirm: '',
+      dataInicioContrato: c.contrato.dataInicio ?? '',
+      diaVencimento: c.contrato.diaVencimento ? String(c.contrato.diaVencimento) : '',
     });
     setCorPrimaria(c.corPrimaria ?? BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
@@ -204,29 +331,48 @@ export function AdminCervejariasPage() {
     resetForm();
   };
 
-  const { data: cervejarias, isLoading } = useQuery({
-    queryKey: ['admin-cervejarias'],
-    queryFn: () => api.get<CervejariaAdmin[]>('/api/admin/cervejarias'),
+  const { data: mesesDisponiveis } = useQuery({
+    queryKey: ['admin-metricas-meses'],
+    queryFn: () => api.get<{ meses: Array<{ chave: string; label: string }> }>('/api/admin/metricas/meses'),
+    select: (data) => data.meses,
+  });
+
+  const { data: cervejarias, isLoading, isFetching, error: listError } = useQuery({
+    queryKey: ['admin-cervejarias', mesSelecionado],
+    queryFn: () => api.get<CervejariaAdmin[]>(
+      `/api/admin/cervejarias${mesSelecionado ? `?mes=${encodeURIComponent(mesSelecionado)}` : ''}`,
+    ),
+    placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
   });
 
   const stats = useMemo(() => {
-    if (!cervejarias) return { total: 0, ativas: 0, usuarios: 0, eventos: 0, faturamentoMes: 0, comandasMes: 0, mes: '' };
+    if (!cervejarias) return { total: 0, ativas: 0, operando: 0, faturamentoMes: 0, comandasMes: 0, mes: '' };
     return {
       total: cervejarias.length,
       ativas: cervejarias.filter((c) => c.ativo).length,
-      usuarios: cervejarias.reduce((s, c) => s + c._count.usuarios, 0),
-      eventos: cervejarias.reduce((s, c) => s + c._count.eventos, 0),
-      faturamentoMes: cervejarias.reduce((s, c) => s + c.mesAtual.faturamento, 0),
-      comandasMes: cervejarias.reduce((s, c) => s + c.mesAtual.comandasAtendidas, 0),
-      mes: cervejarias[0]?.mesAtual.mes ?? '',
+      operando: cervejarias.filter((c) => c.caixasAbertos.length > 0).length,
+      faturamentoMes: cervejarias.reduce((s, c) => s + c.metricasMes.faturamento, 0),
+      comandasMes: cervejarias.reduce((s, c) => s + c.metricasMes.comandasAtendidas, 0),
+      mes: cervejarias[0]?.metricasMes.mes ?? '',
     };
   }, [cervejarias]);
+
+  const contratoValido = () => {
+    if (!form.diaVencimento) return true;
+    const dia = Number(form.diaVencimento);
+    return Number.isInteger(dia) && dia >= 1 && dia <= 31;
+  };
 
   const handleCreate = (e: FormEvent) => {
     e.preventDefault();
     const pwdErr = validatePasswordPair(form.donoSenha, form.donoSenhaConfirm);
     if (pwdErr) {
       setError(pwdErr);
+      return;
+    }
+    if (!contratoValido()) {
+      setError('Dia de vencimento deve estar entre 1 e 31');
       return;
     }
     setError('');
@@ -238,6 +384,10 @@ export function AdminCervejariasPage() {
     const pwdErr = validatePasswordPair(form.donoSenha, form.donoSenhaConfirm, { optional: true });
     if (pwdErr) {
       setError(pwdErr);
+      return;
+    }
+    if (!contratoValido()) {
+      setError('Dia de vencimento deve estar entre 1 e 31');
       return;
     }
     setError('');
@@ -254,6 +404,8 @@ export function AdminCervejariasPage() {
       return api.post('/api/admin/cervejarias/provision', {
         nome: form.cervejariaNome,
         dono: { nome: form.donoNome, email: form.donoEmail, senha: form.donoSenha },
+        dataInicioContrato: form.dataInicioContrato || null,
+        diaVencimento: form.diaVencimento ? Number(form.diaVencimento) : null,
       });
     },
     onSuccess: () => {
@@ -271,6 +423,8 @@ export function AdminCervejariasPage() {
       data.append('cervejariaNome', form.cervejariaNome);
       data.append('donoNome', form.donoNome);
       data.append('donoEmail', form.donoEmail);
+      data.append('dataInicioContrato', form.dataInicioContrato);
+      data.append('diaVencimento', form.diaVencimento);
       if (form.donoSenha) data.append('donoSenha', form.donoSenha);
       if (corPrimaria && /^#[0-9a-fA-F]{6}$/.test(corPrimaria)) data.append('corPrimaria', corPrimaria);
       if (logoFile) data.append('logo', logoFile);
@@ -310,12 +464,21 @@ export function AdminCervejariasPage() {
       api.patch<CervejariaAdmin>(`/api/admin/cervejarias/${id}/ativo`, { ativo }),
     onMutate: ({ id }) => setTogglingId(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] }),
+    onError: (err) => {
+      alert(err instanceof ApiError ? err.message : 'Não foi possível alterar o status da empresa');
+      queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
+    },
     onSettled: () => setTogglingId(null),
   });
 
   const handleToggle = (c: CervejariaAdmin) => {
+    if (c.ativo && c.caixasAbertos.length > 0) {
+      const locais = c.caixasAbertos.map((caixa) => caixa.local).join(', ');
+      alert(`"${c.nome}" está com caixa aberto (${locais}). Feche o caixa antes de desativar a empresa.`);
+      return;
+    }
     const msg = c.ativo
-      ? `Desativar "${c.nome}"? Dono e atendentes não poderão mais fazer login.`
+      ? `Desativar "${c.nome}"? Dono e atendentes serão desconectados e não poderão fazer login nem abrir caixa. Nenhum dado será apagado.`
       : `Reativar "${c.nome}"? Usuários vinculados poderão fazer login novamente.`;
     if (confirm(msg)) {
       toggleMutation.mutate({ id: c.id, ativo: !c.ativo });
@@ -334,26 +497,53 @@ export function AdminCervejariasPage() {
             {stats.mes && <span className="text-ink-faint"> · Métricas de {stats.mes}</span>}
           </p>
         </div>
-        <button className="touch-btn-primary min-h-12 px-8 shrink-0 self-start lg:self-auto" onClick={() => setShowModal(true)}>
-          + Nova Empresa
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end shrink-0">
+          <div>
+            <label className="label" htmlFor="admin-mes">Mês das métricas</label>
+            <select
+              id="admin-mes"
+              className="input min-h-12 sm:w-48"
+              value={mesSelecionado}
+              onChange={(e) => setMesSelecionado(e.target.value)}
+            >
+              {(mesesDisponiveis ?? []).map((mes, index) => (
+                <option key={mes.chave} value={index === 0 ? '' : mes.chave}>
+                  {mes.label}{index === 0 ? ' (atual)' : ''}
+                </option>
+              ))}
+              {!mesesDisponiveis && <option value="">Mês atual</option>}
+            </select>
+          </div>
+          <button className="touch-btn-primary min-h-12 px-8" onClick={() => setShowModal(true)}>
+            + Nova Empresa
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-4">
+      {listError && (
+        <div className="alert-error">
+          {listError instanceof ApiError ? listError.message : 'Não foi possível carregar as empresas'}
+        </div>
+      )}
+
+      <div className={`flex flex-wrap gap-4 transition-opacity ${isFetching ? 'opacity-70' : ''}`}>
         <StatCard label="Total" value={stats.total} />
         <StatCard label="Ativas" value={stats.ativas} />
+        <StatCard label="Operando agora" value={stats.operando} />
         <StatCard label={`Faturamento ${stats.mes}`} value={formatCurrency(stats.faturamentoMes)} />
         <StatCard label={`Comandas ${stats.mes}`} value={stats.comandasMes} />
       </div>
 
       {cervejarias && cervejarias.length > 0 && (
-        <div className="hidden lg:block card p-0 overflow-x-auto">
-          <table className="w-full text-left min-w-[1100px]">
+        <div className={`hidden lg:block card p-0 overflow-x-auto transition-opacity ${isFetching ? 'opacity-70' : ''}`}>
+          <table className="w-full text-left min-w-[1320px]">
             <thead>
               <tr className="border-b border-line text-xs text-ink-faint uppercase tracking-wide">
                 <th className="px-4 py-4 font-medium w-16"><span className="sr-only">Logo</span></th>
                 <th className="px-4 py-4 font-medium">Empresa</th>
                 <th className="px-4 py-4 font-medium">Proprietário</th>
+                <th className="px-4 py-4 font-medium">Contrato</th>
+                <th className="px-4 py-4 font-medium">Operação</th>
                 <th className="px-4 py-4 font-medium text-right">Faturamento</th>
                 <th className="px-4 py-4 font-medium text-center">Comandas</th>
                 <th className="px-4 py-4 font-medium text-center">Produtos</th>
@@ -381,13 +571,19 @@ export function AdminCervejariasPage() {
                     <p className="text-xs text-ink-faint mt-0.5 truncate max-w-[180px]">{c.usuarios[0]?.email}</p>
                   </td>
                   <td className="px-4 py-4 text-ink-soft">{c.usuarios[0]?.nome ?? '—'}</td>
-                  <td className="px-4 py-4 text-right font-semibold text-brand-600">
-                    {formatCurrency(c.mesAtual.faturamento)}
+                  <td className="px-4 py-4">
+                    <ContratoResumo contrato={c.contrato} />
                   </td>
-                  <td className="px-4 py-4 text-center">{c.mesAtual.comandasAtendidas}</td>
-                  <td className="px-4 py-4 text-center">{c.mesAtual.tiposProduto}</td>
+                  <td className="px-4 py-4">
+                    <OperacaoStatus caixas={c.caixasAbertos} agora={agora} />
+                  </td>
+                  <td className="px-4 py-4 text-right font-semibold text-brand-600">
+                    {formatCurrency(c.metricasMes.faturamento)}
+                  </td>
+                  <td className="px-4 py-4 text-center">{c.metricasMes.comandasAtendidas}</td>
+                  <td className="px-4 py-4 text-center">{c.metricasMes.tiposProduto}</td>
                   <td className="px-4 py-4 text-ink-soft max-w-[160px] truncate">
-                    {c.mesAtual.produtoMaisVende ?? '—'}
+                    {c.metricasMes.produtoMaisVende ?? '—'}
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex items-center justify-center gap-2">
@@ -435,16 +631,24 @@ export function AdminCervejariasPage() {
                 onToggle={() => handleToggle(c)}
               />
             </div>
-            <div className="mt-2">
-            </div>
             {c.usuarios[0] && (
               <>
                 <p className="text-sm text-ink-muted mt-2">{c.usuarios[0].nome}</p>
                 <p className="text-sm text-ink-faint truncate">{c.usuarios[0].email}</p>
               </>
             )}
-            <p className="text-xs text-ink-faint mt-2">Mês: {c.mesAtual.mes}</p>
-            <MesAtualResumo stats={c.mesAtual} />
+            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-line">
+              <div>
+                <p className="text-ink-faint text-xs mb-1">Operação</p>
+                <OperacaoStatus caixas={c.caixasAbertos} agora={agora} />
+              </div>
+              <div>
+                <p className="text-ink-faint text-xs mb-1">Contrato</p>
+                <ContratoResumo contrato={c.contrato} />
+              </div>
+            </div>
+            <p className="text-xs text-ink-faint mt-3">Mês: {c.metricasMes.mes}</p>
+            <MesAtualResumo stats={c.metricasMes} />
             <div className="flex gap-3 mt-3 pt-3 border-t border-line">
               <span className={`text-xs px-2 py-1 rounded-lg ${c.ativo ? 'badge-live' : 'badge-inactive'}`}>
                 {c.ativo ? 'Ativa' : 'Inativa'}
@@ -495,6 +699,12 @@ export function AdminCervejariasPage() {
                 required
               />
             </div>
+            <ContratoFields
+              dataInicio={form.dataInicioContrato}
+              diaVencimento={form.diaVencimento}
+              onDataInicioChange={(v) => setForm({ ...form, dataInicioContrato: v })}
+              onDiaVencimentoChange={(v) => setForm({ ...form, diaVencimento: v })}
+            />
           </div>
 
           <p className="rounded-xl border border-line bg-surface-lighter px-4 py-3 text-sm text-ink-muted">
@@ -534,6 +744,12 @@ export function AdminCervejariasPage() {
                 required={false}
               />
             </div>
+            <ContratoFields
+              dataInicio={form.dataInicioContrato}
+              diaVencimento={form.diaVencimento}
+              onDataInicioChange={(v) => setForm({ ...form, dataInicioContrato: v })}
+              onDiaVencimentoChange={(v) => setForm({ ...form, diaVencimento: v })}
+            />
           </div>
 
           {editing && <div className="space-y-2">
