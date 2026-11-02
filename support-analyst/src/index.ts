@@ -117,7 +117,7 @@ async function main(args: string[]): Promise<number> {
     let stopping = false;
     const stop = () => { stopping = true; };
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
-    console.log(`Support Analyst watch started: READ_ONLY_ELASTIC; TELEGRAM=${built.notifications.mode}; HEARTBEAT=${built.heartbeat}; env=${built.environment}; interval=${built.watch.intervalMs}ms; boot=${built.bootTime.toISOString()}`);
+    console.log(`Support Analyst watch started: READ_ONLY_ELASTIC; TELEGRAM=${built.notifications.mode}; HEARTBEAT=${built.heartbeat}; CAIXA=${built.cashNotices}; env=${built.environment}; interval=${built.watch.intervalMs}ms; boot=${built.bootTime.toISOString()}`);
     try {
       const sleep = async (ms: number) => { for (let waited = 0; waited < ms && !stopping; waited += 1_000) await delay(Math.min(1_000, ms - waited)); };
       const waited = await waitForElastic({ ping: built.ping, store: built.store, bootTime: built.bootTime, quietMinutes: built.watch.bootQuietMinutes, sleep, shouldStop: () => stopping, log: (line) => console.log(line) });

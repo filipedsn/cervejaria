@@ -60,6 +60,8 @@ export type WatchState = {
   cyclesSinceDigest: number;
   cyclesSkippedSinceDigest: number;
   firingsSinceDigest: Record<Severity, number>;
+  /** [CAIXA] notices: read watermark and audit event ids already announced (id -> @timestamp). */
+  cash?: { since: string; seen: Record<string, string> };
 };
 
 /** Technical context only: counts, route templates and technical ids. Never personal data. */

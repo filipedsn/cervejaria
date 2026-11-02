@@ -2,6 +2,7 @@ import type { WatchConfig } from '../config.js';
 import { formatDigest, formatFiring, formatInfo, formatReminder, formatResolved } from '../notify/format.js';
 import type { AnalystIndices } from '../sources/constants.js';
 import { ElasticSourceError } from '../sources/elastic.js';
+import type { CashNotices } from './cash.js';
 import type { HeartbeatResult, HeartbeatSender } from './heartbeat.js';
 import { probeUrl, readReleaseSha, type FetchLike } from './probes.js';
 import { inBootQuietWindow } from './startup.js';
@@ -30,6 +31,8 @@ export type WatchRunnerDependencies = {
   bootTime?: Date;
   /** Remote proof of life for the Kibana "analyst silent" rule; failures never break the cycle. */
   heartbeat?: HeartbeatSender;
+  /** [CAIXA] business notices; a failure keeps the watermark and never breaks the cycle. */
+  cash?: Pick<CashNotices, 'run'>;
   fetchImpl?: FetchLike;
   now?: () => Date;
 };
@@ -130,6 +133,11 @@ export class WatchRunner {
     for (const item of resolved) {
       await this.deps.notifications.send('RESOLVED', formatResolved(item.rule, item.minutes), item.rule.id);
       notified.push(`RESOLVED:${item.rule.id}`);
+    }
+
+    // Business events are not health alerts: they ignore the post-boot quiet window.
+    if (!failure && this.deps.cash) {
+      try { notified.push(...await this.deps.cash.run(state, now)); } catch { /* retried next cycle from the same watermark */ }
     }
 
     // 5. New release in production.

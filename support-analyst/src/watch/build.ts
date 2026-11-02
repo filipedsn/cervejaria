@@ -1,14 +1,15 @@
-import { resolve } from 'node:path';
-import { readAnalystConfig, readTelegramConfig, readWatchConfig, requireRuntimeElasticsearchConfig, type WatchConfig } from '../config.js';
+import { join, resolve } from 'node:path';
+import { readAnalystConfig, readCashNoticeConfig, readTelegramConfig, readWatchConfig, requireRuntimeElasticsearchConfig, type WatchConfig } from '../config.js';
 import { NotificationService } from '../notify/service.js';
 import { ElasticsearchSources } from '../sources/index.js';
+import { CashNotices } from './cash.js';
 import { ElasticHeartbeat, readHeartbeatConfig } from './heartbeat.js';
 import { WatchRunner } from './runner.js';
 import { elasticPing, machineBootTime, type ElasticPing } from './startup.js';
 import { WatchStateStore } from './state.js';
 
 type Env = Record<string, string | undefined>;
-export type BuiltWatch = { ok: true; runner: WatchRunner; notifications: NotificationService; watch: WatchConfig; runtimeDir: string; store: WatchStateStore; ping: ElasticPing; bootTime: Date; environment: 'dev' | 'prd'; heartbeat: 'on' | 'off' };
+export type BuiltWatch = { ok: true; runner: WatchRunner; notifications: NotificationService; watch: WatchConfig; runtimeDir: string; store: WatchStateStore; ping: ElasticPing; bootTime: Date; environment: 'dev' | 'prd'; heartbeat: 'on' | 'off'; cashNotices: 'on' | 'off' };
 
 /** Validates every gate before any network call. The watch does not use the pilot preflight. */
 export function buildWatch(env: Env): BuiltWatch | { ok: false; reason: string } {
@@ -22,6 +23,8 @@ export function buildWatch(env: Env): BuiltWatch | { ok: false; reason: string }
   if (!watch.config.enabled) return { ok: false, reason: 'SUPPORT_ANALYST_WATCH_ENABLED=true is required' };
   const telegram = readTelegramConfig(env);
   if (!telegram.ok) return telegram;
+  const cash = readCashNoticeConfig(env);
+  if (!cash.ok) return cash;
   const environment = runtime.config.environment;
   const beat = readHeartbeatConfig(env, environment);
   if (!beat.ok) return beat;
@@ -31,6 +34,13 @@ export function buildWatch(env: Env): BuiltWatch | { ok: false; reason: string }
   const store = new WatchStateStore(runtimeDir);
   const bootTime = machineBootTime();
   const heartbeat = beat.config ? new ElasticHeartbeat(beat.config, environment) : undefined;
-  const runner = new WatchRunner({ config: watch.config, elastic, notifications, store, environment, bootTime, heartbeat });
-  return { ok: true, runner, notifications, watch: watch.config, runtimeDir, store, ping: elasticPing(elastic), bootTime, environment, heartbeat: heartbeat ? 'on' : 'off' };
+  const cashNotices = cash.config.enabled
+    ? new CashNotices({
+      elastic,
+      auditIndex: elastic.indexNames().audit,
+      sender: new NotificationService({ config: { ...telegram.config, maxPerHour: cash.config.maxPerHour }, runtimeDir: join(runtimeDir, 'cash') }),
+    })
+    : undefined;
+  const runner = new WatchRunner({ config: watch.config, elastic, notifications, store, environment, bootTime, heartbeat, cash: cashNotices });
+  return { ok: true, runner, notifications, watch: watch.config, runtimeDir, store, ping: elasticPing(elastic), bootTime, environment, heartbeat: heartbeat ? 'on' : 'off', cashNotices: cashNotices ? 'on' : 'off' };
 }
