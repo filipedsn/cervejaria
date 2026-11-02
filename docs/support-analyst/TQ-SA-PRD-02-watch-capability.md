@@ -54,9 +54,9 @@ A regra `quiver-tap-analyst-heartbeat-missing-prd` (a cada 5 min, nenhum batimen
 - Dentro do contêiner o processo sempre tem o mesmo PID; o lock trata um arquivo com o próprio PID como sobra de reinício.
 - A janela pós-boot usa o uptime do VPS (o contêiner enxerga o do host): após reboot do servidor, 10 min sem alerta enquanto o Elastic sobe.
 
-## Reserva no PC (tarefa desabilitada) e janela pós-boot
+## Reserva no PC (desligada por marcador) e janela pós-boot
 
-Desde o TAP-171 a tarefa abaixo fica desabilitada (`Disable-ScheduledTask`), sem apagar. Para usá-la como reserva: deixe o contêiner em `SUPPORT_ANALYST_TELEGRAM_DRY_RUN=true` (ou parado) e rode `Enable-ScheduledTask` + `Start-ScheduledTask`, para não haver dois plantões enviando ao Telegram.
+Desde o TAP-171 a tarefa abaixo continua registrada, mas não sobe o watch: `run-analyst.ps1` encerra com código 0 quando existe `deploy/runtime/support-analyst-prd.disabled` (`Disable-ScheduledTask` exige elevação, porque a tarefa foi registrada elevada). Para usar a reserva: deixe o contêiner em `SUPPORT_ANALYST_TELEGRAM_DRY_RUN=true` (ou parado), apague o marcador e rode `Start-ScheduledTask`, para não haver dois plantões enviando ao Telegram.
 
 `scripts/support-analyst/install-watch-task.ps1` registra a tarefa `QuiverTap-SupportAnalyst-Watch-PRD`. Ela dispara na partida do Windows (60 s depois) e no logon, roda como S4U (sem sessão aberta e sem guardar senha) e tem RestartCount 999 com intervalo de 1 min, sem limite de tempo e IgnoreNew.
 
