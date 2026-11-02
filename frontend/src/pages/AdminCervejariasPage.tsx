@@ -104,7 +104,7 @@ function OperacaoStatus({ caixas, agora }: { caixas: CaixaAberto[]; agora: numbe
         return (
           <div key={caixa.id} className="min-w-0">
             <span
-              className={alerta ? 'badge-warning' : 'badge-live'}
+              className={`whitespace-nowrap ${alerta ? 'badge-warning' : 'badge-live'}`}
               title={`Aberto em ${new Date(caixa.abertoEm).toLocaleString('pt-BR')}`}
             >
               {alerta ? '⚠ ' : ''}Operando · {formatTempoAberto(ms)}
@@ -536,20 +536,20 @@ export function AdminCervejariasPage() {
 
       {cervejarias && cervejarias.length > 0 && (
         <div className={`hidden lg:block card p-0 overflow-x-auto transition-opacity ${isFetching ? 'opacity-70' : ''}`}>
-          <table className="w-full text-left min-w-[1320px]">
+          <table className="w-full text-left min-w-[1120px]">
             <thead>
               <tr className="border-b border-line text-xs text-ink-faint uppercase tracking-wide">
-                <th className="px-4 py-4 font-medium w-16"><span className="sr-only">Logo</span></th>
-                <th className="px-4 py-4 font-medium">Empresa</th>
-                <th className="px-4 py-4 font-medium">Proprietário</th>
-                <th className="px-4 py-4 font-medium">Contrato</th>
-                <th className="px-4 py-4 font-medium">Operação</th>
-                <th className="px-4 py-4 font-medium text-right">Faturamento</th>
-                <th className="px-4 py-4 font-medium text-center">Comandas</th>
-                <th className="px-4 py-4 font-medium text-center">Produtos</th>
-                <th className="px-4 py-4 font-medium">Mais vendido</th>
-                <th className="px-4 py-4 font-medium text-center">Status</th>
-                <th className="px-4 py-4 font-medium text-center">Ações</th>
+                <th className="px-3 py-4 font-medium w-16"><span className="sr-only">Logo</span></th>
+                <th className="px-3 py-4 font-medium">Empresa</th>
+                <th className="px-3 py-4 font-medium">Proprietário</th>
+                <th className="px-3 py-4 font-medium">Contrato</th>
+                <th className="px-3 py-4 font-medium">Operação</th>
+                <th className="px-3 py-4 font-medium text-right">Faturamento</th>
+                <th className="px-3 py-4 font-medium text-center">Comandas</th>
+                <th className="px-3 py-4 font-medium text-center">Produtos</th>
+                <th className="px-3 py-4 font-medium">Mais vendido</th>
+                <th className="px-3 py-4 font-medium text-center">Status</th>
+                <th className="px-3 py-4 font-medium text-center">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -560,32 +560,32 @@ export function AdminCervejariasPage() {
                     !c.ativo ? 'opacity-60' : ''
                   }`}
                 >
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-4">
                     <CervejariaLogo nome={c.nome} logoUrl={c.logoUrl} />
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-4">
                     <p className="font-semibold">{c.nome}</p>
                     {!c.ativo && (
                       <span className="text-xs text-danger">Inativa</span>
                     )}
                     <p className="text-xs text-ink-faint mt-0.5 truncate max-w-[180px]">{c.usuarios[0]?.email}</p>
                   </td>
-                  <td className="px-4 py-4 text-ink-soft">{c.usuarios[0]?.nome ?? '—'}</td>
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-4 text-ink-soft">{c.usuarios[0]?.nome ?? '—'}</td>
+                  <td className="px-3 py-4">
                     <ContratoResumo contrato={c.contrato} />
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-4">
                     <OperacaoStatus caixas={c.caixasAbertos} agora={agora} />
                   </td>
-                  <td className="px-4 py-4 text-right font-semibold text-brand-600">
+                  <td className="px-3 py-4 text-right font-semibold text-brand-600">
                     {formatCurrency(c.metricasMes.faturamento)}
                   </td>
-                  <td className="px-4 py-4 text-center">{c.metricasMes.comandasAtendidas}</td>
-                  <td className="px-4 py-4 text-center">{c.metricasMes.tiposProduto}</td>
-                  <td className="px-4 py-4 text-ink-soft max-w-[160px] truncate">
+                  <td className="px-3 py-4 text-center">{c.metricasMes.comandasAtendidas}</td>
+                  <td className="px-3 py-4 text-center">{c.metricasMes.tiposProduto}</td>
+                  <td className="px-3 py-4 text-ink-soft max-w-[160px] truncate">
                     {c.metricasMes.produtoMaisVende ?? '—'}
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-4">
                     <div className="flex items-center justify-center gap-2">
                       <ToggleAtivo
                         ativo={c.ativo}
@@ -596,7 +596,7 @@ export function AdminCervejariasPage() {
                       />
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-center">
+                  <td className="px-3 py-4 text-center">
                     <button
                       type="button"
                       className="touch-btn-secondary touch-btn-sm"
