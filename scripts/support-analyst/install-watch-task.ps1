@@ -1,4 +1,5 @@
-# Tarefa agendada do watch do Support Analyst PRD: parte com o Windows e no logon do usuario.
+# Tarefa agendada do watch do Support Analyst: parte com o Windows e no logon do usuario.
+# Desde o TAP-171 so -Target dev instala; o watch PRD roda no conteiner do VPS. -Uninstall/-Status seguem para prd.
 #   -Install    registra (ou atualiza) a tarefa. Pode exigir PowerShell "Executar como administrador".
 #   -Uninstall  remove a tarefa.
 #   -Status     mostra a tarefa, a ultima execucao e o estado local do watch (padrao).
@@ -61,6 +62,7 @@ function Show-WatchStatus {
 
 switch ($PSCmdlet.ParameterSetName) {
   'Install' {
+    if ($Target -eq 'prd') { throw 'O watch PRD roda no conteiner quiver-tap-support-analyst do VPS (TAP-171); use -Target dev para o PC.' }
     if (-not (Test-Path -LiteralPath (Join-Path $root "deploy\runtime\support-analyst-$Target.env"))) {
       Write-Warning "deploy\runtime\support-analyst-$Target.env ainda nao existe; a tarefa vai falhar ate o arquivo ser criado (G11)."
     }
