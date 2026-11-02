@@ -26,7 +26,16 @@ if (-not $env:SUPPORT_ANALYST_RUNTIME_DIR) { $env:SUPPORT_ANALYST_RUNTIME_DIR = 
 if (-not [IO.Path]::IsPathRooted($env:SUPPORT_ANALYST_RUNTIME_DIR)) { $env:SUPPORT_ANALYST_RUNTIME_DIR = Join-Path $root $env:SUPPORT_ANALYST_RUNTIME_DIR }
 
 $entry = Join-Path $root 'support-analyst\dist\index.js'
-if (-not (Test-Path -LiteralPath $entry)) { throw 'support-analyst nao compilado. Rode: npm run build --prefix support-analyst' }
+# A tarefa roda o dist; sem recompilar, um merge na main nunca entraria em vigor.
+function Update-AnalystBuild {
+  $newest = Get-ChildItem -LiteralPath (Join-Path $root 'support-analyst\src') -Recurse -Filter '*.ts' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ((Test-Path -LiteralPath $entry) -and $newest.LastWriteTime -le (Get-Item -LiteralPath $entry).LastWriteTime) { return 'atual' }
+  & npm.cmd run build --prefix (Join-Path $root 'support-analyst') 2>&1 | Out-Null
+  if ($LASTEXITCODE -eq 0) { return 'recompilado' }
+  return "falhou (codigo $LASTEXITCODE)"
+}
+$build = Update-AnalystBuild
+if (-not (Test-Path -LiteralPath $entry)) { throw "support-analyst nao compilado ($build). Rode: npm run build --prefix support-analyst" }
 $flag = @{ 'watch' = '--watch-run'; 'pilot' = '--pilot-run'; 'watch-once' = '--watch-once'; 'pilot-once' = '--pilot-once'; 'notify-test' = '--notify-test' }[$Mode]
 Set-Location (Join-Path $root 'support-analyst')
 
@@ -41,7 +50,9 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $ErrorActionPreference = 'Continue'
 while ($true) {
   $log = Join-Path $logDir ("{0}-{1:yyyyMMdd}.log" -f $Mode, (Get-Date))
+  "[$(Get-Date -Format o)] build do analista: $build" | Out-File -FilePath $log -Append -Encoding utf8
   & node $entry $flag 2>&1 | ForEach-Object { "$_" } | Out-File -FilePath $log -Append -Encoding utf8
+  $build = Update-AnalystBuild
   "[$(Get-Date -Format o)] processo saiu com codigo $LASTEXITCODE; reiniciando em 30s" | Out-File -FilePath $log -Append -Encoding utf8
   Start-Sleep -Seconds 30
 }
