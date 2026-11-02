@@ -11,10 +11,8 @@ import {
 import { Modal } from '../components/Modal';
 import { Loading } from '../components/Loading';
 import { ToggleAtivo } from '../components/ToggleAtivo';
-import { BrandingEditorFields, BRANDING_DEFAULT_PRIMARY, normalizeTheme } from '../components/BrandingEditorFields';
+import { LogoUploadField } from '../components/LogoUploadField';
 import { PasswordWithConfirmFields, validatePasswordPair } from '../components/PasswordWithConfirmFields';
-import { mensagemConfirmacaoEstoque } from '../lib/operacao-capacidades';
-import type { BrandTheme } from '../types';
 
 interface MetricasMes {
   chave: string;
@@ -51,9 +49,6 @@ interface CervejariaAdmin {
   slug: string;
   ativo: boolean;
   logoUrl?: string | null;
-  corPrimaria?: string | null;
-  corSecundaria?: string | null;
-  corPaleta?: BrandTheme | null;
   modulos: ModulosAdmin;
   metricasMes: MetricasMes;
   caixasAbertos: CaixaAberto[];
@@ -207,42 +202,6 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function ModuloOption({
-  titulo,
-  descricao,
-  marcado,
-  onChange,
-}: {
-  titulo: string;
-  descricao: string;
-  marcado: boolean;
-  onChange: (valor: boolean) => void;
-}) {
-  return (
-    <label className="card flex cursor-pointer items-start gap-3 py-3">
-      <input
-        type="checkbox"
-        className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
-        checked={marcado}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span className="min-w-0">
-        <span className="block font-semibold">{titulo}</span>
-        <span className="block text-xs text-ink-faint">{descricao}</span>
-      </span>
-    </label>
-  );
-}
-
-type Enablements = { taps: boolean; inventory: boolean; kitchen: boolean };
-const CAPABILITY_COPY: Record<keyof Enablements, { title: string; description: string }> = {
-  taps: { title: 'Torneiras de chope', description: 'Usar torneiras de chope no ponto de venda.' },
-  inventory: { title: 'Controle de estoque', description: 'Controlar saldo e movimentação dos produtos.' },
-  kitchen: { title: 'Cozinha / preparo', description: 'Usar o fluxo de preparo de pedidos.' },
-};
-const CAPABILITY_KEYS = Object.keys(CAPABILITY_COPY) as (keyof Enablements)[];
-const ENABLEMENTS_PADRAO: Enablements = { taps: false, inventory: false, kitchen: false };
-
 export function AdminCervejariasPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
@@ -260,16 +219,8 @@ export function AdminCervejariasPage() {
     dataInicioContrato: '',
     diaVencimento: '',
   });
-  const [corPrimaria, setCorPrimaria] = useState(BRANDING_DEFAULT_PRIMARY);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [enablements, setEnablements] = useState<Enablements>({ ...ENABLEMENTS_PADRAO });
-
-  const { data: editingConfiguration, isLoading: isEditingConfigurationLoading } = useQuery({
-    queryKey: ['admin-operational-configuration', editing?.id],
-    enabled: Boolean(editing?.id),
-    queryFn: () => api.get<Record<`${keyof Enablements}Enabled`, boolean> & { configurationSource?: 'LEGACY' | 'CANONICAL_PDV' }>(`/api/admin/cervejarias/${editing!.id}/configuracao-operacional`),
-  });
 
   useEffect(() => {
     if (!logoFile) return;
@@ -277,20 +228,6 @@ export function AdminCervejariasPage() {
     setLogoPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [logoFile]);
-
-  useEffect(() => {
-    if (!editingConfiguration) return;
-    setEnablements({
-      taps: editingConfiguration.tapsEnabled,
-      inventory: editingConfiguration.inventoryEnabled,
-      kitchen: editingConfiguration.kitchenEnabled,
-    });
-  }, [editingConfiguration]);
-
-  const savedTheme = useMemo(
-    () => (editing ? normalizeTheme(editing.corPaleta ?? null, editing.corPrimaria ?? null) : null),
-    [editing],
-  );
 
   const resetForm = () => {
     setForm({
@@ -302,10 +239,8 @@ export function AdminCervejariasPage() {
       dataInicioContrato: '',
       diaVencimento: '',
     });
-    setCorPrimaria(BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
-    setEnablements({ ...ENABLEMENTS_PADRAO });
     setError('');
   };
 
@@ -320,7 +255,6 @@ export function AdminCervejariasPage() {
       dataInicioContrato: c.contrato.dataInicio ?? '',
       diaVencimento: c.contrato.diaVencimento ? String(c.contrato.diaVencimento) : '',
     });
-    setCorPrimaria(c.corPrimaria ?? BRANDING_DEFAULT_PRIMARY);
     setLogoFile(null);
     setLogoPreview(null);
     setError('');
@@ -391,12 +325,7 @@ export function AdminCervejariasPage() {
       return;
     }
     setError('');
-    const alterouEstoque = editingConfiguration?.inventoryEnabled !== undefined && editingConfiguration.inventoryEnabled !== enablements.inventory;
-    const confirmacaoEstoque = alterouEstoque
-      ? confirm(mensagemConfirmacaoEstoque(enablements.inventory))
-      : false;
-    if (alterouEstoque && !confirmacaoEstoque) return;
-    updateMutation.mutate({ confirmacaoEstoque });
+    updateMutation.mutate();
   };
 
   const createMutation = useMutation({
@@ -417,7 +346,7 @@ export function AdminCervejariasPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ confirmacaoEstoque }: { confirmacaoEstoque: boolean }) => {
+    mutationFn: () => {
       if (!editing) throw new Error('Nenhuma empresa selecionada');
       const data = new FormData();
       data.append('cervejariaNome', form.cervejariaNome);
@@ -426,37 +355,14 @@ export function AdminCervejariasPage() {
       data.append('dataInicioContrato', form.dataInicioContrato);
       data.append('diaVencimento', form.diaVencimento);
       if (form.donoSenha) data.append('donoSenha', form.donoSenha);
-      if (corPrimaria && /^#[0-9a-fA-F]{6}$/.test(corPrimaria)) data.append('corPrimaria', corPrimaria);
       if (logoFile) data.append('logo', logoFile);
-      return Promise.all([
-        api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' }),
-        api.patch(`/api/admin/cervejarias/${editing.id}/configuracao-operacional`, {
-          tapsEnabled: enablements.taps,
-          inventoryEnabled: enablements.inventory,
-          kitchenEnabled: enablements.kitchen,
-          ...(confirmacaoEstoque ? { confirmacaoEstoque: true } : {}),
-        }),
-      ]);
+      return api.postFormData<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}`, data, { method: 'PATCH' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-operational-configuration', editing?.id] });
       closeEdit();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao atualizar'),
-  });
-
-  const reextractMutation = useMutation({
-    mutationFn: () => {
-      if (!editing) throw new Error('Nenhuma empresa selecionada');
-      return api.post<CervejariaAdmin>(`/api/admin/cervejarias/${editing.id}/branding/reextract`);
-    },
-    onSuccess: (updated) => {
-      setEditing(updated);
-      setCorPrimaria(updated.corPrimaria ?? BRANDING_DEFAULT_PRIMARY);
-      queryClient.invalidateQueries({ queryKey: ['admin-cervejarias'] });
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao reanalisar logo'),
   });
 
   const toggleMutation = useMutation({
@@ -752,35 +658,18 @@ export function AdminCervejariasPage() {
             />
           </div>
 
-          {editing && <div className="space-y-2">
-            {isEditingConfigurationLoading || !editingConfiguration ? (
-              <p role="status" className="text-sm text-ink-muted">Carregando capacidades operacionais...</p>
-            ) : <>
-            <label className="label">Capacidades operacionais</label>
-            <p className="text-xs text-ink-faint">Defina os recursos que fazem parte deste ponto de venda.</p>
-            {CAPABILITY_KEYS.map((key) => (
-              <ModuloOption key={key} titulo={CAPABILITY_COPY[key].title} descricao={CAPABILITY_COPY[key].description} marcado={enablements[key]} onChange={(value) => setEnablements((current) => ({ ...current, [key]: value }))} />
-            ))}
-            </>}
-          </div>}
-
-          <BrandingEditorFields
+          <LogoUploadField
             currentLogoUrl={editing?.logoUrl}
             newLogoPreview={logoPreview}
             onLogoSelect={(file) => {
               setLogoFile(file);
               if (!file) setLogoPreview(null);
             }}
-            corPrimaria={corPrimaria}
-            onCorPrimariaChange={setCorPrimaria}
-            savedTheme={savedTheme}
-            onReextract={editing?.logoUrl ? () => reextractMutation.mutate() : undefined}
-            reextractPending={reextractMutation.isPending}
             disabled={updateMutation.isPending}
             logoLabel={logoFile ? 'Trocar imagem selecionada' : 'Enviar nova logo'}
           />
 
-          <button type="submit" className="touch-btn-primary w-full" disabled={updateMutation.isPending || reextractMutation.isPending}>
+          <button type="submit" className="touch-btn-primary w-full" disabled={updateMutation.isPending}>
             {updateMutation.isPending ? 'Salvando...' : 'Salvar alterações'}
           </button>
         </form>
