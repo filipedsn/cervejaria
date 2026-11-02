@@ -212,6 +212,17 @@ export function readWatchConfig(env: Env, environment: AnalystEnvironment): { ok
   return { ok: true, config: { enabled: enabled === 'true', publicUrl, networkCheckUrl, freshnessMaxMinutes, errorLogThreshold, reminderMinutes, digestHour, intervalMs, bootQuietMinutes, kibanaUrl } };
 }
 
+export type CashNoticeConfig = { enabled: boolean; maxPerHour: number };
+
+/** [CAIXA] notices on cash open/close: on by default, with their own hourly budget apart from the alerts. */
+export function readCashNoticeConfig(env: Env): { ok: true; config: CashNoticeConfig } | { ok: false; reason: string } {
+  const enabled = env.SUPPORT_ANALYST_CASH_NOTICES ?? 'true';
+  if (enabled !== 'true' && enabled !== 'false') return { ok: false, reason: 'SUPPORT_ANALYST_CASH_NOTICES must be true or false' };
+  const maxPerHour = Number(env.SUPPORT_ANALYST_CASH_MAX_PER_HOUR ?? '60');
+  if (!Number.isSafeInteger(maxPerHour) || maxPerHour < 1 || maxPerHour > 100) return { ok: false, reason: 'SUPPORT_ANALYST_CASH_MAX_PER_HOUR must be an integer between 1 and 100' };
+  return { ok: true, config: { enabled: enabled === 'true', maxPerHour } };
+}
+
 /** Telegram settings. Dry-run is the default; live mode needs token and chat. */
 export function readTelegramConfig(env: Env): { ok: true; config: TelegramConfig } | { ok: false; reason: string } {
   const enabled = env.SUPPORT_ANALYST_TELEGRAM_ENABLED ?? 'false';

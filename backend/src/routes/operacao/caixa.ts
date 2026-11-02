@@ -19,6 +19,7 @@ import {
 import { getCardapioTurno, salvarCardapioTurno, alterarPrecoCardapioTurno } from '../../lib/operacao/sessao-cardapio.js';
 import { getProdutoIdsFromCardapioOperacao, validateProdutosCardapioOperacao } from '../../lib/operacao/cardapio.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
+import { caixaAuditNomes } from '../../lib/operacao/caixa-audit.js';
 import { recordDivergenciaCaixa } from '../../lib/business-metrics.js';
 import { centavos } from '../../lib/operacao/venda.js';
 import { diaOperacional } from '../../lib/operacao/venda.js';
@@ -196,6 +197,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
         entidadeTipo: 'SessaoCaixaOperacao',
         entidadeId: sessao.id,
         metadata: {
+          ...(await caixaAuditNomes(cervejariaId, sessao.pontoVendaId, tx)),
           modoEncerramento: 'ADMINISTRATIVO',
           sessaoCaixaId: sessao.id,
           pontoVendaId: sessao.pontoVendaId,
@@ -553,14 +555,14 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       ocorrenciaId: body.ocorrenciaId,
       confirmarDataDiferente: body.confirmarDataDiferente,
     });
-    void registrarTransacao({
+    void caixaAuditNomes(cervejariaId, body.pontoVendaId).then((nomes) => registrarTransacao({
       cervejariaId,
       tipo: 'CASH_REGISTER_OPENED',
       usuarioId: user.sub,
       entidadeId: sessao.id,
-      metadata: { pontoVendaId: body.pontoVendaId, trocoInicial: body.trocoInicial, ocorrenciaId: sessao.ocorrenciaId ?? null },
+      metadata: { ...nomes, pontoVendaId: body.pontoVendaId, trocoInicial: body.trocoInicial, ocorrenciaId: sessao.ocorrenciaId ?? null, abertoEm: new Date(sessao.abertoEm).toISOString() },
       payload: sessao,
-    });
+    }));
     if (!(await usuarioPode(user, 'cash.values.read'))) {
       return reply.status(201).send({ id: sessao.id, pontoVendaId: body.pontoVendaId, status: sessao.status, abertoEm: sessao.abertoEm, valoresRestritos: true });
     }
@@ -657,13 +659,18 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
         Math.abs(centavos(dif.cartaoCredito))
       : 0;
     if (divCent > 0) recordDivergenciaCaixa(divCent);
-    void registrarTransacao({
+    void caixaAuditNomes(cervejariaId, body.pontoVendaId).then((nomes) => registrarTransacao({
       cervejariaId,
       tipo: 'CASH_REGISTER_CLOSED',
       usuarioId: user.sub,
-      metadata: { pontoVendaId: body.pontoVendaId, divergenciaCentavos: divCent },
+      metadata: {
+        ...nomes,
+        pontoVendaId: body.pontoVendaId,
+        divergenciaCentavos: divCent,
+        ...(resumo.fechadoEm ? { fechadoEm: new Date(resumo.fechadoEm).toISOString() } : {}),
+      },
       payload: resumo,
-    });
+    }));
     return resumo;
   });
 

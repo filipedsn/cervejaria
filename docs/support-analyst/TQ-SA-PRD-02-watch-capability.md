@@ -60,6 +60,26 @@ Em 2026-11-02 o agente PRD saiu do PC: a tarefa `QuiverTap-SupportAnalyst-Watch-
 
 Ao subir, o processo espera o Elastic com backoff de 5, 10, 30 e 60 s e depois tenta a cada 60 s. Nesse período o estado local fica como "aguardando rede". Durante os primeiros 10 min após o boot (`SUPPORT_ANALYST_BOOT_QUIET_MINUTES`) nenhum alerta é enviado; os detectores continuam contando. Um lock com PID de processo morto é removido sozinho.
 
+## Avisos de caixa `[CAIXA]` (TAP-174)
+
+A cada ciclo, depois das leituras do Elastic, o watch procura em `logs-audit*.otel-prd*` as ações `transacao.cash_register_opened`, `transacao.cash_register_closed` e `transacao.cash_register_administrative_closed` (só `event.outcome: success`, sem `test.synthetic`) e manda um aviso por evento:
+
+```
+[CAIXA] 🟢 Caixa aberto
+Empresa: <nome da empresa>
+Unidade: <ponto de venda>
+Por: <nome de quem abriu>
+Quando: 01/11/2026, 18:02 (Brasília)
+```
+
+- Só o caixa da operação: o caixa de evento (modelo antigo) não gera aviso, por decisão do Filipe em 2026-11-01.
+- O backend grava `empresaNome`, `pontoVendaNome` e `abertoEm`/`fechadoEm` no `metadata` desses eventos (`backend/src/lib/operacao/caixa-audit.ts`). O exportador OTLP guarda o `metadata` como texto JSON e o analista lê os dois formatos. Em evento antigo, sem esses campos, a empresa sai pelo slug e o horário pelo `@timestamp`.
+- Cada evento sai uma vez: o estado do watch guarda a marca d'água (`cash.since`) e os `event.id` já avisados. A leitura recua 10 min para cobrir o atraso de ingestão; depois de muito tempo parado, só o último dia é avisado; na primeira execução só a marca é gravada (nenhum histórico).
+- Os avisos não respeitam a janela pós-boot (são eventos de negócio, não alertas de saúde). Falha de leitura só adia para o próximo ciclo.
+- Cota própria, separada dos alertas: `SUPPORT_ANALYST_CASH_MAX_PER_HOUR` (padrão 60), com estado e outbox em `<RUNTIME_DIR>/cash/notifications`. `SUPPORT_ANALYST_CASH_NOTICES=false` desliga.
+
 ## Telegram sem dados pessoais
+
+A única exceção é o aviso `[CAIXA]`, que leva o nome de quem abriu ou fechou o caixa, por decisão explícita do Filipe (TAP-174). Ele lê só ação, empresa, ponto de venda, nome do operador e horário; e-mail, IP e valores nunca são lidos.
 
 As mensagens `[ANALISTA]` levam só contagens, rotas-modelo (ids viram `:id`, sem query) e correlationIds. Nome, e-mail, IP, cidade e termo de busca nunca entram: o contexto passa por allow-list (`toSafeErrorContext`) e todo texto passa por `scrubPersonalData`. Testes unitários em `support-analyst/test/notify.test.ts` cobrem isso. Para investigar uma pessoa em PRD, rode `scripts/support-analyst/jornada-prd.ps1` no PC (mesmos argumentos de `npm run journey`). Ele executa a jornada dentro do contêiner do VPS por SSH (`docker exec`), com a chave de leitura do contêiner; nenhuma chave PRD fica no PC. A saída aparece no terminal, o contêiner guarda o arquivo em `/app/runtime/journeys` (`SUPPORT_ANALYST_JOURNEY_DIR`, volume `support_analyst_runtime`) e o PC guarda uma cópia em `deploy/runtime/support-analyst/journeys`, os dois com retenção de 30 dias. `--resumo` não tem LLM no VPS e devolve só a linha do tempo.
