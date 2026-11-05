@@ -2,11 +2,26 @@
 const FIELDS = new Set([
   'id', 'cervejariaId', 'usuarioId', 'operadorId', 'clienteId', 'comandaId', 'pedidoId',
   'produtoId', 'opcionalId', 'eventoId', 'pontoVendaId', 'sessaoCaixaId', 'tapId',
-  'quantidade', 'volumeMl', 'valor', 'total', 'desconto', 'preco', 'trocoInicial',
-  'valorRecebido', 'valorCorrigido', 'divergenciaCentavos', 'ativo', 'paraViagem',
+  'cardapioId', 'trailerId', 'ocorrenciaId', 'categoriaPdvId', 'comandaIds', 'produtoIds',
+  'quantidade', 'volumeMl', 'valor', 'total', 'desconto', 'preco', 'precoUnit', 'precos',
+  'trocoInicial', 'valorRecebido', 'valorCorrigido', 'divergenciaCentavos',
+  'contadoDinheiro', 'contadoPix', 'contadoCartaoDebito', 'contadoCartaoCredito',
+  'contadoDebito', 'contadoCredito', 'contadoCartao',
+  'quantidadeNova', 'estoqueMinimo', 'quantidadeEsperada', 'quantidadeMesas',
+  'ordem', 'ativo', 'paraViagem', 'deixarPendente', 'abrirAgora', 'confirmarDataDiferente',
+  'temCozinha', 'controlaEstoque', 'confirmacaoEstoque', 'exigePreparo', 'prepararEmPedidoSeparado',
+  'gamificada', 'usaCardapio', 'exibirKpisComanda', 'comandasColunaUnica',
+  'comandasAlarmeAtivo', 'comandasAlarmeIntervaloSegundos',
+  'operationMode', 'tapsEnabled', 'inventoryEnabled', 'kitchenEnabled',
+  'kitchenItemsChargeAtLaunch', 'allowCloseComandaWithPendingKitchenOrders',
+  'whatsappPedidoProntoEnabled', 'whatsappPedidoProntoNaCozinha', 'completeInitialSetup',
+  'podeDarDescontoOperacao',
   'itens', 'opcionais', 'pagamentos', 'forma', 'status', 'tipo', 'operacao', 'papel',
+  'escopo', 'tratamentoEstoque',
 ]);
-const ENUMS = new Set(['forma', 'status', 'tipo', 'operacao', 'papel']);
+const ENUMS = new Set([
+  'forma', 'status', 'tipo', 'operacao', 'papel', 'escopo', 'tratamentoEstoque', 'operationMode',
+]);
 
 export function summarizeRequestPayload(body: unknown): Record<string, unknown> | undefined {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
@@ -25,6 +40,13 @@ export function summarizeRequestPayload(body: unknown): Record<string, unknown> 
     }
     if (Array.isArray(value)) {
       if (value.length > 20) truncated = true;
+      if (key === 'produtoIds' || key === 'comandaIds') {
+        return value.slice(0, 20).map((item) => {
+          if (typeof item === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(item)) return item;
+          omitted = true;
+          return undefined;
+        }).filter((item) => item !== undefined);
+      }
       return value.slice(0, 20).map((item) => visit(item, key, depth + 1));
     }
     if (typeof value === 'object') {

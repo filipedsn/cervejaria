@@ -19,6 +19,7 @@ import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFie
 import {
   PaymentFormModal,
   createDefaultPaymentForm,
+  syncCoveringPaymentForm,
   toPaymentForma,
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
@@ -119,14 +120,7 @@ export function ComandaDetailPage() {
     if (!showPayment || !comanda) return;
     const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
     const total = Math.max(0, subtotal - parseCurrencyInput(descontoInput));
-    setPaymentForm((prev) => {
-      if (total <= 0.01) return prev.length === 0 ? prev : [];
-      if (prev.length === 0) return createDefaultPaymentForm(total);
-      if (prev.length !== 1) return prev;
-      const atual = parseCurrencyInput(prev[0].valor);
-      if (Math.abs(atual - total) < 0.01) return prev;
-      return [{ ...prev[0], valor: formatCurrencyInputFromNumber(total) }];
-    });
+    setPaymentForm((prev) => syncCoveringPaymentForm(prev, total));
   }, [descontoInput, showPayment, comanda?.itens, kitchenItemsChargeAtLaunch]);
 
   const addItemsMutation = useMutation({

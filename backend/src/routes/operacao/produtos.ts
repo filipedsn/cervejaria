@@ -17,6 +17,7 @@ import { canonicalPdvQaActivationEnabled } from '../../lib/canonical-pdv-operati
 import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { catalogoCategoriasCanonicoAtivo, categoriaPdvInputSchema, normalizarNomeCategoria } from '../../lib/operacao/catalogo-categorias.js';
 import { filtrarCategoriaChopeSeTapsDesligados } from '../../lib/operacao/categoria-chope-torneiras.js';
+import { diffPriceChanges, emitPriceChangeAudit } from '../../lib/audit/price-changes.js';
 
 const precoProdutoSchema = z.object({ volumeMl: z.number().int().positive(), preco: z.number().positive() });
 const tipoProdutoSchema = z.enum(['BEBIDA', 'COMIDA']);
@@ -396,6 +397,10 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       if (vendasHistoricas > 0) return reply.status(409).send({ error: 'Tipo/formato não pode ser alterado após vendas para preservar ranking e histórico de consumo' });
     }
 
+    const precosNovosPreview = body.precos ?? (!chope && body.precoUnit !== undefined ? [{ volumeMl: 1, preco: body.precoUnit }] : undefined);
+    const precosAntes = precosNovosPreview
+      ? await prisma.preco.findMany({ where: { produtoId: id }, select: { volumeMl: true, preco: true } })
+      : [];
     const atualizado = await prisma.$transaction(async (tx) => {
       const tipo = tipoAtualizado;
       const formato = formatoAtualizado;
@@ -430,6 +435,18 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         include: { precos: { orderBy: { volumeMl: 'asc' } } },
       });
     });
+    if (precosNovosPreview) {
+      emitPriceChangeAudit({
+        cervejariaId,
+        entityType: 'Produto',
+        entityId: id,
+        source: 'operacao.produto.update',
+        changes: diffPriceChanges(
+          precosAntes.map((p) => ({ produtoId: id, volumeMl: p.volumeMl, preco: p.preco })),
+          precosNovosPreview.map((p) => ({ produtoId: id, volumeMl: p.volumeMl, preco: p.preco })),
+        ),
+      });
+    }
     return respostaProduto(atualizado);
   });
 

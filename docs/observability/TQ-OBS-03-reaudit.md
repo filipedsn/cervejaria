@@ -44,7 +44,7 @@ O principal impedimento era que uma ação no navegador, sua chamada HTTP e os e
 
 | Área | Antes | Agora | Delta | Motivo |
 |---|---:|---:|---:|---|
-| Backend HTTP | 78 | 92 | +14 | Correlação/request ID, resposta de correlação, audit e erro técnico 500 estruturado. GET 2xx e endpoints excluídos continuam fora do audit. |
+| Backend HTTP | 78 | 92 | +14 | Correlação/request ID, resposta de correlação, audit e erro técnico 500 estruturado. GET 2xx é auditado sem body (exceto polling); exclusões totais permanecem em health/ready/audit/webhook/assets. |
 | Frontend | 62 | 88 | +26 | Wrapper registra resultado, duração e falhas de transporte com rota sanitizada e correlação. Clique/submit ainda não compartilha automaticamente o ID da requisição. |
 | Socket.IO | 28 | 75 | +47 | Sessão e rooms críticas agora têm eventos semânticos seguros. Disconnect/reconnect, leave e confirmação de entrega permanecem sem sinal. |
 | Autenticação/segurança | 68 | 88 | +20 | Login, logout, sessão e negações são semânticos, com reason code/papel; não há métrica/alerta dedicado para cada padrão de abuso. |

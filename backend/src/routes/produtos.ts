@@ -10,6 +10,7 @@ import { canonicalPdvQaActivationEnabled, readCanonicalPdvOperationalSettingsIfE
 import { requirePermissaoOuDono } from '../lib/operacao/permissoes.js';
 import { catalogoCategoriasCanonicoAtivo } from '../lib/operacao/catalogo-categorias.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
+import { diffPriceChanges, emitPriceChangeAudit } from '../lib/audit/price-changes.js';
 
 const opcionaisSchema = z.object({
   opcionalIds: z.array(z.string().min(1)).max(100),
@@ -322,6 +323,9 @@ export async function produtosRoutes(app: FastifyInstance) {
       }
     }
 
+    const precosAntes = body.precos
+      ? await prisma.preco.findMany({ where: { produtoId: id }, select: { volumeMl: true, preco: true } })
+      : [];
     const produto = await prisma.$transaction(async (tx) => {
       if (body.precos) {
         const precos = normalizePrecos(tipo, formato, body.precos);
@@ -356,6 +360,20 @@ export async function produtosRoutes(app: FastifyInstance) {
         include: { precos: { orderBy: { volumeMl: 'asc' } } },
       });
     });
+
+    if (body.precos) {
+      const precosNorm = normalizePrecos(tipo, formato, body.precos);
+      emitPriceChangeAudit({
+        cervejariaId: user.cervejariaId,
+        entityType: 'Produto',
+        entityId: id,
+        source: 'admin.produto.update',
+        changes: diffPriceChanges(
+          precosAntes.map((p) => ({ produtoId: id, volumeMl: p.volumeMl, preco: p.preco })),
+          precosNorm.map((p) => ({ produtoId: id, volumeMl: p.volumeMl, preco: p.preco })),
+        ),
+      });
+    }
 
     return produto;
   });
