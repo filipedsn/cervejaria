@@ -4,10 +4,53 @@ import { redactObject } from './redact.js';
 
 test('sanitizes secrets in strings, nested documents and deeply nested payloads', () => {
   const value = redactObject({ accessToken: 'secret-a', apiKey: 'secret-b', cpf: '12345678901',
-    nested: { value: 'Bearer private-secret', text: 'private@example.test', safe: 'x'.repeat(5000) } });
+    nested: { value: 'Bearer private-secret', text: 'ok', safe: 'x'.repeat(5000) } });
   const serialized = JSON.stringify(value);
-  assert.doesNotMatch(serialized, /secret-a|secret-b|12345678901|private-secret|private@example/);
+  assert.doesNotMatch(serialized, /secret-a|secret-b|12345678901|private-secret/);
   assert.ok(serialized.length < 1500);
+});
+
+test('preserva cadastro de cliente aninhado e no metadata', () => {
+  const value = redactObject({
+    clienteId: 'cli-1',
+    clienteNome: 'Priscilla Kfuri',
+    nome: 'Priscilla Kfuri',
+    telefone: '27999525261',
+    email: 'priscilla@example.test',
+    contaPendente: true,
+    payload: {
+      comanda: {
+        cliente: {
+          id: 'cli-1',
+          nome: 'Priscilla Kfuri',
+          telefone: '27999525261',
+          email: 'priscilla@example.test',
+        },
+      },
+    },
+    senha: 'secret',
+    cvv: '123',
+  });
+  assert.deepEqual(value, {
+    clienteId: 'cli-1',
+    clienteNome: 'Priscilla Kfuri',
+    nome: 'Priscilla Kfuri',
+    telefone: '27999525261',
+    email: 'priscilla@example.test',
+    contaPendente: true,
+    payload: {
+      comanda: {
+        cliente: {
+          id: 'cli-1',
+          nome: 'Priscilla Kfuri',
+          telefone: '27999525261',
+          email: 'priscilla@example.test',
+        },
+      },
+    },
+    senha: '[REDACTED]',
+    cvv: '[REDACTED]',
+  });
 });
 
 test('redige senha de autorização de correção de caixa', () => {

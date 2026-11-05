@@ -243,6 +243,13 @@ export async function fecharComandaComPagamentos(
     include: comandaFechadaInclude,
   });
 
+  if (fechada.cliente) {
+    metadata.clienteId = fechada.cliente.id;
+    metadata.clienteNome = fechada.cliente.nome;
+    if (fechada.cliente.telefone) metadata.telefone = fechada.cliente.telefone;
+    if (fechada.cliente.email) metadata.email = fechada.cliente.email;
+  }
+
   const tipoTransacao = origem === 'CAIXA' ? 'COMANDA_FECHADA' : 'COMANDA_FECHADA';
 
   await registrarTransacao(

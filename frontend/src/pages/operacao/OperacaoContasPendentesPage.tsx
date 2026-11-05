@@ -14,9 +14,9 @@ import { formatPhone } from '../../lib/phone';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import { useAuth } from '../../contexts/AuthContext';
-import type { CaixaResposta, ContaPendenteOperacao } from '../../lib/operacao';
+import { diaOperacionalQuery, type CaixaResposta, type ContaPendenteOperacao } from '../../lib/operacao';
 import { contaPendenteCorrespondeBusca } from '../../lib/contas-pendentes-busca';
-import { agruparContasPorCliente, dataConsumoConta, type GrupoContasCliente } from '../../lib/contas-pendentes-grupo';
+import { agruparContasPorCliente, chaveDataConsumoConta, formatDataConsumoContaPt, type GrupoContasCliente } from '../../lib/contas-pendentes-grupo';
 import { montarMensagemCobrancaContas } from '../../lib/contas-pendentes-cobranca';
 import type { Cervejaria } from '../../types';
 
@@ -40,7 +40,7 @@ function diasEmAbertoDesde(createdAt: string) {
 }
 
 function dataTurnoLabel(conta: ContaPendenteOperacao) {
-  return new Date(dataConsumoConta(conta)).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return formatDataConsumoContaPt(conta);
 }
 
 function Icon({ nome, className = 'h-5 w-5' }: { nome: 'pessoa' | 'moeda' | 'tendencia' | 'busca' | 'calendario' | 'relogio' | 'ordenar' | 'itens' | 'olho' | 'enviar' | 'whatsapp' | 'cartao'; className?: string }) {
@@ -110,8 +110,7 @@ export function OperacaoContasPendentesPage() {
   const gruposVisiveis = useMemo(() => {
     const filtradas = contas.filter((conta) => {
       if (!contaPendenteCorrespondeBusca(conta, busca)) return false;
-      const dataConsumo = dataLocal(dataConsumoConta(conta));
-      if (filtro === 'HOJE') return dataConsumo === dataLocal(new Date());
+      if (filtro === 'HOJE') return chaveDataConsumoConta(conta) === diaOperacionalQuery();
       if (filtro === 'ATRASADAS') return diasEmAbertoDesde(conta.createdAt) >= 3;
       return true;
     });
