@@ -3,7 +3,7 @@ import { Modal } from './Modal';
 import { CurrencyInput } from './CurrencyInput';
 import { formatCurrency } from '../lib/api';
 import { PAYMENT_LABELS } from '../types';
-import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
+import { parseCurrencyInput, formatCurrencyInputFromNumber, toCents, moneyEquals } from '../lib/currency';
 
 export type PaymentFormRow = {
   forma: 'DINHEIRO' | 'PIX' | 'CARTAO';
@@ -30,13 +30,24 @@ export function paymentSummary(form: PaymentFormRow[], total: number) {
   return {
     informed,
     remaining: diff,
-    isBalanced: Math.abs(diff) <= 0.01,
+    // Só equilibrado com diff exato em centavos (backend exige centavos exatos).
+    isBalanced: toCents(diff) === 0,
   };
 }
 
 export function createDefaultPaymentForm(total: number): PaymentFormRow[] {
-  if (total <= 0.01) return [];
+  if (toCents(total) <= 0) return [];
   return [{ forma: 'PIX', valor: formatCurrencyInputFromNumber(total) }];
+}
+
+/** Sync do formulário com pagamento único cobrindo o total — compara centavos, não float. */
+export function syncCoveringPaymentForm(prev: PaymentFormRow[], total: number): PaymentFormRow[] {
+  if (toCents(total) <= 0) return prev.length === 0 ? prev : [];
+  if (prev.length === 0) return createDefaultPaymentForm(total);
+  if (prev.length !== 1) return prev;
+  const atual = parseCurrencyInput(prev[0].valor);
+  if (moneyEquals(atual, total)) return prev;
+  return [{ ...prev[0], valor: formatCurrencyInputFromNumber(total) }];
 }
 
 type PaymentStep = 'form' | 'confirm' | 'defer-confirm';
@@ -79,7 +90,7 @@ export function PaymentFormModal({
   secondaryAction?: React.ReactNode;
 }) {
   const [step, setStep] = useState<PaymentStep>('form');
-  const isCourtesy = total <= 0.01;
+  const isCourtesy = toCents(total) <= 0;
   const { informed, remaining, isBalanced } = paymentSummary(paymentForm, total);
   const progress = total > 0 ? Math.min(100, (informed / total) * 100) : 100;
   const canReview = isCourtesy
@@ -323,7 +334,7 @@ export function PaymentFormModal({
                     onChange={(value) => updateRow(i, { valor: value })}
                     placeholder="R$ 0,00"
                   />
-                  {!isBalanced && remaining > 0.01 && (
+                  {!isBalanced && toCents(remaining) > 0 && (
                     <button
                       type="button"
                       onClick={() => fillRemaining(i)}

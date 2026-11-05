@@ -1,5 +1,6 @@
 import { CurrencyInput } from '../CurrencyInput';
 import { formatCurrency } from '../../lib/api';
+import { moneyEquals, toCents } from '../../lib/currency';
 
 export function PaymentDiscountFields({
   inputId,
@@ -40,7 +41,7 @@ export function PaymentDiscountFields({
         <span>Total com desconto</span>
         <span className="tabular-nums">{formatCurrency(total)}</span>
       </div>
-      {Math.abs(discountValue - subtotal) <= 0.01 && subtotal > 0 && (
+      {moneyEquals(discountValue, subtotal) && toCents(subtotal) > 0 && (
         <p className="text-xs text-success">Cortesia integral — não será necessário informar pagamento.</p>
       )}
     </div>

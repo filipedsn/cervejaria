@@ -1,5 +1,15 @@
 import { digitsOnly } from './phone';
 
+/** Converte reais para centavos inteiros (evita tolerância float em dinheiro). */
+export function toCents(value: number): number {
+  return Math.round(value * 100);
+}
+
+/** Compara dois valores monetários em centavos. */
+export function moneyEquals(a: number, b: number): boolean {
+  return toCents(a) === toCents(b);
+}
+
 /** Máscara BRL enquanto digita: centavos → R$ 12,34 */
 export function formatCurrencyInput(value: string): string {
   const digits = digitsOnly(value);
