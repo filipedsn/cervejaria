@@ -115,7 +115,7 @@ Classificação: “consistente” significa preenchido pelo produtor daquela ca
 
 Coberto: recebimento/contexto (exceto rotas excluídas), resposta, 4xx/5xx, autenticação/autorização via sinal HTTP, exceções 500, audit de argumentos e erros Prisma, e trace automático potencialmente com duração.
 
-Parcial/ausente: não há evento separado de request recebido; `duration` não é copiado ao audit; `requestId`/`correlationId` não existe; GET 2xx é omitido; `/health`, `/ready`, `/audit/events`, webhook e assets são totalmente excluídos; polling de cozinha/ranking/portal público é excluído em GET. Não há classificação de timeout, lentidão, erro de pool, deadlock ou cross-tenant além da rota/status/mensagem.
+Parcial/ausente: não há evento separado de request recebido; `duration` no audit GET/mutação usa `reply.elapsedTime` quando disponível. GET 2xx **é auditado** (`http.get`, rota template + status + duração, **sem body**), exceto polling em cozinha/ranking/portal público. `/health`, `/ready`, `/audit/events`, webhook e assets são totalmente excluídos. Não há classificação de timeout, lentidão, erro de pool, deadlock ou cross-tenant além da rota/status/mensagem. (Nota histórica: versões antigas deste doc diziam que GET 2xx era omitido; o código vigente em `audit-hooks.ts` já emite `http.get`.)
 
 **É possível reconstruir uma requisição problemática?** Parcialmente. Para uma mutação/erro há rota, status, ator/tenant quando resolvidos, payload redigido e possivelmente trace com SQL. Não é possível escolher uma requisição individual de forma confiável a partir de um request/correlation ID, nem ligar uma UI batch a ela de modo determinístico.
 

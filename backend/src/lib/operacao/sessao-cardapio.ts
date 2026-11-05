@@ -5,6 +5,7 @@ import { isBebidaChopeOperacao, isChopeConfiguravelNaTapOperacao } from '../prod
 import { toNumber } from '../utils.js';
 import { resolveEffectivePrice } from './preco-efetivo.js';
 import { resolveUniqueOpenCashSession } from './cash-session-resolution.js';
+import { diffPriceChanges, emitPriceChangeAudit } from '../audit/price-changes.js';
 
 type AplicarCardapioTurnoResult = { ok: true; count: number } | { error: string };
 import {
@@ -297,9 +298,28 @@ export async function alterarPrecoCardapioTurno(params: {
   }
 
   if (escopo === 'TURNO') {
+    let fromPreco: unknown = noTurno.precoUnit;
+    if (fromPreco == null && sessao.cardapioId) {
+      const templatePrice = await prisma.cardapioProduto.findFirst({
+        where: { cardapioId: sessao.cardapioId, produtoId, volumeMl },
+        select: { precoUnit: true },
+      });
+      fromPreco = templatePrice?.precoUnit ?? null;
+    }
     await prisma.sessaoCaixaProdutoOperacao.update({
       where: { id: noTurno.id },
       data: { precoUnit },
+    });
+    emitPriceChangeAudit({
+      cervejariaId,
+      entityType: 'SessaoCaixaProduto',
+      entityId: noTurno.id,
+      source: 'operacao.caixa.cardapio.preco',
+      escopo: 'TURNO',
+      changes: diffPriceChanges(
+        [{ produtoId, volumeMl, precoUnit: fromPreco }],
+        [{ produtoId, volumeMl, precoUnit }],
+      ),
     });
     return { ok: true as const, escopo: 'TURNO' as const };
   }
@@ -331,6 +351,18 @@ export async function alterarPrecoCardapioTurno(params: {
       where: { id: noTurno.id },
       data: { precoUnit: null },
     });
+  });
+
+  emitPriceChangeAudit({
+    cervejariaId,
+    entityType: 'Cardapio',
+    entityId: sessao.cardapioId,
+    source: 'operacao.caixa.cardapio.preco',
+    escopo: 'TEMPLATE',
+    changes: diffPriceChanges(
+      [{ produtoId, volumeMl, precoUnit: templateItem.precoUnit }],
+      [{ produtoId, volumeMl, precoUnit }],
+    ),
   });
 
   return { ok: true as const, escopo: 'TEMPLATE' as const };
