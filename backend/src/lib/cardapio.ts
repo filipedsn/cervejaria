@@ -3,6 +3,7 @@ import { isBebidaChope, isVendaUnitaria } from './produto-utils.js';
 import { toNumber } from './utils.js';
 import type { CardapioItemInput } from './cardapio-preco.js';
 import { syncOpenEventsWithCardapio } from './cardapio-event-sync.js';
+import { diffPriceChanges, emitPriceChangeAudit } from './audit/price-changes.js';
 
 export type { CardapioItemInput };
 
@@ -146,6 +147,10 @@ export async function getCardapioById(id: string, cervejariaId: string) {
 }
 
 async function replaceCardapioProdutos(cardapioId: string, cervejariaId: string, itens: CardapioItemInput[]) {
+  const before = await prisma.cardapioProduto.findMany({
+    where: { cardapioId, volumeMl: 0 },
+    select: { produtoId: true, volumeMl: true, precoUnit: true },
+  });
   await prisma.$transaction(async (tx) => {
     await tx.cardapioProduto.deleteMany({ where: { cardapioId, volumeMl: 0 } });
     if (itens.length > 0) {
@@ -162,6 +167,17 @@ async function replaceCardapioProdutos(cardapioId: string, cervejariaId: string,
       cervejariaId,
       produtoIds: itens.map((item) => item.produtoId),
     });
+  });
+  emitPriceChangeAudit({
+    cervejariaId,
+    entityType: 'Cardapio',
+    entityId: cardapioId,
+    source: 'cardapio.replace',
+    changes: diffPriceChanges(before, itens.map((item) => ({
+      produtoId: item.produtoId,
+      volumeMl: 0,
+      precoUnit: item.precoUnit,
+    }))),
   });
 }
 
