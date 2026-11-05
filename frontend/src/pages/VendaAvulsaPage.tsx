@@ -23,6 +23,7 @@ import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFie
 import {
   PaymentFormModal,
   createDefaultPaymentForm,
+  syncCoveringPaymentForm,
   toPaymentForma,
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
@@ -123,14 +124,7 @@ export function VendaAvulsaPage() {
 
   useEffect(() => {
     if (!showPayment) return;
-    setPaymentForm((prev) => {
-      if (totalComDesconto <= 0.01) return prev.length === 0 ? prev : [];
-      if (prev.length === 0) return createDefaultPaymentForm(totalComDesconto);
-      if (prev.length !== 1) return prev;
-      const atual = parseCurrencyInput(prev[0].valor);
-      if (Math.abs(atual - totalComDesconto) < 0.01) return prev;
-      return [{ ...prev[0], valor: formatCurrencyInputFromNumber(totalComDesconto) }];
-    });
+    setPaymentForm((prev) => syncCoveringPaymentForm(prev, totalComDesconto));
   }, [descontoInput, showPayment, totalComDesconto]);
 
   const tapsComChope = taps?.filter((t) => t.ativo && t.chopeAtual && isBebidaChope(t.chopeAtual)) ?? [];

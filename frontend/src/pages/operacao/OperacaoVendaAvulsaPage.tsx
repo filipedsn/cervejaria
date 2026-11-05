@@ -11,6 +11,7 @@ import { MobileActionBar } from '../../components/MobileActionBar';
 import {
   PaymentFormModal,
   createDefaultPaymentForm,
+  syncCoveringPaymentForm,
   toPaymentForma,
   type PaymentFormRow,
 } from '../../components/PaymentFormModal';
@@ -100,14 +101,7 @@ export function OperacaoVendaAvulsaPage() {
 
   useEffect(() => {
     if (!showPayment) return;
-    setPaymentForm((prev) => {
-      if (totalComDesconto <= 0.01) return prev.length === 0 ? prev : [];
-      if (prev.length === 0) return createDefaultPaymentForm(totalComDesconto);
-      if (prev.length !== 1) return prev;
-      const atual = parseCurrencyInput(prev[0].valor);
-      if (Math.abs(atual - totalComDesconto) < 0.01) return prev;
-      return [{ ...prev[0], valor: formatCurrencyInputFromNumber(totalComDesconto) }];
-    });
+    setPaymentForm((prev) => syncCoveringPaymentForm(prev, totalComDesconto));
   }, [descontoInput, showPayment, totalComDesconto]);
 
   const adicionarNoModal = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; tapId?: string; volumeMl?: number; precoUnit?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
