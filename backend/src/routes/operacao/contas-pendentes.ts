@@ -42,7 +42,12 @@ function resumoConta(conta: {
   return {
     id: conta.id,
     cliente: conta.cliente,
-    comanda: conta.comanda,
+    comanda: {
+      ...conta.comanda,
+      diaOperacional: conta.comanda.diaOperacional
+        ? conta.comanda.diaOperacional.toISOString().slice(0, 10)
+        : null,
+    },
     valorOriginal,
     recebido,
     saldo: Math.max(0, Math.round((valorOriginal - recebido) * 100) / 100),

@@ -6,7 +6,6 @@ const SENSITIVE_KEYS = new Set([
   'jwt',
   'authorization',
   'cookie',
-  'email',
   'endereco',
   'address',
   'jwt_secret',
@@ -16,14 +15,8 @@ const SENSITIVE_KEYS = new Set([
   'x-tap-geo-auth',
   'secret',
   'cpf', 'cnpj', 'documento', 'document', 'cvv', 'cvc', 'pan', 'cardnumber',
-  'nome', 'clientenome', 'observacao', 'observacoes',
+  'observacao', 'observacoes',
 ]);
-
-export function maskTelefone(value: string): string {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length < 4) return '***';
-  return `***${digits.slice(-4)}`;
-}
 
 function redactValue(key: string, value: unknown): unknown {
   const lower = key.toLowerCase();
@@ -31,15 +24,11 @@ function redactValue(key: string, value: unknown): unknown {
     SENSITIVE_KEYS.has(lower) ||
     lower.includes('senha') ||
     lower.includes('password') ||
-    lower.includes('email') ||
     lower.includes('endereco') ||
     lower.includes('address')
     || /token|secret|api[-_]?key|connection[-_]?string|database[-_]?url|card.?number|credit.?card|cvv|cvc/.test(lower)
   ) {
     return '[REDACTED]';
-  }
-  if (lower.includes('telefone') && typeof value === 'string') {
-    return maskTelefone(value);
   }
   return value;
 }
@@ -47,7 +36,7 @@ function redactValue(key: string, value: unknown): unknown {
 export function redactObject(value: unknown, depth = 0): unknown {
   if (depth > 6) return '[MAX_DEPTH]';
   if (typeof value === 'string') {
-    if (/\b(?:bearer|basic)\s+\S+|\beyJ[\w-]+\.[\w-]+\.[\w-]+|\b(?:postgres(?:ql)?|mysql|redis):\/\/\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(value)) return '[REDACTED]';
+    if (/\b(?:bearer|basic)\s+\S+|\beyJ[\w-]+\.[\w-]+\.[\w-]+|\b(?:postgres(?:ql)?|mysql|redis):\/\/\S+/i.test(value)) return '[REDACTED]';
     return value.length > 1000 ? value.slice(0, 1000) + '[TRUNCATED]' : value;
   }
   if (value == null || typeof value !== 'object') return value;

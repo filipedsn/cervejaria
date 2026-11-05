@@ -1,12 +1,12 @@
 import type { ContaPendenteOperacao } from './operacao';
-import { dataConsumoConta } from './contas-pendentes-grupo';
+import { formatDataConsumoContaPt } from './contas-pendentes-grupo';
 
 function formatCurrencyBr(valor: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
 }
 
 function dataTurnoPt(conta: ContaPendenteOperacao): string {
-  return new Date(dataConsumoConta(conta)).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return formatDataConsumoContaPt(conta);
 }
 
 function resumoItens(conta: ContaPendenteOperacao): string {
