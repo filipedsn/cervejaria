@@ -130,8 +130,26 @@ const defaultDependencies: AuditRouteDependencies = {
 
 export type AuditRouteTestOptions = { dependencies?: Partial<AuditRouteDependencies> };
 
+const UI_ERROR_KINDS = new Set([
+  'unhandledrejection',
+  'network',
+  'api_client',
+  'api_server',
+  'validation',
+  'ui_bug',
+  'unknown',
+]);
+
+function safeSemanticKey(value: unknown, max = 80): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const cleaned = value.trim().toLowerCase();
+  if (!cleaned || cleaned.length > max) return undefined;
+  if (!/^[a-z][a-z0-9._-]{0,79}$/.test(cleaned)) return undefined;
+  return cleaned;
+}
+
 /** Only telemetry keys produced by the client tracker are retained. */
-function safeUiMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> {
+export function safeUiMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!meta) return {};
   const out: Record<string, unknown> = {};
   const releaseSha = meta.frontendReleaseSha;
@@ -143,7 +161,35 @@ function safeUiMetadata(meta: Record<string, unknown> | undefined): Record<strin
   const line = meta.line;
   if (typeof line === 'number' && Number.isInteger(line) && line > 0 && line <= 10_000_000) out.line = line;
   const kind = meta.kind;
-  if (kind === 'unhandledrejection') out.kind = kind;
+  if (typeof kind === 'string' && UI_ERROR_KINDS.has(kind)) out.kind = kind;
+  if (typeof meta.handled === 'boolean') out.handled = meta.handled;
+  const feature = safeSemanticKey(meta.feature);
+  if (feature) out.feature = feature;
+  const operation = safeSemanticKey(meta.operation);
+  if (operation) out.operation = operation;
+  const scenario = safeSemanticKey(meta.scenario);
+  if (scenario) out.scenario = scenario;
+  const httpStatus = meta.httpStatus;
+  if (typeof httpStatus === 'number' && Number.isInteger(httpStatus) && httpStatus >= 0 && httpStatus <= 599) {
+    out.httpStatus = httpStatus;
+  }
+  const apiCode = typeof meta.apiCode === 'string' ? safeUiText(meta.apiCode, 120) : undefined;
+  if (apiCode) out.apiCode = apiCode;
+  const entityType = safeSemanticKey(meta.entityType, 40);
+  if (entityType) out.entityType = entityType;
+  const entityId = typeof meta.entityId === 'string' ? safeUiText(meta.entityId, 80) : undefined;
+  if (entityId) out.entityId = entityId;
+  if (meta.boundary === true) out.boundary = true;
+  const componentStack =
+    typeof meta.componentStack === 'string' ? safeMultilineText(meta.componentStack, 1500) : undefined;
+  if (componentStack) out.componentStack = componentStack;
+  if (typeof meta.correlationId === 'string' && validCorrelationId(meta.correlationId)) {
+    out.correlationId = meta.correlationId;
+  }
+  if (typeof meta.requestId === 'string') {
+    const requestId = safeUiText(meta.requestId, 200);
+    if (requestId) out.requestId = requestId;
+  }
   const sinceLastMs = meta.sinceLastMs;
   if (typeof sinceLastMs === 'number' && Number.isInteger(sinceLastMs) && sinceLastMs >= 0 && sinceLastMs <= 86_400_000) {
     out.sinceLastMs = sinceLastMs;
@@ -288,10 +334,21 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
       const option = typeof metadata.option === 'string' ? metadata.option : undefined;
       const searchTerm = event.type === 'search' ? safeUiText(event.search, 200) : undefined;
       const errorMessage = safeUiText(event.error?.message, 500);
+      const correlationId =
+        typeof metadata.correlationId === 'string' && validCorrelationId(metadata.correlationId)
+          ? metadata.correlationId
+          : undefined;
+      const requestId = typeof metadata.requestId === 'string' ? metadata.requestId : undefined;
+      const entityType = typeof metadata.entityType === 'string' ? metadata.entityType : undefined;
+      const entityId = typeof metadata.entityId === 'string' ? metadata.entityId : undefined;
 
       emit({
         action: `ui.${event.type}`,
         interactionId: event.interactionId,
+        ...(correlationId ? { correlationId } : {}),
+        ...(requestId ? { requestId } : {}),
+        ...(entityType ? { entityType } : {}),
+        ...(entityId ? { entityId } : {}),
         message: describeUiEvent(event, label, page, screen, option),
         outcome: event.type === 'error' ? 'failure' : 'success',
         ui: {

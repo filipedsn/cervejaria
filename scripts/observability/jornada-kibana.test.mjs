@@ -65,6 +65,8 @@ test('journeyRule: surto de ui.error agrupado por tela, sem acoes por padrao', (
   assert.equal(rule.params.timeWindowSize, 10);
   assert.deepEqual(rule.params.threshold, [5]);
   assert.match(rule.params.esQuery, /ui\.error/);
+  assert.match(rule.params.esQuery, /metadata\.handled/);
+  assert.match(rule.params.esQuery, /api_server/);
   assert.deepEqual(rule.actions, []);
   assert.ok(journeyRule('prd').tags.includes('production'));
   assert.deepEqual(journeyRule('dev', 9).params.threshold, [9]);

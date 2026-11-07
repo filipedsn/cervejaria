@@ -205,4 +205,30 @@ describe('observability alert enrich', () => {
     assert.match(ctx?.cenario ?? '', /navegador nao conseguiu falar com o servidor/i);
     assert.doesNotMatch(ctx?.cenario ?? '', /Execute npm run restart/i);
   });
+
+  it('ui.error cenario prefers metadata.kind/feature/operation/scenario', () => {
+    const log = parseAuditLogSource({
+      attributes: {
+        'event.action': 'ui.error',
+        'event.outcome': 'failure',
+        'cervejaria.slug': 'churrasquinho-do-thiago',
+        'user.name': 'Thiago Silva',
+        'ui.page': '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+        message: 'Erro na interface: falha generica',
+        metadata:
+          '{"handled":true,"kind":"network","feature":"comanda.detail","operation":"comanda.close","scenario":"network_unreachable"}',
+      },
+    });
+
+    const cenario = buildUiErrorCenario(log, {
+      ruleName: 'quiver-tap-ui-error-prd',
+      alertState: 'active',
+      reason: 'Document count is 1',
+    });
+
+    assert.match(cenario, /Detalhe da comanda/i);
+    assert.match(cenario, /operacao=comanda\.close/);
+    assert.match(cenario, /cenario=network_unreachable/);
+    assert.match(cenario, /navegador nao conseguiu falar com o servidor/i);
+  });
 });

@@ -275,12 +275,18 @@ export function trackHttpRequest(http: HttpRequestTelemetry): void {
   enqueue({ type: 'http_request', page: http.route, http });
 }
 
-export function trackUiError(message: string, stack?: string, meta?: Record<string, unknown>, errorName?: string): void {
+export function trackUiError(
+  message: string,
+  stack?: string,
+  meta?: Record<string, unknown>,
+  errorName?: string,
+  label = 'frontend_error',
+): void {
   if (!shouldEmitError(message, stack)) return;
   enqueue({
     type: 'error',
     page: currentPage(),
-    label: 'frontend_error',
+    label: collapseText(label, 300) || 'frontend_error',
     error: {
       message: message.slice(0, 500),
       ...(stack ? { stack: stack.slice(0, 4000) } : {}),
@@ -421,14 +427,36 @@ export function initAuditTracker(): void {
   window.addEventListener('error', (ev) => {
     const msg = ev.message || 'Erro JavaScript';
     const error = ev.error instanceof Error ? ev.error : undefined;
-    trackUiError(msg, error?.stack, { source: ev.filename, line: ev.lineno }, error?.name);
+    trackUiError(
+      msg,
+      error?.stack,
+      {
+        handled: false,
+        kind: 'ui_bug',
+        scenario: 'window_error',
+        source: ev.filename,
+        line: ev.lineno,
+      },
+      error?.name,
+      'window.error',
+    );
   });
 
   window.addEventListener('unhandledrejection', (ev) => {
     const reason = ev.reason;
     const msg = reason instanceof Error ? reason.message : String(reason);
     const error = reason instanceof Error ? reason : undefined;
-    trackUiError(msg, error?.stack, { kind: 'unhandledrejection' }, error?.name);
+    trackUiError(
+      msg,
+      error?.stack,
+      {
+        handled: false,
+        kind: error?.name === 'TypeError' || error?.name === 'ReferenceError' ? 'ui_bug' : 'unknown',
+        scenario: 'unhandledrejection',
+      },
+      error?.name,
+      'unhandledrejection',
+    );
   });
 
   initWebVitals();

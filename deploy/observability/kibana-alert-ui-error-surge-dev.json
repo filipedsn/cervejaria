@@ -17,7 +17,7 @@
       "logs-audit*.otel-dev"
     ],
     "timeField": "@timestamp",
-    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"term\":{\"attributes.event.action\":\"ui.error\"}}]}}}",
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"term\":{\"attributes.event.action\":\"ui.error\"}},{\"bool\":{\"should\":[{\"term\":{\"attributes.metadata.handled\":false}},{\"bool\":{\"must_not\":[{\"exists\":{\"field\":\"attributes.metadata.handled\"}}]}},{\"terms\":{\"attributes.metadata.kind\":[\"network\",\"api_server\",\"ui_bug\"]}}],\"minimum_should_match\":1}}]}}}",
     "size": 10,
     "timeWindowSize": 10,
     "timeWindowUnit": "m",
