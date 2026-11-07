@@ -49,8 +49,18 @@ export function describeWebVital(name: string, value: number, rating: string | u
   return `${name} ${formatted}${rating ? ` (${rating})` : ''} em ${screen}`;
 }
 
-export function describeUiError(screen: string, message: string): string {
-  return `Erro na interface em ${screen}: ${message}`;
+export function describeUiError(screen: string, message: string, intentSummary?: string): string {
+  const intent = intentSummary ? ` ao tentar "${intentSummary}"` : '';
+  return `Erro na interface em ${screen}${intent}: ${message}`;
+}
+
+export function describeUiActionResult(summary: string, screen: string, outcome: 'success' | 'failure'): string {
+  return outcome === 'success' ? `Concluiu "${summary}" em ${screen}` : `Falhou ao "${summary}" em ${screen}`;
+}
+
+/** Appends the functional scope (e.g. "Comanda #42 · Mesa 3") so the message stands alone. */
+export function withFunctionalScope(message: string, scope?: string): string {
+  return scope ? `${message} [${scope}]` : message;
 }
 
 export function describeNavigation(screen: string): string {
