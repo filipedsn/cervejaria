@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ComboInvalidoError, fatorPrecoCombo, precoBaseCombo, ratearPrecoCombo, resolverEscolhasCombo, validarGruposCombo } from './combo.js';
+import { ComboInvalidoError, converterProdutoEmCombo, fatorPrecoCombo, precoBaseCombo, ratearPrecoCombo, resolverEscolhasCombo, validarGruposCombo } from './combo.js';
 
 const produto = (id: string, extra: Record<string, unknown> = {}) => ({
   id, nome: id, ativo: true, combo: false, tipo: 'COMIDA', formato: null, categoria: 'Comidas',
@@ -135,5 +135,43 @@ describe('resolverEscolhasCombo', () => {
       /boi está indisponível/,
     );
     await assert.rejects(resolverEscolhasCombo(txCom([]), { ...base, escolhas: [] }), /ainda não tem composição/);
+  });
+});
+
+describe('converterProdutoEmCombo', () => {
+  const txConversao = (opts: { produto?: Record<string, unknown> | null; opcaoEmCombo?: unknown; saldo?: unknown } = {}) => {
+    const chamadas = { opcionaisRemovidos: false, update: null as unknown };
+    const tx = {
+      produto: {
+        findFirst: async () => (opts.produto === null ? null : { ...produto('jantinha'), precos: [{ volumeMl: 1 }], ...opts.produto }),
+        update: async (args: { data: unknown }) => { chamadas.update = args.data; return { id: 'jantinha' }; },
+      },
+      comboGrupoOpcao: { findFirst: async () => opts.opcaoEmCombo ?? null },
+      inventoryBalance: { findFirst: async () => opts.saldo ?? null },
+      produtoOpcionalVinculo: { deleteMany: async () => { chamadas.opcionaisRemovidos = true; } },
+    } as any;
+    return { tx, chamadas };
+  };
+
+  it('vira combo sem estoque nem preparo próprios e sem opcionais', async () => {
+    const { tx, chamadas } = txConversao();
+    await converterProdutoEmCombo(tx, 'tenant', 'jantinha');
+    assert.deepEqual(chamadas.update, { combo: true, exigePreparo: false, prepararEmPedidoSeparado: false, controlaEstoque: false });
+    assert.equal(chamadas.opcionaisRemovidos, true);
+  });
+
+  it('recusa chope, produto que já é combo ou item de outro combo', async () => {
+    await assert.rejects(converterProdutoEmCombo(txConversao({ produto: { tipo: 'BEBIDA', formato: 'CHOPE', categoria: 'Chope' } }).tx, 't', 'p'), /vendido por Tap/);
+    await assert.rejects(converterProdutoEmCombo(txConversao({ produto: { combo: true } }).tx, 't', 'p'), /já é um combo/);
+    await assert.rejects(
+      converterProdutoEmCombo(txConversao({ opcaoEmCombo: { grupo: { comboProduto: { nome: 'Janta' } } } }).tx, 't', 'p'),
+      /faz parte do combo Janta/,
+    );
+  });
+
+  it('exige estoque zerado antes de converter', async () => {
+    const { tx, chamadas } = txConversao({ saldo: { quantidade: 3 } });
+    await assert.rejects(converterProdutoEmCombo(tx, 't', 'p'), /tem 3 un em estoque/);
+    assert.equal(chamadas.update, null);
   });
 });

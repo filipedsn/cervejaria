@@ -176,6 +176,42 @@ export async function substituirComposicaoCombo(tx: TxClient, cervejariaId: stri
   return listarComposicaoCombo(tx, comboProdutoId);
 }
 
+/**
+ * Transforma um produto simples em combo. Preço de catálogo e cardápios ficam como estão
+ * até a composição ser salva; vendas antigas continuam como item comum.
+ */
+export async function converterProdutoEmCombo(tx: TxClient, cervejariaId: string, produtoId: string) {
+  const produto = await tx.produto.findFirst({
+    where: { id: produtoId, cervejariaId },
+    select: { id: true, nome: true, tipo: true, formato: true, categoria: true, combo: true, precos: { select: { volumeMl: true } } },
+  });
+  if (!produto) throw Object.assign(new Error('Produto não encontrado'), { statusCode: 404 });
+  if (produto.combo) throw new ComboInvalidoError(`${produto.nome} já é um combo`);
+  if (produto.categoria === 'Chope' || isBebidaChopeOperacao(produto)) {
+    throw new ComboInvalidoError(`${produto.nome} é vendido por Tap e não pode virar combo`);
+  }
+
+  const opcaoEmCombo = await tx.comboGrupoOpcao.findFirst({
+    where: { produtoId },
+    select: { grupo: { select: { comboProduto: { select: { nome: true } } } } },
+  });
+  if (opcaoEmCombo) {
+    throw new ComboInvalidoError(`${produto.nome} faz parte do combo ${opcaoEmCombo.grupo.comboProduto.nome}. Retire-o de lá antes de transformá-lo em combo`);
+  }
+
+  const saldo = await tx.inventoryBalance.findFirst({ where: { produtoId, NOT: { quantidade: 0 } }, select: { quantidade: true } });
+  if (saldo) {
+    throw new ComboInvalidoError(`${produto.nome} tem ${toNumber(saldo.quantidade).toLocaleString('pt-BR')} un em estoque. Zere o estoque antes de transformá-lo em combo`);
+  }
+
+  await tx.produtoOpcionalVinculo.deleteMany({ where: { produtoId } });
+  return tx.produto.update({
+    where: { id: produtoId },
+    data: { combo: true, exigePreparo: false, prepararEmPedidoSeparado: false, controlaEstoque: false },
+    select: { id: true },
+  });
+}
+
 export type ComponenteComboResolvido = {
   produtoId: string;
   nome: string;

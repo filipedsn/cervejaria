@@ -93,6 +93,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
   const [error, setError] = useState('');
   const [opcionaisProduto, setOpcionaisProduto] = useState<ProdutoOperacao | null>(null);
   const [composicaoProduto, setComposicaoProduto] = useState<ProdutoOperacao | null>(null);
+  const [confirmandoConversao, setConfirmandoConversao] = useState(false);
 
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const temCozinha = contexto.ativo && contexto.temCozinha;
@@ -125,6 +126,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
 
   const fechar = () => {
     setShowModal(false);
+    setConfirmandoConversao(false);
     setEditando(null);
     setForm({ ...FORM_VAZIO });
     setError('');
@@ -220,6 +222,16 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
       if (comboNovo) setComposicaoProduto(produto);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao salvar produto'),
+  });
+
+  const converterEmCombo = useMutation({
+    mutationFn: (produto: ProdutoOperacao) => api.post<ProdutoOperacao>(`/api/operacao/produtos/${produto.id}/converter-combo`, {}),
+    onSuccess: (produto) => {
+      queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] });
+      fechar();
+      setComposicaoProduto(produto);
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : 'Não foi possível transformar em combo'),
   });
 
   const alternarAtivo = useMutation({
@@ -517,6 +529,28 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </label>
           )}
 
+          {editando && !editando.combo && !isChopeOperacao(editando) && (
+            confirmandoConversao ? (
+              <div className="space-y-3 rounded-xl border border-brand-500/40 bg-brand-500/5 p-3 text-sm">
+                <p className="font-semibold">Transformar “{editando.nome}” em combo?</p>
+                <ul className="list-disc space-y-1 pl-5 text-ink-muted">
+                  <li>O estoque passa a ser baixado dos itens escolhidos; o saldo deste produto precisa estar zerado.</li>
+                  <li>Os opcionais vinculados são removidos e o preparo passa a seguir cada item.</li>
+                  <li>O preço nos cardápios continua valendo. O preço do catálogo vira o “a partir de” quando você salvar a composição.</li>
+                  <li>Vendas antigas não mudam. Enquanto a composição não for salva, o combo não pode ser vendido.</li>
+                </ul>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className="touch-btn-secondary" onClick={() => setConfirmandoConversao(false)} disabled={converterEmCombo.isPending}>Cancelar</button>
+                  <button type="button" className="touch-btn-primary" onClick={() => { setError(''); converterEmCombo.mutate(editando); }} disabled={converterEmCombo.isPending}>
+                    {converterEmCombo.isPending ? 'Transformando...' : 'Transformar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="touch-btn-ghost w-full" onClick={() => setConfirmandoConversao(true)}>Transformar em combo</button>
+            )
+          )}
+
           <button type="submit" className="touch-btn-primary w-full" disabled={salvar.isPending || (!form.combo && categoriaSelecionadaEhChope && !contexto.tapsEnabled)}>
             {salvar.isPending ? 'Salvando...' : 'Salvar'}
           </button>
@@ -532,7 +566,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
           onSaved={() => queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] })}
           comboId={composicaoProduto.id}
           comboNome={composicaoProduto.nome}
-          produtos={(produtos ?? []).filter((produto) => produto.ativo && !produto.combo && !isChopeOperacao(produto))}
+          produtos={(produtos ?? []).filter((produto) => produto.ativo && !produto.combo && produto.id !== composicaoProduto.id && !isChopeOperacao(produto))}
           usaCardapio={usaCardapio}
         />
       )}

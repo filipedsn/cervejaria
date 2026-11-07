@@ -18,7 +18,7 @@ import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { catalogoCategoriasCanonicoAtivo, categoriaPdvInputSchema, normalizarNomeCategoria } from '../../lib/operacao/catalogo-categorias.js';
 import { filtrarCategoriaChopeSeTapsDesligados } from '../../lib/operacao/categoria-chope-torneiras.js';
 import { diffPriceChanges, emitPriceChangeAudit } from '../../lib/audit/price-changes.js';
-import { composicaoComboSchema, listarComposicaoCombo, substituirComposicaoCombo } from '../../lib/operacao/combo.js';
+import { composicaoComboSchema, converterProdutoEmCombo, listarComposicaoCombo, substituirComposicaoCombo } from '../../lib/operacao/combo.js';
 import { resolveUniqueOpenCashSession } from '../../lib/operacao/cash-session-resolution.js';
 import { operacaoUsaCardapio } from '../../lib/cardapio-toggle.js';
 
@@ -359,6 +359,21 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       ),
     });
     return { precoCatalogo: Number(precoDepois[0]?.preco ?? 0), grupos };
+  });
+
+  app.post('/:id/converter-combo', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    await prisma.$transaction((tx) => converterProdutoEmCombo(tx, cervejariaId, id));
+    const produto = await prisma.produto.findUniqueOrThrow({
+      where: { id },
+      include: { precos: { orderBy: { volumeMl: 'asc' } }, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
+      omit: {
+        ...(catalogoCategoriasCanonicoAtivo() ? {} : { categoriaPdvId: true }),
+        ...(canonicalPdvQaActivationEnabled() ? {} : { prepararEmPedidoSeparado: true }),
+      },
+    });
+    return respostaProduto(produto);
   });
 
   app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
