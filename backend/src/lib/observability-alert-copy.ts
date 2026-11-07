@@ -70,13 +70,24 @@ const RULE_COPY: Record<string, AlertCopy> = {
     title: 'Pico de acesso nao autorizado',
     severity: 'medium',
     category: 'app',
-    summary:
-      'Muitas respostas HTTP 401 em pouco tempo — sessoes expiradas ou tentativas de acesso invalido.',
+    summary: 'Pico de respostas HTTP 401 — veja empresa, usuario e cenario no enriquecimento.',
     impact:
-      'Usuarios podem precisar fazer login de novo; nao indica necessariamente ataque.',
+      'Quem tentava a operacao pode precisar se identificar de novo; nao indica necessariamente ataque.',
     actions: [
-      'Confirme se houve deploy ou reinicio da API (invalida sessoes antigas).',
-      'Se persistir, verifique relatorios de IP e rotas no Kibana.',
+      'Leia o cenario do alerta (empresa, funcionalidade e motivo da API).',
+      'Se persistir sem explicacao de sessao/comanda, verifique IPs e rotas no Kibana.',
+    ],
+  },
+  'quiver-tap-401-surge-dev': {
+    title: 'Pico de acesso nao autorizado (DEV)',
+    severity: 'medium',
+    category: 'app',
+    summary: 'Pico de respostas HTTP 401 no DEV — veja empresa, usuario e cenario no enriquecimento.',
+    impact:
+      'Quem tentava a operacao pode precisar se identificar de novo; nao indica necessariamente ataque.',
+    actions: [
+      'Leia o cenario do alerta (empresa, funcionalidade e motivo da API).',
+      'Se persistir sem explicacao de sessao/comanda, verifique IPs e rotas no Kibana.',
     ],
   },
   'quiver-tap-api-ready-down-prd': {
@@ -337,6 +348,8 @@ const OPERATIONAL_RULE_KEYS = new Set([
   'quiver-tap-ui-error-dev',
   'quiver-tap-5xx-rate-prd',
   'quiver-tap-5xx-rate-dev',
+  'quiver-tap-401-surge-prd',
+  'quiver-tap-401-surge-dev',
 ]);
 
 /** Alertas de negocio (empresa, usuario, operacao) vs infra/SLO comuns a todas as empresas. */
@@ -347,7 +360,8 @@ export function isOperationalAlertRule(ruleName?: string): boolean {
   return (
     key.includes('transacao-failure') ||
     key.includes('ui-error') ||
-    key.includes('5xx-rate')
+    key.includes('5xx-rate') ||
+    key.includes('401-surge')
   );
 }
 

@@ -45,7 +45,104 @@ function humanizeActionToken(token: string): string {
     .join(' ');
 }
 
-export function resolveOperationLabel(action?: string, fallbackMessage?: string): string {
+/** Rotulo de negocio a partir da rota HTTP (ex.: portal PDV). */
+export function resolveRouteOperationLabel(route?: string, method?: string): string | undefined {
+  if (!route?.trim()) return undefined;
+  const r = route.trim().toLowerCase();
+  const m = (method ?? '').toUpperCase();
+
+  if (r.includes('/api/public/') && r.includes('/pontos-venda/') && /\/comanda\/?$/.test(r)) {
+    return m === 'GET' || !m
+      ? 'Consultar comanda/cardapio do cliente (portal PDV)'
+      : 'Atualizar comanda do cliente (portal PDV)';
+  }
+  if (r.includes('/api/public/') && r.includes('/cardapio')) {
+    return 'Consultar cardapio publico';
+  }
+  if (r === '/api/auth/login' || r.endsWith('/api/auth/login')) {
+    return 'Login';
+  }
+  if (r === '/api/auth/me' || r.endsWith('/api/auth/me')) {
+    return 'Verificar sessao';
+  }
+  return undefined;
+}
+
+/** Normaliza ids dinamicos da URL de UI para comparar padroes. */
+export function normalizeUiPath(path?: string): string | undefined {
+  if (!path?.trim()) return undefined;
+  let normalized = path.trim().split('?')[0] ?? path.trim();
+  try {
+    normalized = new URL(normalized, 'http://frontend.local').pathname;
+  } catch {
+    // keep as-is
+  }
+  return normalized
+    .replace(/\/+/g, '/')
+    .replace(/\/$/, '')
+    .replace(/\/[a-z0-9_-]{16,}(?=\/|$)/gi, '/:id')
+    .toLowerCase() || '/';
+}
+
+/**
+ * Funcionalidade legivel a partir de ui.page / ui.route do frontend.
+ * Ex.: /operacao/comandas/:id → Detalhe da comanda (Operacao)
+ */
+export function resolveUiFeatureLabel(path?: string): string | undefined {
+  const p = normalizeUiPath(path);
+  if (!p) return undefined;
+
+  const exact: Record<string, string> = {
+    '/': 'Inicio',
+    '/login': 'Login',
+    '/operacao': 'Operacao',
+    '/operacao/comandas': 'Lista de comandas (Operacao)',
+    '/operacao/comandas/nova': 'Nova comanda (Operacao)',
+    '/operacao/comandas/:id': 'Detalhe da comanda (Operacao)',
+    '/operacao/caixa': 'Caixa (Operacao)',
+    '/operacao/cozinha': 'Cozinha (Operacao)',
+    '/operacao/estoque': 'Estoque (Operacao)',
+    '/operacao/catalogo': 'Catalogo (Operacao)',
+    '/operacao/venda-avulsa': 'Venda avulsa (Operacao)',
+    '/operacao/contas-pendentes': 'Contas pendentes (Operacao)',
+    '/operacao/dashboard': 'Dashboard (Operacao)',
+    '/comandas': 'Lista de comandas',
+    '/comandas/:id': 'Detalhe da comanda',
+    '/caixa': 'Caixa',
+    '/cozinha': 'Cozinha',
+    '/estoque': 'Estoque',
+    '/dashboard': 'Dashboard',
+    '/cardapios': 'Cardapios',
+    '/produtos': 'Produtos',
+    '/clientes': 'Clientes',
+    '/clientes/:id': 'Detalhe do cliente',
+    '/admin/cervejarias': 'Admin de cervejarias',
+  };
+
+  if (exact[p]) return exact[p];
+
+  if (p.startsWith('/operacao/comandas/')) return 'Detalhe da comanda (Operacao)';
+  if (p.startsWith('/operacao/')) {
+    const rest = p.replace('/operacao/', '').split('/')[0] ?? '';
+    if (rest) return `${humanizeActionToken(rest)} (Operacao)`;
+    return 'Operacao';
+  }
+  if (p.startsWith('/portal') || p.includes('/p/')) return 'Portal do cliente';
+
+  const leaf = p.split('/').filter(Boolean).pop();
+  if (leaf && leaf !== ':id') return humanizeActionToken(leaf.replace(/-/g, '_'));
+  return undefined;
+}
+
+export function resolveOperationLabel(
+  action?: string,
+  fallbackMessage?: string,
+  route?: string,
+  method?: string,
+): string {
+  const fromRoute = resolveRouteOperationLabel(route, method);
+  if (fromRoute) return fromRoute;
+
   const key = action?.trim().toLowerCase();
   if (key && OPERATION_LABELS[key]) return OPERATION_LABELS[key];
 

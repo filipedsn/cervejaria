@@ -137,7 +137,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       correlationId,
       interactionId,
     });
-    throw new ApiError('Servidor indisponível. Execute npm run restart na raiz do projeto.', 0, undefined, correlationId);
+    throw new ApiError('Não foi possível falar com o servidor. Tente de novo.', 0, undefined, correlationId);
   }
 
   const returnedCorrelationId = res.headers.get(CORRELATION_ID_HEADER);
@@ -173,7 +173,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const message =
       body.error ??
       (res.status === 502 || res.status === 503
-        ? 'Backend offline. Execute npm run restart na raiz do projeto.'
+        ? 'Servidor temporariamente indisponível. Tente de novo em instantes.'
         : `Erro na requisição (${res.status})`);
     throw new ApiError(message, res.status, body, responseCorrelationId, responseRequestId);
   }

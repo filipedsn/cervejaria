@@ -8,7 +8,7 @@ import {
 } from './observability-alert-copy.js';
 import { formatObservabilityAlertTelegramText, truncateTelegramHtml } from './observability-alert-format.js';
 import { buildTechnicalDetailsFromLog } from './observability-alert-enrich.js';
-import { resolveOperationLabel } from './operation-labels.js';
+import { resolveOperationLabel, resolveUiFeatureLabel } from './operation-labels.js';
 
 describe('observability alert copy', () => {
   it('resolve copy for known 5xx rule', () => {
@@ -20,7 +20,21 @@ describe('observability alert copy', () => {
 
   it('classifies operational vs infra rules', () => {
     assert.equal(isOperationalAlertRule('quiver-tap-transacao-failure-prd'), true);
+    assert.equal(isOperationalAlertRule('quiver-tap-401-surge-prd'), true);
+    assert.equal(isOperationalAlertRule('quiver-tap-401-surge-dev'), true);
     assert.equal(isOperationalAlertRule('quiver-tap-api-ready-down-prd'), false);
+  });
+
+  it('maps public PDV comanda route to readable operation', () => {
+    assert.equal(
+      resolveOperationLabel(
+        'http.get',
+        undefined,
+        '/api/public/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda',
+        'GET',
+      ),
+      'Consultar comanda/cardapio do cliente (portal PDV)',
+    );
   });
 
   it('formats recovered state', () => {
@@ -34,7 +48,7 @@ describe('observability alert copy', () => {
     assert.equal(resolveOperationLabel('transacao.operacao_caixa_aberto'), 'Abrir caixa do operacao');
   });
 
-  it('operational telegram uses empresa, usuario, operacao layout', () => {
+  it('operational telegram uses empresa, funcionalidade, usuario e cenario layout', () => {
     const text = formatObservabilityAlertTelegramText({
       ruleName: 'quiver-tap-transacao-failure-prd',
       alertState: 'active',
@@ -44,6 +58,7 @@ describe('observability alert copy', () => {
         empresa: 'CIA Maritima',
         usuario: 'Filipe (filipe@example.com)',
         operacao: 'Fechar comanda',
+        cenario: 'Filipe falhou ao fechar comanda na CIA Maritima por timeout no banco.',
         errorDescription: 'Falha ao registrar pagamento — timeout no banco',
         technicalDetails: [
           'Acao tecnica: transacao.comanda_fechada',
@@ -60,15 +75,55 @@ describe('observability alert copy', () => {
     assert.match(text, /CIA Maritima/);
     assert.match(text, /Usuario:/);
     assert.match(text, /Filipe/);
-    assert.match(text, /Operacao:/);
+    assert.match(text, /Funcionalidade:/);
     assert.match(text, /Fechar comanda/);
-    assert.match(text, /Descricao do erro:/);
+    assert.match(text, /Cenario:/);
     assert.match(text, /timeout no banco/);
+    assert.doesNotMatch(text, /Descricao do erro:/);
     assert.match(text, /Detalhamento:/);
     assert.match(text, /transacao\.comanda_fechada/);
     assert.match(text, /Trace ID/);
     assert.doesNotMatch(text, /O que aconteceu/);
     assert.match(text, /Abrir no Kibana/);
+  });
+
+  it('maps ui.page detalhe de comanda to feature label', () => {
+    assert.equal(
+      resolveUiFeatureLabel('/operacao/comandas/cmw5mmn8b08cjl601ul30q44d'),
+      'Detalhe da comanda (Operacao)',
+    );
+    assert.equal(
+      resolveOperationLabel('ui.error', undefined, undefined, undefined),
+      'Erro na tela do app',
+    );
+  });
+
+  it('401-surge telegram uses operational layout with business cenario', () => {
+    const text = formatObservabilityAlertTelegramText({
+      ruleName: 'quiver-tap-401-surge-prd',
+      alertState: 'active',
+      reason: 'Document count is 46 in the last 10m in logs-audit*.otel-prd index. Alert when greater than 10.',
+      context: {
+        empresa: 'Churrasquinho Do Thiago',
+        usuario: 'Cliente do portal PDV (nao identificado)',
+        operacao: 'Consultar comanda/cardapio do cliente (portal PDV)',
+        cenario:
+          'Pico de 46 respostas 401 na janela analisada (~10 min). Dominante: Cliente do portal PDV (nao identificado) tentando consultar comanda/cardapio do cliente (portal pdv) em Churrasquinho Do Thiago, mas estava sem sessao valida (cookie ausente ou expirado). Motivo da API: "Sessão expirada. Identifique-se novamente.". Possiveis causas: sessao expirou, cookie limpo, ou aba aberta apos logout. Nao indica necessariamente ataque.',
+        errorDescription: 'Sessão expirada. Identifique-se novamente.',
+        technicalDetails: [
+          'HTTP: GET /api/public/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda status 401',
+          'Motivo do alerta: Document count is 46 in the last 10m',
+        ],
+      },
+    });
+
+    assert.match(text, /ERRO NA OPERACAO/);
+    assert.match(text, /Empresa:/);
+    assert.match(text, /Churrasquinho Do Thiago/);
+    assert.match(text, /Cenario:/);
+    assert.match(text, /Pico de 46/);
+    assert.match(text, /Sessão expirada/);
+    assert.doesNotMatch(text, /<b>Problema:<\/b>/);
   });
 
   it('infra telegram uses problema and detalhamento layout', () => {

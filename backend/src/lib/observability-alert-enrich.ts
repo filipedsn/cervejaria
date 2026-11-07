@@ -1,14 +1,21 @@
 import type { KibanaAlertPayload } from './kibana-alert-email.js';
 import { redactObject } from './audit/redact.js';
-import { resolveOperationLabel, slugToDisplayName } from './operation-labels.js';
+import {
+  resolveOperationLabel,
+  resolveUiFeatureLabel,
+  slugToDisplayName,
+} from './operation-labels.js';
 import { isOperationalAlertRule } from './observability-alert-copy.js';
 
 export type AlertEnrichedContext = {
   empresa?: string;
   usuario?: string;
+  /** Funcionalidade / operacao de negocio (campo historico `operacao` no contexto). */
   operacao?: string;
   /** Resumo legivel do erro (uma linha). */
   errorDescription?: string;
+  /** Narrativa operacional (empresa/usuario/funcionalidade/motivo). */
+  cenario?: string;
   /** Linhas tecnicas para o bloco Detalhamento. */
   technicalDetails?: string[];
 };
@@ -19,7 +26,7 @@ const WINDOW_AFTER_MS = 2 * 60_000;
 const JSON_MAX_CHARS = 1500;
 const STACK_MAX_CHARS = 1200;
 
-type ParsedLog = {
+export type ParsedLog = {
   timestamp?: string;
   message: string;
   eventAction?: string;
@@ -36,6 +43,7 @@ type ParsedLog = {
   httpMethod?: string;
   httpRoute?: string;
   httpStatus?: number;
+  clientAddress?: string;
   dbOperation?: string;
   dbModel?: string;
   dbQuery?: string;
@@ -43,6 +51,7 @@ type ParsedLog = {
   uiPage?: string;
   uiElement?: string;
   uiLabel?: string;
+  uiRoute?: string;
   traceId?: string;
   spanId?: string;
   serviceName?: string;
@@ -112,6 +121,25 @@ function pick(attrs: Record<string, unknown> | undefined, dotted: string): unkno
   return cursor;
 }
 
+/** Aceita objeto ou string JSON (como chega do Elasticsearch OTel). */
+export function parseMetadataValue(raw: unknown): Record<string, unknown> | undefined {
+  const asObj = asRecord(raw);
+  if (asObj) return asObj;
+  const str = asString(raw);
+  if (!str) return undefined;
+  try {
+    return asRecord(JSON.parse(str));
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractResponseErrorMessage(metadata?: Record<string, unknown>): string | undefined {
+  if (!metadata) return undefined;
+  const nested = asRecord(metadata.responseError);
+  return asString(nested?.error) ?? asString(metadata.error);
+}
+
 function normalizeTimestamp(value: unknown): string | undefined {
   const raw = asString(value);
   if (!raw) return undefined;
@@ -151,16 +179,22 @@ function formatJsonValue(value: unknown, max = JSON_MAX_CHARS): string {
   }
 }
 
-function parseLog(source: Record<string, unknown>): ParsedLog {
+function parseBodyMessage(source: Record<string, unknown>): string | undefined {
+  const body = source.body;
+  const bodyRec = asRecord(body);
+  return asString(bodyRec?.text) ?? asString(body);
+}
+
+export function parseAuditLogSource(source: Record<string, unknown>): ParsedLog {
   const attrs = asRecord(source.attributes);
   const resourceAttrs = asRecord(asRecord(source.resource)?.attributes);
-  const metadata = asRecord(pick(attrs, 'metadata'));
+  const metadata = parseMetadataValue(pick(attrs, 'metadata'));
 
   return {
     timestamp: normalizeTimestamp(source['@timestamp']),
     message:
       asString(pick(attrs, 'message')) ??
-      asString(source.body) ??
+      parseBodyMessage(source) ??
       '',
     eventAction: asString(pick(attrs, 'event.action')),
     eventOutcome: asString(pick(attrs, 'event.outcome')),
@@ -168,14 +202,16 @@ function parseLog(source: Record<string, unknown>): ParsedLog {
     cervejariaId: asString(pick(attrs, 'cervejaria.id')),
     cervejariaSlug: asString(pick(attrs, 'cervejaria.slug')),
     actorType: asString(pick(attrs, 'actor.type')),
-    actorId: asString(pick(attrs, 'actor.id')),
-    actorName: asString(pick(attrs, 'actor.name')),
-    actorEmail: asString(pick(attrs, 'actor.email')),
+    actorId: asString(pick(attrs, 'actor.id')) ?? asString(pick(attrs, 'actor.cliente_id')),
+    // Audit emit writes ECS user.*; older/partial docs may still carry actor.name.
+    actorName: asString(pick(attrs, 'user.name')) ?? asString(pick(attrs, 'actor.name')),
+    actorEmail: asString(pick(attrs, 'user.email')) ?? asString(pick(attrs, 'actor.email')),
     entityType: asString(pick(attrs, 'entity.type')),
     entityId: asString(pick(attrs, 'entity.id')),
     httpMethod: asString(pick(attrs, 'http.request.method')),
     httpRoute: asString(pick(attrs, 'http.route')),
     httpStatus: asNumber(pick(attrs, 'http.response.status_code')),
+    clientAddress: asString(pick(attrs, 'client.address')),
     dbOperation: asString(pick(attrs, 'db.operation')),
     dbModel: asString(pick(attrs, 'db.model')),
     dbQuery: asString(pick(attrs, 'db.query')),
@@ -183,6 +219,7 @@ function parseLog(source: Record<string, unknown>): ParsedLog {
     uiPage: asString(pick(attrs, 'ui.page')),
     uiElement: asString(pick(attrs, 'ui.element')),
     uiLabel: asString(pick(attrs, 'ui.label')),
+    uiRoute: asString(pick(attrs, 'ui.route')),
     traceId: asString(source.trace_id) ?? asString(pick(attrs, 'trace_id')),
     spanId: asString(source.span_id) ?? asString(pick(attrs, 'span_id')),
     serviceName: asString(pick(resourceAttrs, 'service.name')),
@@ -203,14 +240,25 @@ function isFailureLog(log: ParsedLog): boolean {
   return false;
 }
 
+function is401SurgeRule(ruleName?: string): boolean {
+  return (ruleName ?? '').toLowerCase().includes('401-surge');
+}
+
+function isUiErrorRule(ruleName?: string): boolean {
+  return (ruleName ?? '').toLowerCase().includes('ui-error');
+}
+
 function matchesRule(log: ParsedLog, ruleName?: string): boolean {
   const key = (ruleName ?? '').toLowerCase();
   const action = log.eventAction?.toLowerCase() ?? '';
 
+  if (is401SurgeRule(ruleName)) {
+    return log.httpStatus === 401;
+  }
   if (key.includes('transacao-failure')) {
     return action.startsWith('transacao.');
   }
-  if (key.includes('ui-error')) {
+  if (isUiErrorRule(ruleName)) {
     return action === 'ui.error';
   }
   if (key.includes('5xx')) {
@@ -231,12 +279,107 @@ function pickTimestamp(payload: KibanaAlertPayload): Date {
   return new Date();
 }
 
-function formatUsuario(log: ParsedLog): string | undefined {
+export function formatUsuario(log: ParsedLog): string | undefined {
   if (log.actorName && log.actorEmail) return `${log.actorName} (${log.actorEmail})`;
-  return log.actorName ?? log.actorEmail;
+  if (log.actorName) return log.actorName;
+  if (log.actorEmail) return log.actorEmail;
+
+  if (log.actorType === 'cliente-pdv') {
+    return log.actorId ? `Cliente do PDV (${log.actorId})` : 'Cliente do PDV';
+  }
+
+  const publicRoute = log.httpRoute?.includes('/api/public/') ?? false;
+  if ((log.actorType === 'anonymous' || !log.actorType) && publicRoute) {
+    return 'Cliente do portal PDV (nao identificado)';
+  }
+
+  if (log.actorId) {
+    const tipo = log.actorType ? `${log.actorType} ` : '';
+    return `${tipo}(${log.actorId})`.trim();
+  }
+
+  return undefined;
+}
+
+function interpret401Reason(apiError?: string): { short: string; causes: string; includesAttackNote: boolean } {
+  const err = (apiError ?? '').toLowerCase();
+  if (err.includes('sessão expirada') || err.includes('sessao expirada')) {
+    return {
+      short: 'estava sem sessao valida (cookie ausente ou expirado)',
+      causes:
+        'Possiveis causas: sessao expirou, cookie limpo, ou aba aberta apos logout.',
+      includesAttackNote: false,
+    };
+  }
+  if (err.includes('comanda encerrada')) {
+    return {
+      short: 'a comanda nao esta mais aberta',
+      causes:
+        'Possiveis causas: comanda ja foi encerrada/fechada ou o turno/caixa fechou.',
+      includesAttackNote: false,
+    };
+  }
+  if (err.includes('sessão inválida') || err.includes('sessao invalida') || err.includes('sessão inválida')) {
+    return {
+      short: 'a sessao foi rejeitada (token invalido)',
+      causes:
+        'Possiveis causas: cookie adulterado, chave JWT trocada apos deploy, ou sessao de outro ambiente.',
+      includesAttackNote: false,
+    };
+  }
+  if (apiError) {
+    return {
+      short: `a API recusou com "${apiError}"`,
+      causes:
+        'Possiveis causas: sessao expirada, comanda encerrada, turno fechado ou tentativa invalida. Nao indica necessariamente ataque.',
+      includesAttackNote: true,
+    };
+  }
+  return {
+    short: 'o acesso veio sem autorizacao valida',
+    causes:
+      'Possiveis causas: sessao expirada, comanda encerrada, turno fechado ou tentativa invalida. Nao indica necessariamente ataque.',
+    includesAttackNote: true,
+  };
+}
+
+function dominantValue(values: Array<string | undefined>): string | undefined {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (!value?.trim()) continue;
+    const key = value.trim();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  let bestCount = 0;
+  for (const [key, count] of counts) {
+    if (count > bestCount) {
+      best = key;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function extractCountFromReason(reason?: string): number | undefined {
+  const match = reason?.match(/document count is (\d+)/i);
+  if (!match?.[1]) return undefined;
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function resolveOperacao(log: ParsedLog): string {
+  const action = log.eventAction?.trim().toLowerCase() ?? '';
+  if (action.startsWith('ui.')) {
+    const fromUi = resolveUiFeatureLabel(log.uiRoute ?? log.uiPage);
+    if (fromUi) return fromUi;
+  }
+  return resolveOperationLabel(log.eventAction, log.message, log.httpRoute, log.httpMethod);
 }
 
 function buildErrorDescription(log: ParsedLog, payload: KibanaAlertPayload): string {
+  const apiError = extractResponseErrorMessage(log.metadata);
+  if (apiError) return apiError;
   if (log.message.trim()) return log.message.trim();
 
   const reason = payload.reason?.trim();
@@ -245,11 +388,147 @@ function buildErrorDescription(log: ParsedLog, payload: KibanaAlertPayload): str
   return 'Falha registrada sem mensagem detalhada nos logs.';
 }
 
+export function build401Cenario(
+  logs: ParsedLog[],
+  primary: ParsedLog,
+  payload: KibanaAlertPayload,
+): string {
+  const matched = logs.filter((row) => matchesRule(row, payload.ruleName));
+  const set = matched.length > 0 ? matched : [primary];
+  const reasonCount = extractCountFromReason(payload.reason);
+  const count = Math.max(reasonCount ?? 0, set.length);
+
+  const slug =
+    dominantValue(set.map((row) => row.cervejariaSlug)) ?? primary.cervejariaSlug;
+  const empresa = slugToDisplayName(slug) ?? slug ?? 'empresa nao identificada';
+  const dominantError =
+    dominantValue(set.map((row) => extractResponseErrorMessage(row.metadata))) ??
+    extractResponseErrorMessage(primary.metadata);
+  const interp = interpret401Reason(dominantError);
+  const usuario = formatUsuario(primary) ?? 'usuario nao identificado';
+  const operacao = resolveOperacao(primary).toLowerCase();
+
+  const parts = [
+    `Pico de ${count} respostas 401 na janela analisada (~10 min).`,
+    `Dominante: ${usuario} tentando ${operacao} em ${empresa}, mas ${interp.short}.`,
+  ];
+  if (dominantError) {
+    parts.push(`Motivo da API: "${dominantError}".`);
+  }
+  parts.push(interp.causes);
+  if (!interp.includesAttackNote) {
+    parts.push('Nao indica necessariamente ataque.');
+  }
+  return parts.join(' ');
+}
+
+function buildGenericCenario(log: ParsedLog, payload: KibanaAlertPayload): string {
+  const empresa =
+    slugToDisplayName(log.cervejariaSlug) ?? log.cervejariaSlug ?? 'empresa nao identificada';
+  const usuario = formatUsuario(log) ?? 'usuario nao identificado';
+  const operacao = resolveOperacao(log);
+  const apiError = extractResponseErrorMessage(log.metadata);
+  const detail = apiError ?? log.message.trim() ?? payload.reason?.trim() ?? 'falha sem detalhe';
+  return `${usuario} em ${empresa} ao executar "${operacao}": ${detail}.`;
+}
+
+function normalizeUiErrorText(log: ParsedLog): string {
+  const parts = [
+    extractResponseErrorMessage(log.metadata),
+    asString(log.metadata?.error),
+    asString(log.metadata?.outcome),
+    log.message,
+  ];
+  return parts.filter(Boolean).join(' \n ').toLowerCase();
+}
+
+function classifyUiErrorKind(log: ParsedLog): 'network' | 'server_unavailable' | 'ui_bug' | 'other' {
+  const outcome = asString(log.metadata?.outcome)?.toLowerCase();
+  if (outcome === 'network_error' || outcome === 'timeout' || outcome === 'aborted') {
+    return 'network';
+  }
+
+  const text = normalizeUiErrorText(log);
+  if (
+    text.includes('servidor indispon') ||
+    text.includes('nao foi possivel falar com o servidor') ||
+    text.includes('não foi possível falar com o servidor') ||
+    text.includes('failed to fetch') ||
+    text.includes('networkerror') ||
+    text.includes('load failed') ||
+    (text.includes('npm run restart') && text.includes('servidor'))
+  ) {
+    return 'network';
+  }
+
+  if (
+    text.includes('backend offline') ||
+    text.includes('servidor respondeu indispon') ||
+    /\b(502|503|504)\b/.test(text)
+  ) {
+    return 'server_unavailable';
+  }
+
+  const errorName = asString(log.metadata?.name) ?? asString(log.metadata?.errorName);
+  if (
+    errorName === 'TypeError' ||
+    errorName === 'ReferenceError' ||
+    text.includes('typeerror') ||
+    text.includes('cannot read propert') ||
+    text.includes('is not a function')
+  ) {
+    return 'ui_bug';
+  }
+
+  return 'other';
+}
+
+/** Cenario legivel para quiver-tap-ui-error-* (rede vs API vs quebra de UI). */
+export function buildUiErrorCenario(log: ParsedLog, payload: KibanaAlertPayload): string {
+  const empresa =
+    slugToDisplayName(log.cervejariaSlug) ?? log.cervejariaSlug ?? 'empresa nao identificada';
+  const usuario = formatUsuario(log) ?? 'usuario nao identificado';
+  const funcionalidade = resolveOperacao(log);
+  const kind = classifyUiErrorKind(log);
+  const rawDetail =
+    extractResponseErrorMessage(log.metadata) ??
+    log.message.trim() ??
+    payload.reason?.trim() ??
+    'falha sem detalhe';
+
+  if (kind === 'network') {
+    return (
+      `${usuario} em ${empresa} ao usar "${funcionalidade}": o navegador nao conseguiu falar com o servidor ` +
+      `(falha de rede no dispositivo ou no caminho ate a API). Nao prova que a API caiu; ` +
+      `se so este alerta disparou, trate como problema pontual do usuario/rede.`
+    );
+  }
+
+  if (kind === 'server_unavailable') {
+    return (
+      `${usuario} em ${empresa} ao usar "${funcionalidade}": o servidor respondeu indisponivel ` +
+      `(502/503 ou equivalente). Verifique saude da API/site publico e deploys recentes.`
+    );
+  }
+
+  if (kind === 'ui_bug') {
+    return (
+      `${usuario} em ${empresa} encontrou quebra de interface em "${funcionalidade}": ${rawDetail}. ` +
+      `Provavel bug de tela/JS; confira console e release do frontend.`
+    );
+  }
+
+  return `${usuario} em ${empresa} ao usar "${funcionalidade}": ${rawDetail}.`;
+}
+
 function appendMetadataDetails(lines: string[], metadata?: Record<string, unknown>): void {
   if (!metadata) return;
 
+  const apiError = extractResponseErrorMessage(metadata);
+  if (apiError) pushLine(lines, 'Erro da API', apiError);
+
   const error = asString(metadata.error);
-  if (error) pushLine(lines, 'Erro registrado', error);
+  if (error && error !== apiError) pushLine(lines, 'Erro registrado', error);
 
   const tipo = asString(metadata.tipo);
   if (tipo) pushLine(lines, 'Tipo transacao', tipo);
@@ -276,7 +555,14 @@ function appendMetadataDetails(lines: string[], metadata?: Record<string, unknow
     pushLine(lines, key, typeof value === 'object' ? formatJsonValue(value, 300) : String(value));
   }
 
-  const known = new Set<string>(['error', 'tipo', 'stack', 'payload', ...businessKeys]);
+  const known = new Set<string>([
+    'error',
+    'tipo',
+    'stack',
+    'payload',
+    'responseError',
+    ...businessKeys,
+  ]);
   const extra: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!known.has(key) && value != null && value !== '') {
@@ -327,6 +613,8 @@ export function buildTechnicalDetailsFromLog(
     pushLine(lines, 'HTTP', httpParts.join(' '));
   }
 
+  pushLine(lines, 'IP cliente', log.clientAddress);
+
   if (log.dbOperation || log.dbModel) {
     const dbParts = [log.dbOperation, log.dbModel, log.dbDurationMs != null ? `${log.dbDurationMs}ms` : undefined]
       .filter(Boolean)
@@ -335,11 +623,11 @@ export function buildTechnicalDetailsFromLog(
     if (log.dbQuery) pushLine(lines, 'Query', truncate(log.dbQuery, 500));
   }
 
-  if (log.uiPage || log.uiElement || log.uiLabel) {
+  if (log.uiPage || log.uiRoute || log.uiElement || log.uiLabel) {
     pushLine(
       lines,
       'UI',
-      [log.uiPage, log.uiElement, log.uiLabel].filter(Boolean).join(' / '),
+      [log.uiRoute ?? log.uiPage, log.uiElement, log.uiLabel].filter(Boolean).join(' / '),
     );
   }
 
@@ -386,6 +674,38 @@ function buildTechnicalDetailsFromPayload(payload: KibanaAlertPayload): string[]
   return lines;
 }
 
+function buildFailureSearchBody(ruleName: string | undefined, from: string, to: string): unknown {
+  if (is401SurgeRule(ruleName)) {
+    return {
+      size: 30,
+      query: {
+        bool: {
+          filter: [
+            { range: { '@timestamp': { gte: from, lte: to } } },
+            { term: { 'attributes.http.response.status_code': 401 } },
+          ],
+        },
+      },
+      sort: [{ '@timestamp': 'desc' }],
+    };
+  }
+
+  return {
+    size: 30,
+    query: {
+      bool: {
+        must: [{ range: { '@timestamp': { gte: from, lte: to } } }],
+        should: [
+          { term: { 'attributes.event.outcome': 'failure' } },
+          { range: { 'attributes.http.response.status_code': { gte: 500 } } },
+        ],
+        minimum_should_match: 1,
+      },
+    },
+    sort: [{ '@timestamp': 'desc' }],
+  };
+}
+
 async function fetchFailureLogs(payload: KibanaAlertPayload): Promise<ParsedLog[]> {
   const center = pickTimestamp(payload);
   const from = new Date(center.getTime() - WINDOW_BEFORE_MS).toISOString();
@@ -395,20 +715,7 @@ async function fetchFailureLogs(payload: KibanaAlertPayload): Promise<ParsedLog[
   const res = await fetch(`${esUrl()}/${encodeURIComponent(index)}/_search`, {
     method: 'POST',
     headers: esAuthHeaders(),
-    body: JSON.stringify({
-      size: 30,
-      query: {
-        bool: {
-          must: [{ range: { '@timestamp': { gte: from, lte: to } } }],
-          should: [
-            { term: { 'attributes.event.outcome': 'failure' } },
-            { range: { 'attributes.http.response.status_code': { gte: 500 } } },
-          ],
-          minimum_should_match: 1,
-        },
-      },
-      sort: [{ '@timestamp': 'desc' }],
-    }),
+    body: JSON.stringify(buildFailureSearchBody(payload.ruleName, from, to)),
   });
 
   if (!res.ok) return [];
@@ -418,8 +725,35 @@ async function fetchFailureLogs(payload: KibanaAlertPayload): Promise<ParsedLog[
   };
 
   return (data.hits?.hits ?? [])
-    .map((hit) => parseLog(hit._source ?? {}))
+    .map((hit) => parseAuditLogSource(hit._source ?? {}))
     .filter(isFailureLog);
+}
+
+/** Monta contexto a partir de logs ja parseados (testavel sem Elasticsearch). */
+export function buildEnrichedContextFromLogs(
+  payload: KibanaAlertPayload,
+  logs: ParsedLog[],
+): AlertEnrichedContext | undefined {
+  const log = logs.find((row) => matchesRule(row, payload.ruleName)) ?? logs[0];
+  if (!log) return fallbackContext(payload);
+
+  const operacao = resolveOperacao(log);
+  const empresa = slugToDisplayName(log.cervejariaSlug) ?? log.cervejariaSlug;
+  const usuario = formatUsuario(log);
+  const cenario = is401SurgeRule(payload.ruleName)
+    ? build401Cenario(logs, log, payload)
+    : isUiErrorRule(payload.ruleName)
+      ? buildUiErrorCenario(log, payload)
+      : buildGenericCenario(log, payload);
+
+  return {
+    empresa,
+    usuario,
+    operacao,
+    errorDescription: buildErrorDescription(log, payload),
+    cenario,
+    technicalDetails: buildTechnicalDetailsFromLog(log, payload),
+  };
 }
 
 export async function enrichAlertContext(
@@ -434,20 +768,7 @@ export async function enrichAlertContext(
     return fallbackContext(payload);
   }
 
-  const log = logs.find((row) => matchesRule(row, payload.ruleName)) ?? logs[0];
-  if (!log) return fallbackContext(payload);
-
-  const operacao = resolveOperationLabel(log.eventAction, log.message);
-  const empresa = slugToDisplayName(log.cervejariaSlug) ?? log.cervejariaSlug;
-  const usuario = formatUsuario(log);
-
-  return {
-    empresa,
-    usuario,
-    operacao,
-    errorDescription: buildErrorDescription(log, payload),
-    technicalDetails: buildTechnicalDetailsFromLog(log, payload),
-  };
+  return buildEnrichedContextFromLogs(payload, logs);
 }
 
 function fallbackContext(payload: KibanaAlertPayload): AlertEnrichedContext | undefined {
@@ -458,6 +779,7 @@ function fallbackContext(payload: KibanaAlertPayload): AlertEnrichedContext | un
     usuario: undefined,
     operacao: resolveOperationLabel(undefined, reason),
     errorDescription: reason,
+    cenario: reason,
     technicalDetails: buildTechnicalDetailsFromPayload(payload),
   };
 }
