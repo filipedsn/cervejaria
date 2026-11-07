@@ -706,12 +706,36 @@ dd {
   background: var(--c);
 }
 
-.infra-backups {
+.infra-backups,
+.infra-schedules {
   grid-column: 1 / -1;
 }
 
-.infra-backups .hint {
+.infra-backups .hint,
+.infra-schedules .hint {
   margin: 2px 0 8px;
+}
+
+.infra-schedules {
+  margin-top: 18px;
+}
+
+.sch-desc {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: normal;
+  max-width: 36rem;
+}
+
+.sch-id {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.sch td:first-child {
+  white-space: normal;
 }
 
 .bk-wrap {

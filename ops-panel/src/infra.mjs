@@ -4,6 +4,8 @@
  * e o histórico de leituras que o painel guarda (última hora).
  */
 
+import { pad2, SCHEDULE_CATALOG, SCHEDULE_IDS, scheduleTimeText, utcHourToBrt } from './schedules.mjs';
+
 export const HISTORY_MAX_AGE_S = 60 * 60;
 const HISTORY_MIN_GAP_S = 50;
 
@@ -184,7 +186,50 @@ export function backupsView(report, { version = (sha) => String(sha ?? '').slice
   };
 }
 
-/** `options` vai para backupsView ({ version, manage }). */
+/**
+ * Crons do VPS (TAP-178). Horário do relatório vem em UTC; a UI mostra BRT.
+ * `manage` = PC com OPS_CRON_SSH_HOST.
+ */
+export function schedulesView(report, { manage = false } = {}) {
+  const list = Array.isArray(report?.schedules) ? report.schedules : null;
+  if (!list) return null;
+  const byId = new Map(list.filter((s) => s?.id).map((s) => [s.id, s]));
+  const items = SCHEDULE_IDS.map((id) => {
+    const raw = byId.get(id) ?? { id, enabled: false, present: false, minute: null, hour: null, dow: null };
+    const meta = SCHEDULE_CATALOG[id];
+    const present = Boolean(raw.present);
+    const enabled = present && Boolean(raw.enabled);
+    const numericTime = /^\d+$/.test(String(raw.minute ?? '')) && /^\d+$/.test(String(raw.hour ?? ''));
+    const setTimeOk = Boolean(meta?.canSetTime) && present && numericTime;
+    const brtHour = numericTime ? utcHourToBrt(Number(raw.hour)) : null;
+    const brtTime = brtHour != null ? `${pad2(brtHour)}:${pad2(Number(raw.minute))}` : null;
+    return {
+      id,
+      label: meta?.label ?? id,
+      description: meta?.description ?? '',
+      enabled,
+      present,
+      minute: raw.minute ?? null,
+      hour: raw.hour ?? null,
+      dow: raw.dow ?? null,
+      brtTime,
+      timeText: present ? scheduleTimeText(raw) : 'não encontrado no servidor',
+      warnDisable: meta?.warnDisable ?? null,
+      canEnable: manage && present && !enabled,
+      canDisable: manage && present && enabled,
+      canSetTime: manage && setTimeOk,
+      manageBlock: manage ? null : 'chave de schedules não configurada neste PC',
+    };
+  });
+  const on = items.filter((s) => s.enabled).length;
+  return {
+    items,
+    manage,
+    summary: `${on} de ${items.length} ligados`,
+  };
+}
+
+/** `options`: { version, manage (backups), scheduleManage }. */
 export function infraView(report, history = [], nowMs = Date.now(), options = {}) {
   const h = report?.host;
   if (!h) return null;
@@ -246,6 +291,7 @@ export function infraView(report, history = [], nowMs = Date.now(), options = {}
         ? `${troubled.length} de ${containers.length} com atenção`
         : `${containers.length}, todos funcionando`,
     backups: backupsView(report, options),
+    schedules: schedulesView(report, { manage: Boolean(options.scheduleManage) }),
     issues,
   };
 }

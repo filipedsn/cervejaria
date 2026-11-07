@@ -42,7 +42,8 @@ test('marcador do código do DEV: só aceita versão e motivo válidos', () => {
 test('lista fechada de ações', () => {
   assert.deepEqual(Object.keys(ACTIONS).sort(), [
     'backup.delete', 'backup.download', 'deploy.approve', 'deploy.dispatch', 'deploy.reject', 'dev.copyPrd', 'dev.matchPrd', 'dev.restart', 'dev.start', 'dev.stop', 'dev.sync', 'dev.testPr', 'pr.merge', 'pr.update',
-  ]);
+    'schedule.disable', 'schedule.enable', 'schedule.setTime',
+  ].sort());
 });
 
 test('ação desconhecida é recusada', async () => {
@@ -61,6 +62,12 @@ test('parâmetros inválidos são recusados antes de qualquer comando', async ()
     await assert.rejects(executeAction('backup.download', { name }), /Nome de backup inválido/);
     await assert.rejects(executeAction('backup.delete', { name, confirm: name }), /Nome de backup inválido/);
   }
+  for (const id of ['../etc/cron.d', 'quiver-tap-backup; rm', 'cron.daily', '']) {
+    await assert.rejects(executeAction('schedule.enable', { id }), /Agendamento inválido/);
+    await assert.rejects(executeAction('schedule.disable', { id, confirm: id }), /Agendamento inválido/);
+    await assert.rejects(executeAction('schedule.setTime', { id, time: '01:00', confirm: '01:00' }), /Agendamento inválido/);
+  }
+  await assert.rejects(executeAction('schedule.setTime', { id: 'quiver-tap-backup', time: '25:00', confirm: '25:00' }), /não estão configurados|Horário inválido|Agendamento/);
   await assert.rejects(executeAction('deploy.dispatch', { sha: 'main; rm -rf /' }), /Versão inválida/);
 });
 
