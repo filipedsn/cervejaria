@@ -1,3 +1,5 @@
+import { itemCobradoAoLancar, type CobrancaAoLancar, type EstacaoPreparo } from './estacao';
+
 export interface ProdutoOperacao {
   id: string;
   nome: string;
@@ -13,6 +15,7 @@ export interface ProdutoOperacao {
   /** True quando há override gravado só neste turno. */
   precoOverrideTurno?: boolean;
   exigePreparo: boolean;
+  estacaoPreparo?: EstacaoPreparo;
   prepararEmPedidoSeparado?: boolean;
   controlaEstoque: boolean;
   ativo: boolean;
@@ -182,6 +185,8 @@ export interface ItemPedido {
   volumeMl: number;
   subtotal: number;
   exigePreparo: boolean;
+  /** Estação do preparo; ausente em respostas antigas = Cozinha. */
+  estacaoPreparo?: EstacaoPreparo;
   /** Confirmação Servir do balcão (item sem preparo). */
   balcaoAtendidoEm?: string | null;
   cancelamentoPendenteEm?: string | null;
@@ -223,11 +228,12 @@ export function ordenarPedidosPorSenhaDecrescente(pedidos: PedidoOperacao[]): Pe
   });
 }
 
-/** O pedido como a cozinha ve: so os itens de preparo e de quem e a conta. */
+/** O pedido como a estação (cozinha ou bar) vê: só os itens de preparo e de quem é a conta. */
 export interface PedidoCozinha {
   id: string;
   numero: number;
   status: StatusPedido;
+  estacao?: EstacaoPreparo | null;
   paraViagem?: boolean;
   observacao: string | null;
   createdAt: string;
@@ -492,12 +498,45 @@ export function itemConfirmadoNaComanda(pedido: PedidoOperacao, item: ItemPedido
   return pedido.status === 'ENTREGUE' || !item.exigePreparo;
 }
 
-export function temPedidoCozinhaPendente(comanda: Pick<ComandaOperacao, 'pedidos'>): boolean {
+/** Sem `estacao`, considera qualquer fila de preparo. */
+export function temPedidoCozinhaPendente(comanda: Pick<ComandaOperacao, 'pedidos'>, estacao?: EstacaoPreparo): boolean {
   return comanda.pedidos.some(
     (pedido) =>
-      pedido.itens.some((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
+      pedido.itens.some((item) => item.exigePreparo && (!estacao || estacaoDoItemPedido(item) === estacao)
+        && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
       STATUS_COZINHA_PENDENTE.includes(pedido.status),
   );
+}
+
+export function estacaoDoItemPedido(item: { estacaoPreparo?: EstacaoPreparo | null }): EstacaoPreparo {
+  return item.estacaoPreparo === 'BAR' ? 'BAR' : 'COZINHA';
+}
+
+/** Estação do pedido (um pedido nunca mistura Cozinha e Bar); null quando é só balcão. */
+export function estacaoDoPedido(pedido: Pick<PedidoOperacao, 'itens'>): EstacaoPreparo | null {
+  const item = pedido.itens.find((linha) => linha.exigePreparo);
+  return item ? estacaoDoItemPedido(item) : null;
+}
+
+export function cobrancaAoLancarDoContexto(contexto: { kitchenItemsChargeAtLaunch: boolean; barItemsChargeAtLaunch: boolean }): CobrancaAoLancar {
+  return { cozinha: contexto.kitchenItemsChargeAtLaunch, bar: contexto.barItemsChargeAtLaunch };
+}
+
+/** Cada estação decide se a comanda fecha com pedidos dela ainda na fila. */
+export function estacaoBloqueiaFechamentoComanda(
+  comanda: Pick<ComandaOperacao, 'pedidos'>,
+  contexto: {
+    kitchenItemsChargeAtLaunch: boolean;
+    allowCloseComandaWithPendingKitchenOrders: boolean;
+    barItemsChargeAtLaunch: boolean;
+    allowCloseComandaWithPendingBarOrders: boolean;
+  },
+): EstacaoPreparo | null {
+  const liberaCozinha = contexto.allowCloseComandaWithPendingKitchenOrders && contexto.kitchenItemsChargeAtLaunch;
+  const liberaBar = contexto.allowCloseComandaWithPendingBarOrders && contexto.barItemsChargeAtLaunch;
+  if (!liberaCozinha && temPedidoCozinhaPendente(comanda, 'COZINHA')) return 'COZINHA';
+  if (!liberaBar && temPedidoCozinhaPendente(comanda, 'BAR')) return 'BAR';
+  return null;
 }
 
 export function rotuloStatusPedido(status: StatusPedido): string {
@@ -906,13 +945,15 @@ export interface TapsTurnoResposta {
 
 export function totalPendenteComanda(
   comanda: Pick<ComandaOperacao, 'pedidos'>,
-  kitchenItemsChargeAtLaunch = false,
+  cobrancaAoLancar: boolean | CobrancaAoLancar = false,
+  estacao?: EstacaoPreparo,
 ): number {
-  if (kitchenItemsChargeAtLaunch) return 0;
   return comanda.pedidos
     .filter((pedido) => pedido.status !== 'ENTREGUE' && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE')
     .reduce((total, pedido) => total + pedido.itens
-      .filter((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm)
+      .filter((item) => item.exigePreparo && !itemCobradoAoLancar(item, cobrancaAoLancar)
+        && (!estacao || estacaoDoItemPedido(item) === estacao)
+        && !item.cancelamentoPendenteEm && !item.canceladoEm)
       .reduce((subtotal, item) => subtotal + item.subtotal, 0), 0);
 }
 
@@ -927,7 +968,7 @@ export interface LinhaResumoConta {
 /** Consolida preços históricos lançados, sem incluir pedidos cancelados. */
 export function resumirItensComanda(
   comanda: ComandaOperacao,
-  kitchenItemsChargeAtLaunch = false,
+  cobrancaAoLancar: boolean | CobrancaAoLancar = false,
 ): LinhaResumoConta[] {
   const agrupados = new Map<string, { nome: string; quantidade: number; totalCentavos: number }>();
 
@@ -936,7 +977,7 @@ export function resumirItensComanda(
 
     for (const item of pedido.itens) {
       if (item.cancelamentoPendenteEm || item.canceladoEm) continue;
-      if (item.exigePreparo && !kitchenItemsChargeAtLaunch && pedido.status !== 'ENTREGUE') continue;
+      if (!itemCobradoAoLancar(item, cobrancaAoLancar) && pedido.status !== 'ENTREGUE') continue;
       const chave = item.produtoId || item.nome.trim().toLocaleLowerCase('pt-BR');
       const existente = agrupados.get(chave) ?? {
         nome: item.nome,

@@ -11,12 +11,13 @@ import {
   filtroListaPedidosCozinha,
   notificarCozinha,
   notificarComandaOperacaoAtualizada,
-  pedidoVaiParaCozinha,
+  pedidoVaiParaEstacao,
   resumoPedidoCozinha,
   StatusPedidoCozinhaDesatualizadoError,
   StatusPedidoCozinhaTransicaoInvalidaError,
-  temPedidoCozinhaPendente,
 } from '../../lib/operacao/cozinha.js';
+import type { EstacaoPreparo } from '../../lib/operacao/estacao-preparo.js';
+import type { PermissaoOperacao } from '../../lib/operacao/permissoes.js';
 import { kitchenService } from '../../services/kitchen-service.js';
 import { registrarTransacao } from '../../lib/transacao-log.js';
 import { recordTempoPreparoCozinha } from '../../lib/business-metrics.js';
@@ -35,15 +36,44 @@ const alterarStatusSchema = z.object({
   expectedStatus: z.enum(['RECEBIDO', 'EM_PREPARO', 'PRONTO', 'ENTREGUE', 'CANCELAMENTO_PENDENTE', 'CANCELADO']).optional(),
 });
 
-export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
-  /** A empresa escolhe no cadastro se tem cozinha; sem ela a fila nem existe. */
+type RegrasEstacao = {
+  rotulo: string;
+  pelaEstacao: string;
+  doEstacao: string;
+  permissoes: { read: PermissaoOperacao; operate: PermissaoOperacao; cancel: PermissaoOperacao };
+};
+
+const REGRAS_ESTACAO: Record<EstacaoPreparo, RegrasEstacao> = {
+  COZINHA: {
+    rotulo: 'cozinha',
+    pelaEstacao: 'pela cozinha',
+    doEstacao: 'da cozinha',
+    permissoes: { read: 'kitchen.read', operate: 'kitchen.operate', cancel: 'kitchen.cancel' },
+  },
+  BAR: {
+    rotulo: 'bar',
+    pelaEstacao: 'pelo bar',
+    doEstacao: 'do bar',
+    permissoes: { read: 'bar.read', operate: 'bar.operate', cancel: 'bar.cancel' },
+  },
+};
+
+/**
+ * Cozinha e Bar compartilham a mesma fila canônica de pedidos; cada estação só
+ * enxerga e altera os pedidos dos próprios itens, com permissões próprias.
+ */
+export function criarRotasEstacao(estacao: EstacaoPreparo) {
+  const regras = REGRAS_ESTACAO[estacao];
+  return async function estacaoOperacaoRoutes(app: FastifyInstance) {
+  /** A empresa escolhe nas configurações se tem a estação; sem ela a fila nem existe. */
   app.addHook('preHandler', async (request) => {
-    if (!request.operacao.temCozinha) {
-      throw app.httpErrors.notFound('Operação sem cozinha');
+    const ativa = estacao === 'BAR' ? request.operacao.temBar : request.operacao.temCozinha;
+    if (!ativa) {
+      throw app.httpErrors.notFound(`Operação sem ${regras.rotulo}`);
     }
   });
 
-  app.get('/', { preHandler: [requirePermissao(app, 'kitchen.read')] }, async (request) => {
+  app.get('/', { preHandler: [requirePermissao(app, regras.permissoes.read)] }, async (request) => {
     const { cervejariaId } = request.operacao;
     const { incluirEntregues } = z
       .object({ incluirEntregues: z.coerce.boolean().default(false) })
@@ -51,15 +81,16 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
 
     const avisoConfig = request.operacao.effectiveSettings;
     const incluirCliente = Boolean(
-      avisoConfig?.whatsappPedidoProntoEnabled && avisoConfig.whatsappPedidoProntoNaCozinha,
+      avisoConfig?.whatsappPedidoProntoEnabled
+        && (estacao === 'BAR' ? avisoConfig.whatsappPedidoProntoNoBar : avisoConfig.whatsappPedidoProntoNaCozinha),
     );
 
     const pedidos = await prisma.pedidoOperacao.findMany({
       where: {
         cervejariaId,
         ...filtroListaPedidosCozinha(incluirEntregues, diaOperacional()),
-        // Rodada so de bebida nao ocupa a cozinha.
-        itensComanda: { some: { exigePreparo: true, canceladoEm: null } },
+        // Rodada so de balcao (ou da outra estacao) nao ocupa esta fila.
+        itensComanda: { some: { exigePreparo: true, estacaoPreparo: estacao, canceladoEm: null } },
       },
       include: incluirCliente ? INCLUDE_PEDIDO_COZINHA_COM_CLIENTE : INCLUDE_PEDIDO_COZINHA,
       // Ordem de chegada: e a regra da fila, nao a senha, que pode ser reemitida.
@@ -72,8 +103,8 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
   app.patch('/:id/status', { preHandler: [requirePermissao(app, (request) => {
     const body = request.body as { status?: string } | null;
     return body?.status === 'CANCELAMENTO_PENDENTE' || body?.status === 'CANCELADO'
-      ? ['kitchen.cancel', 'sale.refund']
-      : 'kitchen.operate';
+      ? [regras.permissoes.cancel, 'sale.refund']
+      : regras.permissoes.operate;
   })] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const user = getAuthUser(request);
@@ -85,8 +116,8 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       include: { ...INCLUDE_PEDIDO_COZINHA, comanda: { select: { id: true, tipo: true, identificador: true, status: true, origem: true, eventoId: true, pontoVendaId: true, diaOperacional: true } } },
     });
     if (!pedido) return reply.status(404).send({ error: 'Pedido não encontrado' });
-    if (!pedidoVaiParaCozinha(pedido.itensComanda)) {
-      return reply.status(404).send({ error: 'Pedido não é da cozinha' });
+    if (!pedidoVaiParaEstacao(pedido.itensComanda, estacao)) {
+      return reply.status(404).send({ error: `Pedido não é ${regras.doEstacao}` });
     }
 
     if (status === 'CANCELAMENTO_PENDENTE') {
@@ -94,7 +125,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Só o dono pode cancelar um pedido' });
       }
       if (pedido.comanda.status !== 'ABERTA' && !(pedido.comanda.tipo === 'AVULSA' && pedido.comanda.status === 'FECHADA')) {
-        return reply.status(409).send({ error: 'Esta comanda não pode ser cancelada pela cozinha' });
+        return reply.status(409).send({ error: `Esta comanda não pode ser cancelada ${regras.pelaEstacao}` });
       }
     }
 
@@ -125,7 +156,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
               comanda: { select: { id: true, tipo: true, identificador: true, numero: true, status: true } },
             },
           });
-          if (!pedidoAtual || !pedidoVaiParaCozinha(pedidoAtual.itensComanda)) {
+          if (!pedidoAtual || !pedidoVaiParaEstacao(pedidoAtual.itensComanda, estacao)) {
             throw Object.assign(new Error('Pedido n\u00e3o encontrado'), { statusCode: 404 });
           }
           if (pedidoAtual.status === status) {
@@ -196,7 +227,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
           throw new StatusPedidoCozinhaTransicaoInvalidaError(pedidoAtual.status, status);
         }
         if (pedidoAtual.comanda.status !== 'ABERTA' && !(pedidoAtual.comanda.status === 'FECHADA' && pedidoAtual.comanda.tipo === 'AVULSA')) {
-          throw Object.assign(new Error('Esta comanda não pode ser cancelada pela cozinha'), { statusCode: 409 });
+          throw Object.assign(new Error(`Esta comanda não pode ser cancelada ${regras.pelaEstacao}`), { statusCode: 409 });
         }
 
         const solicitacaoEm = new Date();
@@ -270,7 +301,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       }
     }
 
-    if (status === 'ENTREGUE') {
+    if (status === 'ENTREGUE' && estacao === 'COZINHA') {
       recordTempoPreparoCozinha(Date.now() - pedido.createdAt.getTime());
     }
 
@@ -281,14 +312,14 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       usuarioId: user.sub,
       comandaId: pedido.comandaId,
       entidadeId: pedido.id,
-      metadata: { statusAnterior: pedido.status, status, ...(valorEstornado > 0 ? { valorEstornado, estornoNoCaixa: true } : {}) },
+      metadata: { estacao, statusAnterior: pedido.status, status, ...(valorEstornado > 0 ? { valorEstornado, estornoNoCaixa: true } : {}) },
       payload: resumo,
     });
 
     return resumo;
   });
 
-  app.patch('/:pedidoId/itens/:itemId/confirmar-cancelamento', { preHandler: [requirePermissao(app, ['kitchen.cancel', 'sale.refund'])] }, async (request, reply) => {
+  app.patch('/:pedidoId/itens/:itemId/confirmar-cancelamento', { preHandler: [requirePermissao(app, [regras.permissoes.cancel, 'sale.refund'])] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { pedidoId, itemId } = request.params as { pedidoId: string; itemId: string };
     const resultado = await confirmarCancelamentoItemComandaOperacao({
@@ -296,6 +327,7 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
       cervejariaId,
       pedidoId,
       itemId,
+      estacao,
     });
     if ('error' in resultado) {
       const status = resultado.error === 'Item não encontrado' ? 404 : 409;
@@ -309,4 +341,8 @@ export async function cozinhaOperacaoRoutes(app: FastifyInstance) {
     }
     return { ok: true };
   });
+  };
 }
+
+export const cozinhaOperacaoRoutes = criarRotasEstacao('COZINHA');
+export const barOperacaoRoutes = criarRotasEstacao('BAR');

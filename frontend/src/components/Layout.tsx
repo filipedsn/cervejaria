@@ -190,7 +190,7 @@ export function Layout() {
     && (isDono || usuario?.permissoesOperacao === undefined || usuario.permissoesOperacao.includes('command.read')));
   const navItemsCervejaria = getCervejariaNavItems({ isDono, permissoesOperacao: usuario?.permissoesOperacao, operationMode: operacao.operationMode });
   const navItemsComplementares = operacao.ativo
-    ? getComplementaryNavItems({ temCozinha: operacao.temCozinha, controlaEstoque: operacao.controlaEstoque, isDono, permissoesOperacao: usuario?.permissoesOperacao })
+    ? getComplementaryNavItems({ temCozinha: operacao.temCozinha, temBar: operacao.temBar, controlaEstoque: operacao.controlaEstoque, isDono, permissoesOperacao: usuario?.permissoesOperacao })
     : [];
   const clientesIndex = navItemsCervejaria.findIndex((item) => item.path === '/clientes');
   const navItemsCervejariaOrdenados =
@@ -209,6 +209,7 @@ export function Layout() {
       : []),
     ...getOperacaoNavItems({
       temCozinha: operacao.temCozinha,
+      temBar: operacao.temBar,
       controlaEstoque: operacao.controlaEstoque,
       isDono,
       permissoesOperacao: usuario?.permissoesOperacao,

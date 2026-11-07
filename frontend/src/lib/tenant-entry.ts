@@ -3,13 +3,16 @@ export const OPERACAO_NO_ACCESS_PATH = '/operacao/sem-acesso';
 export type OperacaoEntryAccess = {
   can: (permission: string) => boolean;
   kitchenEnabled: boolean;
+  /** Ausente = Bar desligado. */
+  barEnabled?: boolean;
   inventoryEnabled: boolean;
 };
 
 /** First operational screen the user can actually use, in the order of daily work. */
-export function getOperacaoEntryPath({ can, kitchenEnabled, inventoryEnabled }: OperacaoEntryAccess): string {
+export function getOperacaoEntryPath({ can, kitchenEnabled, barEnabled = false, inventoryEnabled }: OperacaoEntryAccess): string {
   if (can('command.read')) return '/operacao/comandas';
   if (kitchenEnabled && can('kitchen.read')) return '/operacao/cozinha';
+  if (barEnabled && can('bar.read')) return '/operacao/bar';
   if (can('cash.open') || can('cash.values.read')) return '/operacao/caixa';
   if (inventoryEnabled && can('inventory.read')) return '/operacao/estoque';
   return OPERACAO_NO_ACCESS_PATH;

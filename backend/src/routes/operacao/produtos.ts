@@ -34,6 +34,8 @@ const createProdutoSchema = z.object({
   descricao: z.string().optional(),
   estilo: z.string().optional(),
   exigePreparo: z.boolean().default(false),
+  /** Destino do preparo quando exigePreparo; enum garante uma única estação. */
+  estacaoPreparo: z.enum(['COZINHA', 'BAR']).optional(),
   prepararEmPedidoSeparado: z.boolean().default(false),
   controlaEstoque: z.boolean().default(true),
   ordem: z.number().int().min(0).default(0),
@@ -318,6 +320,9 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Informe pelo menos um preço por volume para o chope' });
     }
     if (!chope && !body.precoUnit) return reply.status(400).send({ error: 'Informe um preço unitário maior que zero' });
+    if (!chope && body.exigePreparo && body.estacaoPreparo === 'BAR' && !request.operacao.temBar) {
+      return reply.status(400).send({ error: 'Ative o Bar nas configurações antes de enviar produtos para o bar' });
+    }
 
     const tipo = chope ? 'BEBIDA' : body.tipo ?? 'BEBIDA';
     const formato = chope ? 'CHOPE' : tipo === 'BEBIDA' ? body.formato ?? 'OUTRO' : null;
@@ -335,6 +340,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         descricao: chope ? body.descricao : undefined,
         estilo: chope ? body.estilo : undefined,
         exigePreparo: chope ? false : body.exigePreparo,
+        estacaoPreparo: chope ? 'COZINHA' : body.estacaoPreparo ?? 'COZINHA',
         ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: chope || !body.exigePreparo ? false : body.prepararEmPedidoSeparado } : {}),
         controlaEstoque: body.controlaEstoque,
         ordem: body.ordem,
@@ -391,6 +397,9 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     if (chope && body.precoUnit !== undefined && body.precos === undefined) {
       return reply.status(400).send({ error: 'Chope deve ser salvo com preços por volume' });
     }
+    if (!chope && body.estacaoPreparo === 'BAR' && existing.estacaoPreparo !== 'BAR' && (body.exigePreparo ?? existing.exigePreparo) && !request.operacao.temBar) {
+      return reply.status(400).send({ error: 'Ative o Bar nas configurações antes de enviar produtos para o bar' });
+    }
     const classificationChanged = tipoAtualizado !== existing.tipo || formatoAtualizado !== existing.formato;
     if (classificationChanged && (tipoAtualizado !== existing.tipo || formatoAtualizado !== existing.formato)) {
       const vendasHistoricas = await prisma.itemComanda.count({ where: { produtoId: id } });
@@ -414,6 +423,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
           descricao: body.descricao,
           estilo: body.estilo,
           exigePreparo: chope ? false : body.exigePreparo,
+          estacaoPreparo: chope ? 'COZINHA' : body.estacaoPreparo,
           ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: chope || !(body.exigePreparo ?? existing.exigePreparo) ? false : (body.prepararEmPedidoSeparado ?? existing.prepararEmPedidoSeparado) } : {}),
           controlaEstoque: body.controlaEstoque,
           ordem: body.ordem,

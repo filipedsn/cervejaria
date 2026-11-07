@@ -28,6 +28,7 @@ import {
   notificarPedidoNovo,
 } from '../lib/operacao/cozinha.js';
 import { inventoryService } from '../services/inventory-service.js';
+import { cobrancaAoLancarDasConfiguracoes } from '../lib/operacao/estacao-preparo.js';
 import { lockComandaItemsInTx } from '../lib/comanda-service.js';
 import { getOperationalProfile } from '../lib/operational-profile.js';
 import { proximoNumeroComandaOperacaoTurno } from '../lib/comanda-numero.js';
@@ -121,7 +122,7 @@ async function getPdvClienteSession(app: FastifyInstance, request: FastifyReques
 
 async function summarizePdvClientComanda(comanda: Parameters<typeof resumoComanda>[0], cervejariaId: string) {
   const profile = await getOperationalProfile(cervejariaId);
-  return resumoComanda(comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch);
+  return resumoComanda(comanda, (profile ? cobrancaAoLancarDasConfiguracoes(profile.effectiveSettings) : undefined));
 }
 
 
@@ -444,6 +445,7 @@ export async function publicRoutes(app: FastifyInstance) {
     const body = pedidoPdvSchema.parse(request.body);
     const profile = await getOperationalProfile(session.cervejariaId);
     const temCozinha = profile?.capabilities.kitchen ?? false;
+    const temBar = profile?.capabilities.bar ?? false;
     const controlaEstoque = profile?.capabilities.inventory ?? false;
     let resultado;
     try {
@@ -495,13 +497,14 @@ export async function publicRoutes(app: FastifyInstance) {
         observacao: body.observacao,
         itens,
         temCozinha,
+        temBar,
       });
       for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
         context: 'CAIXA', moduleEnabled: controlaEstoque, cervejariaId: session.cervejariaId,
         pontoVendaId: session.pontoVendaId, pedidoId: pedido.id,
         registradoPorId: `PORTAL:${session.clienteId}`, items: itensPedido,
       });
-      await recalcComandaTotalOperacao(tx, session.comandaId, { kitchenItemsChargeAtLaunch: profile?.effectiveSettings.kitchenItemsChargeAtLaunch });
+      await recalcComandaTotalOperacao(tx, session.comandaId, { cobrancaAoLancar: (profile ? cobrancaAoLancarDasConfiguracoes(profile.effectiveSettings) : undefined) });
       return {
         pedidos: pedidosCriados.map((item) => item.pedido),
         comanda: await tx.comanda.findUniqueOrThrow({ where: { id: session.comandaId }, include: INCLUDE_COMANDA_OPERACAO }),
@@ -533,7 +536,7 @@ export async function publicRoutes(app: FastifyInstance) {
     // A tela geral de comandas precisa atualizar mesmo quando não há cozinha
     // habilitada para o perfil operacional.
     notificarComandaOperacaoAtualizada(app, session.cervejariaId, session.comandaId);
-    if (temCozinha) for (const pedido of resultado.pedidos) await notificarPedidoNovo(app, session.cervejariaId, pedido);
+    if (temCozinha || temBar) for (const pedido of resultado.pedidos) await notificarPedidoNovo(app, session.cervejariaId, pedido);
     // Chope/itens sem preparo não entram na cozinha — avisa o balcão quem servir.
     await notificarAtendimentoBalcaoPortal(
       app,
@@ -541,7 +544,7 @@ export async function publicRoutes(app: FastifyInstance) {
       session.comandaId,
       resultado.pedidos.map((pedido) => pedido.id),
     );
-    return reply.status(201).send(resumoComanda(resultado.comanda, profile?.effectiveSettings.kitchenItemsChargeAtLaunch));
+    return reply.status(201).send(resumoComanda(resultado.comanda, (profile ? cobrancaAoLancarDasConfiguracoes(profile.effectiveSettings) : undefined)));
   });
 
   app.post('/cervejarias/:slug/pontos-venda/:pontoVendaId/comanda/solicitar-pagamento', async (request, reply) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, formatCurrency, ApiError } from '../lib/api';
@@ -15,6 +15,7 @@ import { StatusBadge, comandaStatusVariant } from '../components/StatusBadge';
 import { IconTrash } from '../components/NavIcons';
 import { AdicionarItemComandaModal } from '../components/AdicionarItemComandaModal';
 import { classificarGrupoProdutoOperacao } from '../lib/operacao';
+import { itemCobradoAoLancar } from '../lib/estacao';
 import { PaymentDiscountFields } from '../components/checkout/PaymentDiscountFields';
 import {
   PaymentFormModal,
@@ -69,10 +70,15 @@ export function ComandaDetailPage() {
 
   const { data: operationalConfiguration } = useQuery({
     queryKey: ['operational-configuration'],
-    queryFn: () => api.get<{ configuration: { kitchenItemsChargeAtLaunch?: boolean } | null }>('/api/cervejaria/configuracao-operacional'),
+    queryFn: () => api.get<{ configuration: { kitchenItemsChargeAtLaunch?: boolean; barItemsChargeAtLaunch?: boolean } | null }>('/api/cervejaria/configuracao-operacional'),
     enabled: Boolean(comanda),
   });
   const kitchenItemsChargeAtLaunch = operationalConfiguration?.configuration?.kitchenItemsChargeAtLaunch ?? false;
+  const barItemsChargeAtLaunch = operationalConfiguration?.configuration?.barItemsChargeAtLaunch ?? false;
+  const cobrancaAoLancar = useMemo(
+    () => ({ cozinha: kitchenItemsChargeAtLaunch, bar: barItemsChargeAtLaunch }),
+    [kitchenItemsChargeAtLaunch, barItemsChargeAtLaunch],
+  );
 
   const needsEventoFetch = !!comanda && evento?.id !== comanda.eventoId;
   const { data: comandaEvento } = useQuery({
@@ -155,10 +161,10 @@ export function ComandaDetailPage() {
 
   useEffect(() => {
     if (!showPayment || !comanda) return;
-    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
+    const subtotal = subtotalComandaCervejaria(comanda, cobrancaAoLancar);
     const total = Math.max(0, subtotal - parseCurrencyInput(descontoInput));
     setPaymentForm((prev) => syncCoveringPaymentForm(prev, total));
-  }, [descontoInput, showPayment, comanda?.itens, kitchenItemsChargeAtLaunch]);
+  }, [descontoInput, showPayment, comanda?.itens, cobrancaAoLancar]);
 
   const addItemsMutation = useMutation({
     mutationFn: (itens: LancamentoLegado[]) =>
@@ -303,7 +309,7 @@ export function ComandaDetailPage() {
 
   const openPayment = () => {
     if (!comanda) return;
-    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
+    const subtotal = subtotalComandaCervejaria(comanda, cobrancaAoLancar);
     const desconto = descontoComandaCervejaria(comanda);
     setDescontoInput(formatCurrencyInputFromNumber(desconto));
     setPaymentForm(createDefaultPaymentForm(Math.max(0, subtotal - desconto)));
@@ -315,7 +321,7 @@ export function ComandaDetailPage() {
   const handleClose = (deixarPendente: boolean) => {
     if (!comanda) return;
     const desconto = parseCurrencyInput(descontoInput);
-    const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
+    const subtotal = subtotalComandaCervejaria(comanda, cobrancaAoLancar);
     const podeAplicarDesconto = podeDarDescontoOperacao;
     if (podeAplicarDesconto && desconto > subtotal) {
       setError('O desconto não pode ser maior que o subtotal da comanda');
@@ -375,10 +381,14 @@ export function ComandaDetailPage() {
   const outrosProdutos = produtosUnitarios.filter((p) => classificarGrupoProdutoOperacao(p) === 'outros');
   const hasActionBar = isOpen || !isOpen;
   const podeAplicarDesconto = podeDarDescontoOperacao;
-  const subtotal = subtotalComandaCervejaria(comanda, kitchenItemsChargeAtLaunch);
-  const valorPendente = kitchenItemsChargeAtLaunch ? 0 : comanda.itens
-    .filter((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm && item.pedidoCozinha?.status !== 'ENTREGUE' && item.pedidoCozinha?.status !== 'CANCELADO' && item.pedidoCozinha?.status !== 'CANCELAMENTO_PENDENTE')
+  const subtotal = subtotalComandaCervejaria(comanda, cobrancaAoLancar);
+  const valorPendentePorEstacao = (estacao: 'COZINHA' | 'BAR') => comanda.itens
+    .filter((item) => item.exigePreparo && !itemCobradoAoLancar(item, cobrancaAoLancar)
+      && (item.estacaoPreparo === 'BAR' ? 'BAR' : 'COZINHA') === estacao
+      && !item.cancelamentoPendenteEm && !item.canceladoEm && item.pedidoCozinha?.status !== 'ENTREGUE' && item.pedidoCozinha?.status !== 'CANCELADO' && item.pedidoCozinha?.status !== 'CANCELAMENTO_PENDENTE')
     .reduce((total, item) => total + parseFloat(item.precoUnit) * item.quantidade, 0);
+  const valorPendente = valorPendentePorEstacao('COZINHA');
+  const valorPendenteBar = valorPendentePorEstacao('BAR');
   const descontoValor = parseCurrencyInput(descontoInput);
   const totalComDesconto = Math.max(0, subtotal - descontoValor);
   const descontoSalvo = descontoComandaCervejaria(comanda);
@@ -425,6 +435,7 @@ export function ComandaDetailPage() {
         {comanda.cliente.telefone && <p className="text-sm text-ink-faint mt-1">{comanda.cliente.telefone}</p>}
         <p className="text-2xl sm:text-3xl font-bold text-brand-600 mt-2 tabular-nums">{formatCurrency(comanda.total)}</p>
         {valorPendente > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(valorPendente)}</p>}
+        {valorPendenteBar > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente no bar: {formatCurrency(valorPendenteBar)}</p>}
         {!isOpen && descontoSalvo > 0 && (
           <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">
             <div className="flex justify-between text-ink-muted">
@@ -466,8 +477,8 @@ export function ComandaDetailPage() {
             <div className="min-w-0">
               <p className="font-semibold">{item.produto.nome}</p>
               <p className="text-sm text-ink-muted">{formatItemDetail(item)}</p>
-              {item.cancelamentoPendenteEm && <p className="mt-1 text-xs font-semibold text-orange-400">Cancelamento solicitado — aguardando confirmação da cozinha</p>}
-              {item.canceladoEm && <p className="mt-1 text-xs font-semibold text-ink-muted">Cancelado pela cozinha</p>}
+              {item.cancelamentoPendenteEm && <p className="mt-1 text-xs font-semibold text-orange-400">Cancelamento solicitado — aguardando confirmação {item.estacaoPreparo === 'BAR' ? 'do bar' : 'da cozinha'}</p>}
+              {item.canceladoEm && <p className="mt-1 text-xs font-semibold text-ink-muted">Cancelado {item.estacaoPreparo === 'BAR' ? 'pelo bar' : 'pela cozinha'}</p>}
               {item.observacao && <p className="text-xs text-ink-muted">Obs: {item.observacao}</p>}
               {item.opcionais?.length ? <p className="text-xs text-ink-muted">{item.opcionais.map((opcao) => opcao.nome).join(' · ')}</p> : null}
               {item.paraViagem && (

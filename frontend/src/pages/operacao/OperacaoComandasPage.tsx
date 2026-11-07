@@ -24,6 +24,7 @@ import { connectSocket, getSocket } from '../../lib/socket';
 import { useAtendimentoBalcao } from '../../hooks/useAtendimentoBalcao';
 import { useComandasAtendimentoAlarme } from '../../hooks/useComandasAtendimentoAlarme';
 import {
+  estacaoDoPedido,
   mesasOperacionais,
   ordenarComandasAbertasOperacao,
   ordenarComandasParaOperacao,
@@ -452,9 +453,10 @@ export function OperacaoComandasPage() {
             const titulo = comanda ? rotuloComanda(comanda) : `Mesa ${mesa!.numero}`;
             const pedidosProntosParaAvisar = comanda && isAbertas && !selectMode &&
               contexto.whatsappPedidoProntoEnabled &&
-              !contexto.whatsappPedidoProntoNaCozinha &&
               Boolean(comanda.cliente?.telefone)
               ? comanda.pedidos.filter((pedido) =>
+                  // O aviso fica na tela da estação quando ela está configurada para isso.
+                  !(estacaoDoPedido(pedido) === 'BAR' ? contexto.whatsappPedidoProntoNoBar : contexto.whatsappPedidoProntoNaCozinha) &&
                   pedido.status === 'PRONTO' &&
                   !pedido.clienteAvisadoEm &&
                   pedido.itens.some((item) =>

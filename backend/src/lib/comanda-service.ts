@@ -12,6 +12,13 @@ import { resolverOpcionais } from './produto-opcionais.js';
 import { diaOperacional, proximoNumeroPedidoOperacao } from './operacao/venda.js';
 import { estornarEstoqueItemPedido } from './operacao/estoque.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from './canonical-pdv-operational-config.js';
+import {
+  cobrancaAoLancarDasConfiguracoes,
+  estacaoDoItem,
+  itemCobradoAoLancar,
+  type CobrancaAoLancar,
+  type EstacaoPreparo,
+} from './operacao/estacao-preparo.js';
 
 export const comandaDetailInclude = {
   cliente: true,
@@ -26,7 +33,7 @@ export const comandaDetailInclude = {
   pagamentos: true,
 } satisfies Prisma.ComandaInclude;
 
-async function cozinhaEntraNoTotalAoLancar(client: typeof prisma | Prisma.TransactionClient, comandaId: string) {
+async function cobrancaAoLancarDaComanda(client: typeof prisma | Prisma.TransactionClient, comandaId: string) {
   const origem = await client.comanda.findUnique({
     where: { id: comandaId },
     select: {
@@ -35,14 +42,22 @@ async function cozinhaEntraNoTotalAoLancar(client: typeof prisma | Prisma.Transa
     },
   });
   const cervejariaId = origem?.evento?.cervejariaId ?? origem?.pontoVenda?.cervejariaId;
-  if (!cervejariaId) return false;
+  if (!cervejariaId) return cobrancaAoLancarDasConfiguracoes(null);
   const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, client);
-  if (canonical) return canonical.kitchenItemsChargeAtLaunch;
+  if (canonical) return cobrancaAoLancarDasConfiguracoes(canonical);
   const configuracao = await client.configuracaoOperacional.findUnique({
     where: { cervejariaId },
-    select: { kitchenItemsChargeAtLaunch: true },
+    select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true },
   });
-  return configuracao?.kitchenItemsChargeAtLaunch ?? false;
+  return cobrancaAoLancarDasConfiguracoes(configuracao);
+}
+
+function itemEntraNoTotal(
+  item: { exigePreparo: boolean; estacaoPreparo: EstacaoPreparo; cancelamentoPendenteEm: Date | null; canceladoEm: Date | null; pedidoCozinha: { status: string } | null },
+  cobranca: CobrancaAoLancar,
+) {
+  return !item.cancelamentoPendenteEm && !item.canceladoEm
+    && (itemCobradoAoLancar(item, cobranca) || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha);
 }
 
 export async function recalcComandaTotal(comandaId: string) {
@@ -51,9 +66,9 @@ export async function recalcComandaTotal(comandaId: string) {
     where: { id: comandaId },
     select: { desconto: true },
   });
-  const cozinhaAoLancar = await cozinhaEntraNoTotalAoLancar(prisma, comandaId);
+  const cobranca = await cobrancaAoLancarDaComanda(prisma, comandaId);
   const subtotal = itens
-    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || cozinhaAoLancar || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
+    .filter((item) => itemEntraNoTotal(item, cobranca))
     .reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
   const total = Math.max(0, subtotal - toNumber(comanda?.desconto ?? 0));
   return prisma.comanda.update({
@@ -69,9 +84,9 @@ export async function recalcComandaTotalInTx(tx: Prisma.TransactionClient, coman
     select: { desconto: true },
   });
   const itens = await tx.itemComanda.findMany({ where: { comandaId }, include: { pedidoCozinha: { select: { status: true } } } });
-  const cozinhaAoLancar = await cozinhaEntraNoTotalAoLancar(tx, comandaId);
+  const cobranca = await cobrancaAoLancarDaComanda(tx, comandaId);
   const subtotal = itens
-    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || cozinhaAoLancar || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
+    .filter((item) => itemEntraNoTotal(item, cobranca))
     .reduce((sum, item) => sum + toNumber(item.precoUnit) * item.quantidade, 0);
   const total = Math.max(0, subtotal - toNumber(comanda?.desconto ?? 0));
   await tx.comanda.update({
@@ -97,6 +112,16 @@ async function estoqueOperacionalHabilitado(tx: Prisma.TransactionClient, cervej
   });
   return empresa?.configuracaoOperacional?.inventoryEnabled
     ?? Boolean(empresa?.configuracaoOperacao?.ativo && empresa.configuracaoOperacao.controlaEstoque);
+}
+
+async function barOperacionalHabilitado(tx: Prisma.TransactionClient, cervejariaId: string) {
+  const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, tx);
+  if (canonical) return canonical.barEnabled;
+  const configuracao = await tx.configuracaoOperacional.findUnique({
+    where: { cervejariaId },
+    select: { barEnabled: true },
+  });
+  return configuracao?.barEnabled === true;
 }
 
 export async function lockComandaItemsInTx(tx: Prisma.TransactionClient, comandaId: string) {
@@ -181,7 +206,9 @@ export async function addItemToComandaInTx(
   if (!preco) return { error: 'Preço não encontrado para este volume' as const };
 
   // EVENTO uses the same canonical capability boundaries and stock ledger as CAIXA.
-  const participaDaCozinha = !isChope && kitchenService.participates(produto, 'EVENTO');
+  // Bar items only enter the bar queue while the bar is enabled; otherwise they are counter items.
+  const participaDaCozinha = !isChope && kitchenService.participates(produto, 'EVENTO')
+    && (estacaoDoItem(produto) !== 'BAR' || await barOperacionalHabilitado(tx, cervejariaId));
   const controlaEstoque = Boolean(await estoqueOperacionalHabilitado(tx, cervejariaId)
     && inventoryService.participates(produto, 'EVENTO'));
   let pontoVendaId = comanda.pontoVendaId;
@@ -233,6 +260,7 @@ export async function addItemToComandaInTx(
       nome: produto.nome,
       observacao: item.observacao?.trim() || null,
       exigePreparo: participaDaCozinha,
+      estacaoPreparo: estacaoDoItem(produto),
       paraViagem: item.paraViagem ?? false,
       pedidoCozinhaId: pedidoCozinha?.id ?? null,
     },
@@ -271,6 +299,7 @@ export async function addItemToComandaInTx(
         precoUnit,
         quantidade: item.quantidade,
         exigePreparo: participaDaCozinha,
+        estacaoPreparo: estacaoDoItem(produto),
         prepararEmPedidoSeparado: false,
         controlaEstoque: produto.controlaEstoque,
         paraViagem: item.paraViagem ?? false,

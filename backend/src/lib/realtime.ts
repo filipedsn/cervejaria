@@ -35,11 +35,13 @@ export const realtimeRoomTenantFinance = (id: string) => `cervejaria:${id}:finan
 export const realtimeRoomTenantOperations = (id: string) => `cervejaria:${id}:operacao`;
 export const realtimeRoomTenantCommands = (id: string) => `cervejaria:${id}:comandas`;
 export const realtimeRoomTenantKitchen = (id: string) => `cervejaria:${id}:cozinha`;
+export const realtimeRoomTenantBar = (id: string) => `cervejaria:${id}:bar`;
 export const realtimeRoomEvent = (id: string) => `evento:${id}`;
 export const realtimeRoomEventFinance = (id: string) => `evento:${id}:financeiro`;
 export const realtimeRoomEventOperations = (id: string) => `evento:${id}:operacao`;
 export const realtimeRoomEventCommands = (id: string) => `evento:${id}:comandas`;
 export const realtimeRoomEventKitchen = (id: string) => `evento:${id}:cozinha`;
+export const realtimeRoomEventBar = (id: string) => `evento:${id}:bar`;
 
 function operationalPayload(event: RealtimeEvent): unknown {
   const data = event.data as Record<string, unknown> | null;
@@ -56,6 +58,7 @@ function operationalPayload(event: RealtimeEvent): unknown {
       id: pedido.id,
       numero: pedido.numero,
       status: pedido.status,
+      estacao: pedido.estacao,
       diaOperacional: pedido.diaOperacional,
       paraViagem: pedido.paraViagem,
       observacao: pedido.observacao,
@@ -66,7 +69,7 @@ function operationalPayload(event: RealtimeEvent): unknown {
         if (!item || typeof item !== 'object') return {};
         const record = item as Record<string, unknown>;
         return {
-          ...pickRecord(record, 'id', 'nome', 'quantidade', 'volumeMl', 'observacao', 'exigePreparo', 'paraViagem', 'cancelamentoPendente', 'cancelamentoPendenteEm', 'canceladoEm'),
+          ...pickRecord(record, 'id', 'nome', 'quantidade', 'volumeMl', 'observacao', 'exigePreparo', 'estacaoPreparo', 'paraViagem', 'cancelamentoPendente', 'cancelamentoPendenteEm', 'canceladoEm'),
           ...(Array.isArray(record.opcionais) ? {
             opcionais: record.opcionais.map((optional) => optional && typeof optional === 'object'
               ? pickRecord(optional as Record<string, unknown>, 'id', 'nome', 'quantidade')
@@ -100,6 +103,7 @@ function emitScoped(
   operationsRoom: string,
   commandsRoom: string,
   kitchenRoom: string,
+  barRoom: string,
   event: RealtimeEvent,
 ) {
   if (!io) return;
@@ -112,7 +116,9 @@ function emitScoped(
     return;
   }
   if (event.type === 'operacao:pedido-novo' || event.type === 'operacao:pedido-atualizado') {
-    io.to(kitchenRoom).emit(event.type, operationalPayload(event));
+    const data = event.data as { estacao?: unknown; pedido?: { estacao?: unknown } } | null;
+    const estacao = data?.estacao ?? data?.pedido?.estacao;
+    io.to(estacao === 'BAR' ? barRoom : kitchenRoom).emit(event.type, operationalPayload(event));
     return;
   }
   if (event.type === 'operacao:atendimento-pedido') {
@@ -133,7 +139,7 @@ export function emitToCervejaria(
   cervejariaId: string,
   event: RealtimeEvent
 ): void {
-  emitScoped(io, realtimeRoomTenant(cervejariaId), realtimeRoomTenantFinance(cervejariaId), realtimeRoomTenantOperations(cervejariaId), realtimeRoomTenantCommands(cervejariaId), realtimeRoomTenantKitchen(cervejariaId), event);
+  emitScoped(io, realtimeRoomTenant(cervejariaId), realtimeRoomTenantFinance(cervejariaId), realtimeRoomTenantOperations(cervejariaId), realtimeRoomTenantCommands(cervejariaId), realtimeRoomTenantKitchen(cervejariaId), realtimeRoomTenantBar(cervejariaId), event);
 }
 
 export function emitToEvento(
@@ -141,7 +147,7 @@ export function emitToEvento(
   eventoId: string,
   event: RealtimeEvent
 ): void {
-  emitScoped(io, realtimeRoomEvent(eventoId), realtimeRoomEventFinance(eventoId), realtimeRoomEventOperations(eventoId), realtimeRoomEventCommands(eventoId), realtimeRoomEventKitchen(eventoId), event);
+  emitScoped(io, realtimeRoomEvent(eventoId), realtimeRoomEventFinance(eventoId), realtimeRoomEventOperations(eventoId), realtimeRoomEventCommands(eventoId), realtimeRoomEventKitchen(eventoId), realtimeRoomEventBar(eventoId), event);
 }
 
 /** Financial-only event feed; restricted staff sockets never join this room. */

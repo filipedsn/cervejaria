@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  estacaoBloqueiaFechamentoComanda,
+  estacaoDoPedido,
   itemConfirmadoNaComanda,
   classificarGrupoProdutoOperacao,
   ordenarPedidosPorSenhaDecrescente,
   podeAlterarQuantidadeItemComanda,
   resumirItensComanda,
+  temPedidoCozinhaPendente,
   totalPendenteComanda,
   totalItensComanda,
   pedidoVisivelNaComanda,
@@ -87,6 +90,36 @@ test('item sem preparo compõe o resumo imediatamente, mesmo com o pedido ainda 
     { nome: 'Água', total: 16 },
   ]);
   assert.equal(totalPendenteComanda(comanda), 51);
+});
+
+test('Bar e Cozinha têm pendência, cobrança ao lançar e bloqueio de fechamento independentes', () => {
+  const pedidoBar: PedidoOperacao = {
+    ...pedido,
+    id: 'pedido-bar',
+    numero: 10,
+    itens: [{ id: 'gin', produtoId: 'gin', nome: 'Gin tônica', quantidade: 2, precoUnit: 30, subtotal: 60, volumeMl: 0, exigePreparo: true, estacaoPreparo: 'BAR' }],
+  };
+  const comanda = { pedidos: [pedido, pedidoBar] } as Parameters<typeof resumirItensComanda>[0];
+
+  assert.equal(estacaoDoPedido(pedidoBar), 'BAR');
+  assert.equal(estacaoDoPedido(pedido), 'COZINHA');
+  assert.equal(totalPendenteComanda(comanda, false, 'COZINHA'), 51);
+  assert.equal(totalPendenteComanda(comanda, false, 'BAR'), 60);
+  assert.equal(totalPendenteComanda(comanda, { cozinha: false, bar: true }), 51);
+  assert.deepEqual(
+    resumirItensComanda(comanda, { cozinha: false, bar: true }).map(({ nome, total }) => ({ nome, total })),
+    [{ nome: 'Água', total: 16 }, { nome: 'Gin tônica', total: 60 }],
+  );
+
+  const regras = {
+    kitchenItemsChargeAtLaunch: true,
+    allowCloseComandaWithPendingKitchenOrders: true,
+    barItemsChargeAtLaunch: false,
+    allowCloseComandaWithPendingBarOrders: false,
+  };
+  assert.equal(estacaoBloqueiaFechamentoComanda(comanda, regras), 'BAR');
+  assert.equal(estacaoBloqueiaFechamentoComanda(comanda, { ...regras, barItemsChargeAtLaunch: true, allowCloseComandaWithPendingBarOrders: true }), null);
+  assert.equal(temPedidoCozinhaPendente(comanda, 'BAR'), true);
 });
 
 test('quantidade de item entregue fica somente para leitura', () => {

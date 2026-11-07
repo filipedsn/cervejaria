@@ -101,6 +101,9 @@ export function OperacaoConfiguracoesPage() {
         <ConfigurationGroup title="Cozinha">
           <CozinhaVisualSettingsPanel />
         </ConfigurationGroup>
+        {contexto.temBar && <ConfigurationGroup title="Bar">
+          <CozinhaVisualSettingsPanel estacao="bar" />
+        </ConfigurationGroup>}
         <ConfigurationGroup title="Pagamentos e notificações">
           <ConfigChavePixPanel />
           <OperationalCapabilitiesPanel section="notifications" />

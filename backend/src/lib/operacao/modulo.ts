@@ -7,13 +7,17 @@ import {
   getOperationalProfile,
   type OperationalProfile,
 } from '../operational-profile.js';
+import { cobrancaAoLancarDasConfiguracoes } from './estacao-preparo.js';
 
 export interface ContextoOperacao {
   cervejariaId: string;
   controlaEstoque: boolean;
   temCozinha: boolean;
+  temBar: boolean;
   tapsEnabled: boolean;
   quantidadeMesas: number;
+  /** Cobrança no lançamento por estação, derivada de effectiveSettings. */
+  cobrancaAoLancar: { cozinha: boolean; bar: boolean };
   effectiveSettings: OperationalProfile['effectiveSettings'];
 }
 
@@ -44,13 +48,19 @@ export function hasKitchenAccess(profile: OperationalProfile | null): boolean {
   return profile?.capabilities.kitchen === true;
 }
 
+/** Bar is a second tenant-wide preparation station, independent of the kitchen. */
+export function hasBarAccess(profile: OperationalProfile | null): boolean {
+  return profile?.capabilities.bar === true;
+}
+
 /** Inventory is tenant-wide; product stock participation remains separate. */
 export function hasInventoryAccess(profile: OperationalProfile | null): boolean {
   return profile?.capabilities.inventory === true;
 }
 
 export function hasComplementaryAccess(profile: OperationalProfile | null): boolean {
-  return profile?.capabilities.cashMode === true || profile?.capabilities.inventory === true || profile?.capabilities.kitchen === true;
+  return profile?.capabilities.cashMode === true || profile?.capabilities.inventory === true
+    || profile?.capabilities.kitchen === true || profile?.capabilities.bar === true;
 }
 
 /** Tenant-owned catalog data is available independently of its operating mode. */
@@ -67,8 +77,10 @@ function attachOperacaoContext(
     cervejariaId,
     controlaEstoque: hasInventoryAccess(profile),
     temCozinha: hasKitchenAccess(profile),
+    temBar: hasBarAccess(profile),
     tapsEnabled: profile.capabilities.taps,
     quantidadeMesas: profile.effectiveSettings.quantidadeMesas,
+    cobrancaAoLancar: cobrancaAoLancarDasConfiguracoes(profile.effectiveSettings),
     effectiveSettings: profile.effectiveSettings,
   };
 }

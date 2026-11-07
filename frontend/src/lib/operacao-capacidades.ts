@@ -1,6 +1,7 @@
 export const CAIXA_CAPACIDADES_INVALIDATION_KEYS = [
   ['operacao-contexto'],
   ['operacao-cozinha'],
+  ['operacao-bar'],
   ['operacao-estoque'],
 ] as const;
 

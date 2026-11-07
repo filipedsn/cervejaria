@@ -67,7 +67,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
       : ['command.operate', 'payment.receive'];
   })] }, async (request, reply) => {
     try {
-      const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
+      const { cervejariaId, temCozinha, temBar, controlaEstoque, tapsEnabled } = request.operacao;
       const canonicalPdv = request.operacao.effectiveSettings.source === 'CANONICAL_PDV';
       const user = getAuthUser(request);
       const body = vendaAvulsaSchema.parse(request.body);
@@ -137,6 +137,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           observacao: body.observacao,
           itens,
           temCozinha,
+          temBar,
         });
 
         for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
@@ -147,7 +148,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
         // Venda avulsa é paga e registrada imediatamente. Mesmo quando comandas
         // normais só cobram itens de cozinha após a entrega, este fluxo precisa
         // validar o pagamento pelo valor integral vendido.
-        await recalcComandaTotalOperacao(tx, criada.id, { kitchenItemsChargeAtLaunch: true });
+        await recalcComandaTotalOperacao(tx, criada.id, { cobrancaAoLancar: true });
 
         const comandaCompleta = await tx.comanda.findUniqueOrThrow({
           where: { id: criada.id },
@@ -161,7 +162,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
           usuarioId: user.sub,
           fechadaEm: agora,
           sessaoCaixaId: sessao.id,
-          kitchenItemsChargeAtLaunch: true,
+          cobrancaAoLancar: true,
         });
 
         return {
@@ -173,7 +174,7 @@ export async function vendasOperacaoRoutes(app: FastifyInstance) {
         };
       }, CAIXA_VENDA_TX);
 
-      if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
+      if (temCozinha || temBar) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
       const res = resumoComanda(comanda, true);
       recordVendaAvulsa(centavos(res.total));

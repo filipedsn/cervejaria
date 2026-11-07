@@ -232,12 +232,26 @@ model ConfiguracaoOperacional {
   kitchenItemsChargeAtLaunch Boolean @default(false)
   /// Allow closing and paying a comanda while kitchen orders are still pending.
   allowCloseComandaWithPendingKitchenOrders Boolean @default(false)
+  barEnabled                Boolean?
+  /// Include bar items in a comanda total as soon as they are launched.
+  barItemsChargeAtLaunch    Boolean @default(false)
+  /// Allow closing and paying a comanda while bar orders are still pending.
+  allowCloseComandaWithPendingBarOrders Boolean @default(false)
   whatsappPedidoProntoEnabled Boolean @default(false)
   whatsappPedidoProntoNaCozinha Boolean @default(false)
+  whatsappPedidoProntoNoBar Boolean @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+/// Estação que prepara um item de comanda. Chope continua sempre no balcão.
+enum EstacaoPreparo {
+  COZINHA
+  BAR
 
   @@schema("public")
 }
@@ -258,8 +272,12 @@ model ConfiguracaoPontoVenda {
   kitchenEnabled Boolean
   kitchenItemsChargeAtLaunch Boolean
   allowCloseComandaWithPendingKitchenOrders Boolean
+  barEnabled Boolean @default(false)
+  barItemsChargeAtLaunch Boolean @default(false)
+  allowCloseComandaWithPendingBarOrders Boolean @default(false)
   whatsappPedidoProntoEnabled Boolean
   whatsappPedidoProntoNaCozinha Boolean
+  whatsappPedidoProntoNoBar Boolean @default(false)
   quantidadeMesas Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -366,8 +384,10 @@ model Produto {
   formato      FormatoBebida?
   /// Participa do ledger canônico quando inventoryEnabled estiver ativo.
   controlaEstoque Boolean @default(false)
-  /// Entra na fila canônica quando kitchenEnabled estiver ativo.
+  /// Entra na fila canônica da estação quando ela estiver ativa (kitchenEnabled/barEnabled).
   exigePreparo     Boolean @default(false)
+  /// Estação que prepara o item quando exigePreparo; um produto nunca vai para duas estações.
+  estacaoPreparo   EstacaoPreparo @default(COZINHA)
   /// Quando houver outros itens de preparo no lançamento, recebe pedido de cozinha próprio.
   prepararEmPedidoSeparado Boolean @default(false)
   /// Ordem de apresentação para produtos unitários.
@@ -818,6 +838,8 @@ model ItemComanda {
   nome              String?
   observacao        String?
   exigePreparo      Boolean  @default(false)
+  /// Snapshot da estação de preparo no lançamento; só tem efeito quando exigePreparo.
+  estacaoPreparo    EstacaoPreparo @default(COZINHA)
   paraViagem        Boolean  @default(false)
   /// Quando o balcão confirma Servir no item sem preparo (portal / alerta).
   balcaoAtendidoEm  DateTime?

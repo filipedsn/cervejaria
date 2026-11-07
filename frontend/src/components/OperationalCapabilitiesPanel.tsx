@@ -1,25 +1,54 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { ToggleAtivo } from './ToggleAtivo';
 
-type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled';
-type OperationalConfiguration = Record<CapabilityKey | 'plannedOperationsEnabled' | 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha' | 'kitchenItemsChargeAtLaunch' | 'allowCloseComandaWithPendingKitchenOrders', boolean | null>;
-type Enablements = { plannedOperations: boolean; cashRegister: boolean; cashMode: boolean; taps: boolean; inventory: boolean; kitchen: boolean };
+type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled' | 'barEnabled';
+type BooleanSettingKey =
+  | 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha' | 'whatsappPedidoProntoNoBar'
+  | 'kitchenItemsChargeAtLaunch' | 'allowCloseComandaWithPendingKitchenOrders'
+  | 'barItemsChargeAtLaunch' | 'allowCloseComandaWithPendingBarOrders';
+type OperationalConfiguration = Record<CapabilityKey | 'plannedOperationsEnabled' | BooleanSettingKey, boolean | null>;
+type Enablements = { plannedOperations: boolean; cashRegister: boolean; cashMode: boolean; taps: boolean; inventory: boolean; kitchen: boolean; bar?: boolean };
 type OperationalConfigResponse = { configurationSource: 'LEGACY' | 'CANONICAL_PDV'; enablements: Enablements; configuration: OperationalConfiguration | null };
 type CapabilitySection = 'all' | 'resources' | 'attendance' | 'notifications';
 type OperationalCapabilitiesPanelProps = { section?: CapabilitySection };
-const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen' };
+const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen', barEnabled: 'bar' };
 const CAPABILITIES: Array<{ key: CapabilityKey; title: string; description: string }> = [
   { key: 'tapsEnabled', title: 'Torneiras de chope', description: 'Utilizar torneiras nas operações.' },
   { key: 'inventoryEnabled', title: 'Controle de estoque', description: 'Controlar saldo e movimentação dos produtos.' },
   { key: 'kitchenEnabled', title: 'Cozinha / preparo', description: 'Utilizar o fluxo de preparo de pedidos.' },
+  { key: 'barEnabled', title: 'Bar / preparo de bebidas', description: 'Utilizar uma fila própria para drinks e bebidas preparadas no bar.' },
+];
+
+/** Regras de cobrança e fechamento são independentes por estação. */
+const STATION_ATTENDANCE = [
+  {
+    station: 'kitchen' as const,
+    chargeKey: 'kitchenItemsChargeAtLaunch' as const,
+    closeKey: 'allowCloseComandaWithPendingKitchenOrders' as const,
+    chargeTitle: 'Pedidos pendentes na cozinha compõem o valor da comanda',
+    closeTitle: 'Permitir fechar comanda com pedido pendente na cozinha',
+    closeDescription: 'Ligado: permite encerrar e receber mesmo antes da entrega. Desligado: exige que os pedidos de cozinha sejam entregues.',
+    label: 'na cozinha',
+    labelItens: 'itens da cozinha',
+  },
+  {
+    station: 'bar' as const,
+    chargeKey: 'barItemsChargeAtLaunch' as const,
+    closeKey: 'allowCloseComandaWithPendingBarOrders' as const,
+    chargeTitle: 'Pedidos pendentes no bar compõem o valor da comanda',
+    closeTitle: 'Permitir fechar comanda com pedido pendente no bar',
+    closeDescription: 'Ligado: permite encerrar e receber mesmo antes da entrega. Desligado: exige que os pedidos do bar sejam entregues.',
+    label: 'no bar',
+    labelItens: 'itens do bar',
+  },
 ];
 
 export function OperationalCapabilitiesPanel({ section = 'all' }: OperationalCapabilitiesPanelProps) {
   const queryClient = useQueryClient();
-  const [saving, setSaving] = useState<CapabilityKey | 'mode' | 'whatsapp' | 'whatsappLocation' | 'kitchenCharge' | 'closeWithKitchenPending' | null>(null);
+  const [saving, setSaving] = useState<CapabilityKey | BooleanSettingKey | 'mode' | null>(null);
   const [error, setError] = useState('');
   const { data, isLoading, isError } = useQuery({ queryKey: ['operational-configuration'], queryFn: () => api.get<OperationalConfigResponse>('/api/cervejaria/configuracao-operacional') });
   const configurationSource = isError ? undefined : data?.configurationSource;
@@ -61,58 +90,46 @@ export function OperationalCapabilitiesPanel({ section = 'all' }: OperationalCap
     }
     finally { setSaving(null); }
   }
-  async function updateWhatsAppSetting(key: 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha') {
-    const current = data?.configuration?.[key] ?? false;
-    const savingKey = key === 'whatsappPedidoProntoEnabled' ? 'whatsapp' : 'whatsappLocation';
-    setSaving(savingKey); setError('');
-    try { await api.patch('/api/cervejaria/configuracao-operacional', { [key]: !current }); await refresh(); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar a configuração do WhatsApp'); }
+  async function updateBooleanSetting(key: BooleanSettingKey, errorMessage: string) {
+    const enabled = !(data?.configuration?.[key] ?? false);
+    setSaving(key); setError('');
+    try { await api.patch('/api/cervejaria/configuracao-operacional', { [key]: enabled }); await refresh(); }
+    catch (cause) { setError(cause instanceof ApiError ? cause.message : errorMessage); }
     finally { setSaving(null); }
   }
-  async function updateKitchenChargeSetting() {
-    const enabled = !(data?.configuration?.kitchenItemsChargeAtLaunch ?? false);
-    setSaving('kitchenCharge'); setError('');
-    try { await api.patch('/api/cervejaria/configuracao-operacional', { kitchenItemsChargeAtLaunch: enabled }); await refresh(); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar a regra de cobrança da cozinha'); }
-    finally { setSaving(null); }
+  async function updateWhatsAppSetting(key: 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha' | 'whatsappPedidoProntoNoBar') {
+    await updateBooleanSetting(key, 'Não foi possível salvar a configuração do WhatsApp');
   }
-  async function updateCloseWithKitchenPendingSetting() {
-    const enabled = !(data?.configuration?.allowCloseComandaWithPendingKitchenOrders ?? false);
-    setSaving('closeWithKitchenPending'); setError('');
-    try {
-      await api.patch('/api/cervejaria/configuracao-operacional', { allowCloseComandaWithPendingKitchenOrders: enabled });
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Nao foi possivel salvar a regra de fechamento com pedidos pendentes');
-    } finally { setSaving(null); }
-  }
+  const barEnabled = data?.enablements.bar === true;
   const attendanceControls = <>
-    <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-ink">Pedidos pendentes na cozinha compõem o valor da comanda</p>
-        <p className="mt-1 text-sm leading-relaxed text-ink-muted">Ligado: entram na comanda ao lançar. Desligado: entram quando forem entregues.</p>
+    {STATION_ATTENDANCE.filter(({ station }) => station === 'kitchen' || barEnabled).map((rule) => <Fragment key={rule.station}>
+      <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-ink">{rule.chargeTitle}</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-muted">Ligado: entram na comanda ao lançar. Desligado: entram quando forem entregues.</p>
+        </div>
+        <ToggleAtivo
+          ativo={data?.configuration?.[rule.chargeKey] ?? false}
+          loading={isLoading || saving !== null}
+          onToggle={() => void updateBooleanSetting(rule.chargeKey, `Não foi possível salvar a regra de cobrança ${rule.label}`)}
+          labelAtivo={`Desativar cobrança ao lançar ${rule.labelItens}`}
+          labelInativo={`Ativar cobrança ao lançar ${rule.labelItens}`}
+        />
       </div>
-      <ToggleAtivo
-        ativo={data?.configuration?.kitchenItemsChargeAtLaunch ?? false}
-        loading={isLoading || saving !== null}
-        onToggle={() => void updateKitchenChargeSetting()}
-        labelAtivo="Desativar cobrança ao lançar itens da cozinha"
-        labelInativo="Ativar cobrança ao lançar itens da cozinha"
-      />
-    </div>
-    {data?.configuration?.kitchenItemsChargeAtLaunch && <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-ink">Permitir fechar comanda com pedido pendente na cozinha</p>
-        <p className="mt-1 text-sm leading-relaxed text-ink-muted">Ligado: permite encerrar e receber mesmo antes da entrega. Desligado: exige que os pedidos de cozinha sejam entregues.</p>
-      </div>
-      <ToggleAtivo
-        ativo={data?.configuration?.allowCloseComandaWithPendingKitchenOrders ?? false}
-        loading={isLoading || saving !== null}
-        onToggle={() => void updateCloseWithKitchenPendingSetting()}
-        labelAtivo="Desativar fechamento com pedido pendente na cozinha"
-        labelInativo="Ativar fechamento com pedido pendente na cozinha"
-      />
-    </div>}
+      {data?.configuration?.[rule.chargeKey] && <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-ink">{rule.closeTitle}</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-muted">{rule.closeDescription}</p>
+        </div>
+        <ToggleAtivo
+          ativo={data?.configuration?.[rule.closeKey] ?? false}
+          loading={isLoading || saving !== null}
+          onToggle={() => void updateBooleanSetting(rule.closeKey, 'Nao foi possivel salvar a regra de fechamento com pedidos pendentes')}
+          labelAtivo={`Desativar fechamento com pedido pendente ${rule.label}`}
+          labelInativo={`Ativar fechamento com pedido pendente ${rule.label}`}
+        />
+      </div>}
+    </Fragment>)}
   </>;
   const operationMode = data?.enablements.plannedOperations ? 'EVENTO' : 'CAIXA';
   if (section !== 'all' && !configurationSource) {
@@ -167,6 +184,21 @@ export function OperationalCapabilitiesPanel({ section = 'all' }: OperationalCap
             onToggle={() => void updateWhatsAppSetting('whatsappPedidoProntoNaCozinha')}
             labelAtivo="Desativar envio pela cozinha e usar a comanda"
             labelInativo="Ativar envio pela cozinha"
+          />
+        </div>
+      )}
+      {data?.configuration?.whatsappPedidoProntoEnabled && barEnabled && (
+        <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-ink">Enviar aviso pelo bar</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink-muted">Ligado: o botão aparece no bar para os pedidos do bar. Desligado: aparece na comanda.</p>
+          </div>
+          <ToggleAtivo
+            ativo={data.configuration.whatsappPedidoProntoNoBar ?? false}
+            loading={isLoading || saving !== null}
+            onToggle={() => void updateWhatsAppSetting('whatsappPedidoProntoNoBar')}
+            labelAtivo="Desativar envio pelo bar e usar a comanda"
+            labelInativo="Ativar envio pelo bar"
           />
         </div>
       )}

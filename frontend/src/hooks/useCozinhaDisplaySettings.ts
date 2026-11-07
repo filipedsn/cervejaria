@@ -33,9 +33,10 @@ export function clampMaxColunasPorLinha(value: unknown): number {
   return Math.min(COZINHA_MAX_COLUNAS_MAX, Math.max(COZINHA_MAX_COLUNAS_MIN, Math.round(n)));
 }
 
-export function useCozinhaDisplaySettings() {
+/** Preferência por estação: a TV do Bar não herda o layout escolhido para a Cozinha. */
+export function useCozinhaDisplaySettings(estacao: 'cozinha' | 'bar' = 'cozinha') {
   const { cervejaria, usuario } = useAuth();
-  const key = cervejaria && usuario ? `qt:cozinha:visual:${cervejaria.id}:${usuario.id}:${deviceId()}` : null;
+  const key = cervejaria && usuario ? `qt:${estacao}:visual:${cervejaria.id}:${usuario.id}:${deviceId()}` : null;
   const [settings, setSettings] = useState(DEFAULT);
   useEffect(() => {
     if (!key) return;

@@ -12,8 +12,9 @@ import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import { rotuloComanda, type PedidoCozinha } from '../../lib/operacao';
 import { ApiError } from '../../lib/api';
+import { ESTACOES, avisoClienteNaEstacao, type EstacaoUi } from '../../lib/estacao';
 
-export function OperacaoCozinhaPage() {
+export function OperacaoCozinhaPage({ estacao = 'cozinha' }: { estacao?: EstacaoUi }) {
   const [verEntregues, setVerEntregues] = useState(false);
   const [erroStatus, setErroStatus] = useState<{ pedidoId: string; numero: number; mensagem: string } | null>(null);
   const [erroPedidoCancelamento, setErroPedidoCancelamento] = useState<{ pedidoId: string; mensagem: string } | null>(null);
@@ -22,13 +23,14 @@ export function OperacaoCozinhaPage() {
   const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoCozinha | null>(null);
   const confirmingItems = useRef(new Set<string>());
   const { cervejaria, canPermission } = useAuth();
-  const podeAvancarPreparo = canPermission('kitchen.operate');
-  const podeCancelarPedido = canPermission('kitchen.cancel') && canPermission('sale.refund');
-  const podeConfirmarCancelamento = canPermission('kitchen.cancel') && canPermission('sale.refund');
+  const config = ESTACOES[estacao];
+  const podeAvancarPreparo = canPermission(config.permissoes.operate);
+  const podeCancelarPedido = canPermission(config.permissoes.cancel) && canPermission('sale.refund');
+  const podeConfirmarCancelamento = canPermission(config.permissoes.cancel) && canPermission('sale.refund');
   const { contexto } = useOperacaoContexto();
-  const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
+  const avisoNaCozinha = avisoClienteNaEstacao(contexto, estacao);
 
-  const { naFila, entregues, alerta, mudarStatusDoPedido, pedidosComStatusPendente, pedidoComStatusPendente, confirmarCancelamentoItem, isLoading, refetch } = useOperacaoCozinha();
+  const { naFila, entregues, alerta, mudarStatusDoPedido, pedidosComStatusPendente, pedidoComStatusPendente, confirmarCancelamentoItem, isLoading, refetch } = useOperacaoCozinha(estacao);
 
   if (isLoading) return <Loading />;
 
@@ -83,7 +85,7 @@ export function OperacaoCozinhaPage() {
   return (
     <div className="space-y-3 pb-2">
       <div className="flex items-center gap-2">
-        <nav className="segmented-control flex-1" aria-label="Filtro da cozinha">
+        <nav className="segmented-control flex-1" aria-label={`Filtro ${config.daEstacao}`}>
           <button
             type="button"
             onClick={() => setVerEntregues(false)}
@@ -100,7 +102,7 @@ export function OperacaoCozinhaPage() {
           </button>
         </nav>
         <Link
-          to="/operacao/cozinha/tv"
+          to={config.tvPath}
           className="icon-btn !h-11 !w-11 !min-h-11 !min-w-11 !p-0 rounded-xl bg-orange-600 text-white shadow-md shadow-orange-950/25 transition-colors hover:bg-orange-500"
           aria-label="Abrir modo TV (telão)"
           title="Abrir modo TV (telão)"
@@ -144,8 +146,8 @@ export function OperacaoCozinhaPage() {
 
       {lista.length === 0 && (
         <EmptyState
-          icon="👨‍🍳"
-          title={verEntregues ? 'Nada entregue hoje ainda' : 'Nenhum pedido na cozinha'}
+          icon={config.icone}
+          title={verEntregues ? 'Nada entregue hoje ainda' : `Nenhum pedido ${config.naEstacao}`}
         />
       )}
 
@@ -217,7 +219,7 @@ export function OperacaoCozinhaPage() {
               type="button"
               className="touch-btn-danger w-full min-h-14"
               disabled={cancelamentoPedidoEmAndamento}
-              data-audit="operacao-cozinha-confirmar-cancelamento"
+              data-audit={`operacao-${estacao}-confirmar-cancelamento`}
               onClick={confirmarCancelamento}
             >
               {cancelamentoPedidoEmAndamento ? 'Solicitando...' : 'Solicitar cancelamento'}
@@ -241,7 +243,7 @@ export function OperacaoCozinhaPage() {
               ))}
             </ul>
             <p className="text-sm text-ink-muted">
-              O pedido será retirado do total e o estoque será ajustado. Ele continuará destacado na cozinha até alguém confirmar o cancelamento.
+              O pedido será retirado do total e o estoque será ajustado. Ele continuará destacado {config.naEstacao} até alguém confirmar o cancelamento.
             </p>
             {pedidoParaCancelar.comanda.tipo === 'AVULSA' && (
               <p className="text-sm text-orange-500">

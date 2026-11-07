@@ -205,6 +205,17 @@ export function IconChefHat({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconP
   );
 }
 
+export function IconCocktail({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 4h16l-8 9-8-9Z" />
+      <path d="M12 13v7" />
+      <path d="M8 20h8" />
+      <path d="M16 4l3-2" />
+    </svg>
+  );
+}
+
 export function IconListMenu({ className = 'w-6 h-6', strokeWidth = 1.75 }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -223,6 +234,7 @@ export type NavItem = {
   donoOnly?: boolean;
   permissionOnly?: string;
   somenteCozinha?: boolean;
+  somenteBar?: boolean;
   somenteEstoque?: boolean;
 };
 
@@ -288,6 +300,8 @@ export function getOperationalModeNavItems(contexto: {
 
 type OperacaoNavContext = {
   temCozinha: boolean;
+  /** Ausente = Bar desligado. */
+  temBar?: boolean;
   controlaEstoque: boolean;
 };
 
@@ -302,6 +316,14 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
     Icon: IconChefHat,
     permissionOnly: 'kitchen.read' as const,
     somenteCozinha: true as const,
+  },
+  {
+    path: '/operacao/bar',
+    label: 'Bar',
+    shortLabel: 'Bar',
+    Icon: IconCocktail,
+    permissionOnly: 'bar.read' as const,
+    somenteBar: true as const,
   },
   {
     path: '/operacao/estoque',
@@ -337,6 +359,7 @@ export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
       (!('donoOnly' in item && item.donoOnly) || contexto.isDono) &&
       (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao === undefined || contexto.permissoesOperacao.includes(item.permissionOnly)) &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
+      (!('somenteBar' in item && item.somenteBar) || contexto.temBar === true) &&
       (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
   );
   if (contexto.operationMode !== 'EVENTO') return items;
@@ -350,7 +373,7 @@ export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
 export function getComplementaryNavItems(contexto: OperacaoNavContext & { isDono: boolean; permissoesOperacao?: string[] }) {
   return CAIXA_NAV_ITEMS.filter((item) =>
     ((!item.permissionOnly || contexto.isDono || contexto.permissoesOperacao === undefined || contexto.permissoesOperacao.includes(item.permissionOnly)) &&
-      ((item.somenteCozinha && contexto.temCozinha) || (item.somenteEstoque && contexto.controlaEstoque))),
+      ((item.somenteCozinha && contexto.temCozinha) || (item.somenteBar && contexto.temBar === true) || (item.somenteEstoque && contexto.controlaEstoque))),
   );
 }
 

@@ -7,7 +7,7 @@ import { getOperationalProfile, shouldExposeEstablishmentSurface } from '../../l
 import { produtosOperacaoRoutes } from './produtos.js';
 import { comandasOperacaoRoutes } from './comandas.js';
 import { vendasOperacaoRoutes } from './vendas.js';
-import { cozinhaOperacaoRoutes } from './cozinha.js';
+import { barOperacaoRoutes, cozinhaOperacaoRoutes } from './cozinha.js';
 import { caixaOperacaoRoutes } from './caixa.js';
 import { cardapiosOperacaoRoutes } from './cardapios.js';
 import { estoqueOperacaoRoutes } from './estoque.js';
@@ -58,17 +58,22 @@ export async function operacaoRoutes(app: FastifyInstance) {
       tapsEnabled: profile?.capabilities.taps ?? false,
       inventoryEnabled: profile?.capabilities.inventory ?? false,
       kitchenEnabled: profile?.capabilities.kitchen ?? false,
+      barEnabled: profile?.capabilities.bar ?? false,
       // The context powers navigation and page guards, so it must expose the
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.effectiveSettings.inventoryEnabled ?? false,
       temCozinha: profile?.effectiveSettings.kitchenEnabled ?? false,
+      temBar: profile?.effectiveSettings.barEnabled ?? false,
       // Cardápios salvos são padrão; o antigo toggle de ativação foi removido.
       usaCardapio: true,
       kitchenItemsChargeAtLaunch: profile?.effectiveSettings.kitchenItemsChargeAtLaunch ?? false,
       allowCloseComandaWithPendingKitchenOrders: profile?.effectiveSettings.allowCloseComandaWithPendingKitchenOrders ?? false,
+      barItemsChargeAtLaunch: profile?.effectiveSettings.barItemsChargeAtLaunch ?? false,
+      allowCloseComandaWithPendingBarOrders: profile?.effectiveSettings.allowCloseComandaWithPendingBarOrders ?? false,
       quantidadeMesas: profile?.effectiveSettings.quantidadeMesas ?? 0,
       whatsappPedidoProntoEnabled: profile?.effectiveSettings.whatsappPedidoProntoEnabled ?? false,
       whatsappPedidoProntoNaCozinha: profile?.effectiveSettings.whatsappPedidoProntoNaCozinha ?? false,
+      whatsappPedidoProntoNoBar: profile?.effectiveSettings.whatsappPedidoProntoNoBar ?? false,
       operationalSettingsSource: profile?.effectiveSettings.source ?? 'LEGACY',
       pontosVenda,
     };
@@ -146,8 +151,12 @@ export async function operacaoRoutes(app: FastifyInstance) {
                 kitchenEnabled: request.operacao.temCozinha,
                 kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
                 allowCloseComandaWithPendingKitchenOrders: request.operacao.effectiveSettings.allowCloseComandaWithPendingKitchenOrders,
+                barEnabled: request.operacao.temBar,
+                barItemsChargeAtLaunch: request.operacao.effectiveSettings.barItemsChargeAtLaunch,
+                allowCloseComandaWithPendingBarOrders: request.operacao.effectiveSettings.allowCloseComandaWithPendingBarOrders,
                 whatsappPedidoProntoEnabled: request.operacao.effectiveSettings.whatsappPedidoProntoEnabled,
                 whatsappPedidoProntoNaCozinha: request.operacao.effectiveSettings.whatsappPedidoProntoNaCozinha,
+                whatsappPedidoProntoNoBar: request.operacao.effectiveSettings.whatsappPedidoProntoNoBar,
                 quantidadeMesas: request.operacao.quantidadeMesas,
               },
             })
@@ -165,6 +174,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
     await moduloScope.register(contasPendentesOperacaoRoutes, { prefix: '/contas-pendentes' });
     await moduloScope.register(vendasOperacaoRoutes, { prefix: '/vendas' });
     await moduloScope.register(cozinhaOperacaoRoutes, { prefix: '/cozinha' });
+    await moduloScope.register(barOperacaoRoutes, { prefix: '/bar' });
     await moduloScope.register(caixaOperacaoRoutes, { prefix: '/caixa' });
     await moduloScope.register(agendaOperacionalRoutes, { prefix: '/agenda' });
     await moduloScope.register(estoqueOperacaoRoutes, { prefix: '/estoque' });

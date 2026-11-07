@@ -14,13 +14,14 @@ import { useCozinhaDisplaySettings } from '../../hooks/useCozinhaDisplaySettings
 import { linkWhatsAppPedidoPronto, navegarParaWhatsApp } from '../../lib/whatsapp';
 import type { PedidoCozinha } from '../../lib/operacao';
 import { ApiError } from '../../lib/api';
+import { ESTACOES, avisoClienteNaEstacao, type EstacaoUi } from '../../lib/estacao';
 
 type ConfirmacaoCancelamento =
   | { tipo: 'solicitar-pedido'; pedido: PedidoCozinha }
   | { tipo: 'confirmar-pedido'; pedido: PedidoCozinha }
   | { tipo: 'cancelar-item'; pedido: PedidoCozinha; itemId: string; nome: string };
 
-export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabletLayout?: boolean }) {
+export function OperacaoCozinhaTvPage({ forceTabletLayout = false, estacao = 'cozinha' }: { forceTabletLayout?: boolean; estacao?: EstacaoUi }) {
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [erroCancelamentoAcao, setErroCancelamentoAcao] = useState('');
   const [erroStatus, setErroStatus] = useState<{ pedidoId: string; numero: number; mensagem: string } | null>(null);
@@ -35,13 +36,14 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
     quantidade: number;
   } | null>(null);
   const { cervejaria, canPermission } = useAuth();
-  const podeAvancarPreparo = canPermission('kitchen.operate');
-  const podeCancelarPedido = canPermission('kitchen.cancel') && canPermission('sale.refund');
-  const podeConfirmarCancelamento = canPermission('kitchen.cancel') && canPermission('sale.refund');
+  const config = ESTACOES[estacao];
+  const podeAvancarPreparo = canPermission(config.permissoes.operate);
+  const podeCancelarPedido = canPermission(config.permissoes.cancel) && canPermission('sale.refund');
+  const podeConfirmarCancelamento = canPermission(config.permissoes.cancel) && canPermission('sale.refund');
   const podeCancelarItem = canPermission('command.item.cancel');
   const { contexto } = useOperacaoContexto();
-  const { settings: displaySettings } = useCozinhaDisplaySettings();
-  const avisoNaCozinha = contexto.whatsappPedidoProntoEnabled && contexto.whatsappPedidoProntoNaCozinha;
+  const { settings: displaySettings } = useCozinhaDisplaySettings(estacao);
+  const avisoNaCozinha = avisoClienteNaEstacao(contexto, estacao);
   const {
     naFila,
     pedidosNaFila,
@@ -60,7 +62,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
     isLoading,
     erroItemMutation,
     refetch,
-  } = useOperacaoCozinha();
+  } = useOperacaoCozinha(estacao);
 
   const itemComErro = naFila.flatMap((pedido) => pedido.itens).find((item) => item.id === erroItemCancelamento?.itemId);
 
@@ -150,7 +152,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
     <div className="cozinha-tv-shell">
       <header className="cozinha-tv-header">
         <div className="min-w-0">
-          <p className="cozinha-tv-eyebrow">Cozinha</p>
+          <p className="cozinha-tv-eyebrow">{config.titulo}</p>
           <h1 className="cozinha-tv-title">{cervejaria?.nome ?? 'Pedidos'}</h1>
         </div>
 
@@ -211,7 +213,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
           >
             <IconBell className="w-7 h-7" strokeWidth={alerta.ativo ? 2.25 : 1.75} />
           </button>
-          <Link to="/operacao/cozinha" className="cozinha-tv-link-operacional">
+          <Link to={config.path} className="cozinha-tv-link-operacional">
             Modo operacional
           </Link>
         </div>
@@ -227,7 +229,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
 
       {naFila.length === 0 ? (
         <div className="cozinha-tv-empty">
-          <EmptyState icon="👨‍🍳" title="Nenhum pedido na cozinha" />
+          <EmptyState icon={config.icone} title={`Nenhum pedido ${config.naEstacao}`} />
         </div>
       ) : (
         <CozinhaTvGrid
@@ -339,7 +341,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
                 <li key={item.id}>{item.quantidade}× {item.nome}</li>
               ))}
             </ul>
-            <p className="text-ink-muted">O pedido ficará destacado na cozinha até a confirmação do cancelamento.</p>
+            <p className="text-ink-muted">O pedido ficará destacado {config.naEstacao} até a confirmação do cancelamento.</p>
             {confirmacaoCancelamento.pedido.comanda.tipo === 'AVULSA' && (
               <p className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 text-orange-700 dark:text-orange-300">
                 O valor dos itens será estornado no caixa. Se o pagamento foi por PIX ou cartão, devolva o valor ao cliente no meio de pagamento.
@@ -348,7 +350,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false }: { forceTabl
           </div>
         )}
         {confirmacaoCancelamento?.tipo === 'confirmar-pedido' && (
-          <p className="text-sm text-ink">Confirmar o cancelamento do pedido {confirmacaoCancelamento.pedido.numero} e removê-lo da fila da cozinha?</p>
+          <p className="text-sm text-ink">Confirmar o cancelamento do pedido {confirmacaoCancelamento.pedido.numero} e removê-lo da fila {config.daEstacao}?</p>
         )}
         {confirmacaoCancelamento?.tipo === 'cancelar-item' && (
           <p className="text-sm text-ink">Cancelar 1× {confirmacaoCancelamento.nome}?</p>

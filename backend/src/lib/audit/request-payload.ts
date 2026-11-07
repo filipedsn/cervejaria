@@ -9,18 +9,19 @@ const FIELDS = new Set([
   'contadoDebito', 'contadoCredito', 'contadoCartao',
   'quantidadeNova', 'estoqueMinimo', 'quantidadeEsperada', 'quantidadeMesas',
   'ordem', 'ativo', 'paraViagem', 'deixarPendente', 'abrirAgora', 'confirmarDataDiferente',
-  'temCozinha', 'controlaEstoque', 'confirmacaoEstoque', 'exigePreparo', 'prepararEmPedidoSeparado',
+  'temCozinha', 'controlaEstoque', 'confirmacaoEstoque', 'exigePreparo', 'estacaoPreparo', 'prepararEmPedidoSeparado',
   'gamificada', 'usaCardapio', 'exibirKpisComanda', 'comandasColunaUnica',
   'comandasAlarmeAtivo', 'comandasAlarmeIntervaloSegundos',
   'operationMode', 'tapsEnabled', 'inventoryEnabled', 'kitchenEnabled',
   'kitchenItemsChargeAtLaunch', 'allowCloseComandaWithPendingKitchenOrders',
-  'whatsappPedidoProntoEnabled', 'whatsappPedidoProntoNaCozinha', 'completeInitialSetup',
+  'barEnabled', 'barItemsChargeAtLaunch', 'allowCloseComandaWithPendingBarOrders',
+  'whatsappPedidoProntoEnabled', 'whatsappPedidoProntoNaCozinha', 'whatsappPedidoProntoNoBar', 'completeInitialSetup',
   'podeDarDescontoOperacao',
   'itens', 'opcionais', 'pagamentos', 'forma', 'status', 'tipo', 'operacao', 'papel',
   'escopo', 'tratamentoEstoque',
 ]);
 const ENUMS = new Set([
-  'forma', 'status', 'tipo', 'operacao', 'papel', 'escopo', 'tratamentoEstoque', 'operationMode',
+  'forma', 'status', 'tipo', 'operacao', 'papel', 'escopo', 'tratamentoEstoque', 'operationMode', 'estacaoPreparo',
 ]);
 
 export function summarizeRequestPayload(body: unknown): Record<string, unknown> | undefined {
