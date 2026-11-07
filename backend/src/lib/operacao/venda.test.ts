@@ -131,6 +131,38 @@ describe('resolverItens independent-order authority', () => {
   });
 });
 
+describe('resolverItens com combo (TAP-183)', () => {
+  const tx: any = {
+    produto: { findMany: async () => [{ id: 'janta', nome: 'Janta', tipo: 'COMIDA', formato: null, categoria: 'Combos', pontoVendaId: null, exigePreparo: false, estacaoPreparo: 'COZINHA', controlaEstoque: false, combo: true, precos: [{ volumeMl: 1, preco: 15 }] }] },
+    comboGrupo: { findMany: async () => [
+      { id: 'g1', nome: 'Churrasquinho', minimo: 1, maximo: 1, somenteCardapioTurno: false, opcoes: [
+        { id: 'o-boi', produtoId: 'boi', precoNoCombo: 10, quantidade: 1, produto: { id: 'boi', nome: 'Churrasquinho de boi', ativo: true, combo: false, tipo: 'COMIDA', formato: null, categoria: 'Espetos', exigePreparo: true, estacaoPreparo: 'COZINHA', controlaEstoque: true } },
+      ] },
+      { id: 'g2', nome: 'Bebida', minimo: 1, maximo: 1, somenteCardapioTurno: false, opcoes: [
+        { id: 'o-refri', produtoId: 'refri', precoNoCombo: 5, quantidade: 1, produto: { id: 'refri', nome: 'Refrigerante', ativo: true, combo: false, tipo: 'BEBIDA', formato: 'LATA', categoria: 'Bebidas', exigePreparo: false, estacaoPreparo: 'COZINHA', controlaEstoque: true } },
+      ] },
+    ] },
+  };
+
+  it('troca o combo pelos componentes, que ficam agrupados pela mesma instância', async () => {
+    const itens = await resolverItens(tx, 'tenant', [{
+      produtoId: 'janta', quantidade: 2, observacao: 'sem sal',
+      escolhasCombo: [{ grupoId: 'g1', opcaoIds: ['o-boi'] }, { grupoId: 'g2', opcaoIds: ['o-refri'] }],
+    }]);
+    assert.deepEqual(itens.map((item) => [item.produtoId, item.precoUnit, item.quantidade, item.exigePreparo, item.observacao]), [
+      ['boi', 10, 2, true, 'sem sal'],
+      ['refri', 5, 2, false, 'sem sal'],
+    ]);
+    assert.ok(itens[0]!.combo?.instanciaId);
+    assert.equal(itens[0]!.combo?.instanciaId, itens[1]!.combo?.instanciaId);
+    assert.deepEqual({ ...itens[1]!.combo, instanciaId: undefined }, { instanciaId: undefined, produtoId: 'janta', nome: 'Janta', grupoNome: 'Bebida' });
+  });
+
+  it('recusa combo sem as escolhas obrigatórias', async () => {
+    await assert.rejects(resolverItens(tx, 'tenant', [{ produtoId: 'janta', quantidade: 1 }]), /Escolha 1 opção\(ões\) em "Churrasquinho"/);
+  });
+});
+
 describe('validarChopeDoTurno legacy schema compatibility', () => {
   it('uses the Trailer contract while activation is off and never queries Tap.pontoVendaId', async () => {
     const previous = process.env.PDV_CANONICAL_CONFIG_QA;

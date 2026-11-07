@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { getZonedParts } from '../event-datetime.js';
 import { toNumber } from '../utils.js';
@@ -14,6 +14,7 @@ import { cardapioProdutoVolumeKey, mapPrecosCardapioOperacao } from '../cardapio
 import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
 import { resolverOpcionais, type OpcionalSelecionadoInput, type OpcionalResolvido } from '../produto-opcionais.js';
+import { resolverEscolhasCombo, type EscolhaComboInput } from './combo.js';
 import { canonicalPdvQaActivationEnabled, CanonicalPdvConfigurationError } from '../canonical-pdv-operational-config.js';
 import {
   cobrancaAoLancarDasConfiguracoes,
@@ -57,6 +58,14 @@ export interface ItemVendaInput {
   paraViagem?: boolean;
   observacao?: string;
   opcionais?: OpcionalSelecionadoInput[];
+  escolhasCombo?: EscolhaComboInput[];
+}
+
+export interface ItemComboResolvido {
+  instanciaId: string;
+  produtoId: string;
+  nome: string;
+  grupoNome: string;
 }
 
 export interface ItemResolvido {
@@ -74,6 +83,8 @@ export interface ItemResolvido {
   paraViagem: boolean;
   observacao: string | null;
   opcionais: OpcionalResolvido[];
+  /** Presente nos componentes de um combo; o combo em si não vira item. */
+  combo?: ItemComboResolvido;
 }
 
 export type EstacoesAtivas = { temCozinha: boolean; temBar: boolean };
@@ -162,9 +173,49 @@ export async function atribuirTapMontado(
   }));
 }
 
+async function itensDoCombo(
+  tx: TxClient,
+  combo: { id: string; nome: string },
+  linha: ItemVendaInput,
+  precoEfetivo: number,
+  precoCatalogo: number,
+  sessaoCaixaId?: string,
+): Promise<ItemResolvido[]> {
+  if (linha.tapId || linha.volumeMl) throw new VendaInvalidaError('Tap e volume só podem ser informados para chope');
+  if (linha.opcionais?.length) throw new VendaInvalidaError('Combos não aceitam opcionais');
+  const componentes = await resolverEscolhasCombo(tx, {
+    comboProdutoId: combo.id,
+    comboNome: combo.nome,
+    quantidade: linha.quantidade,
+    escolhas: linha.escolhasCombo,
+    precoEfetivo,
+    precoCatalogo,
+    sessaoCaixaId,
+  });
+  const instanciaId = randomUUID();
+  return componentes.map((componente) => ({
+    produtoId: componente.produtoId,
+    tapId: null,
+    volumeMl: 0,
+    nome: componente.nome,
+    precoUnit: componente.precoUnit,
+    quantidade: componente.quantidade,
+    exigePreparo: componente.exigePreparo,
+    estacaoPreparo: componente.estacaoPreparo,
+    // Os componentes de um combo seguem juntos no mesmo pedido da estação.
+    prepararEmPedidoSeparado: false,
+    controlaEstoque: componente.controlaEstoque,
+    paraViagem: linha.paraViagem ?? false,
+    observacao: linha.observacao?.trim() || null,
+    opcionais: [],
+    combo: { instanciaId, produtoId: combo.id, nome: combo.nome, grupoNome: componente.grupoNome },
+  }));
+}
+
 /**
  * Confere que os produtos sao da empresa e estao ativos, e copia nome e preco
  * para o item. Quantidades repetidas do mesmo produto viram uma linha so.
+ * Um combo vira os itens dos produtos escolhidos, com o preço rateado.
  */
 export async function resolverItens(
   tx: TxClient,
@@ -187,7 +238,7 @@ export async function resolverItens(
     where: { id: { in: ids }, cervejariaId, ativo: true },
     select: {
       id: true, nome: true, tipo: true, formato: true, categoria: true, pontoVendaId: true,
-      exigePreparo: true, estacaoPreparo: true, controlaEstoque: true,
+      exigePreparo: true, estacaoPreparo: true, controlaEstoque: true, combo: true,
       ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: true } : {}),
       precos: { orderBy: { volumeMl: 'asc' } },
     },
@@ -235,18 +286,19 @@ export async function resolverItens(
 
       await validarChopeDoTurno(tx, opts.sessaoCaixaId, sessao?.trailerId, sessao?.pontoVendaId, cervejariaId, produtos, itens, opts.tapsEnabled ?? false);
 
-      return Promise.all(itens.map(async (linha) => {
+      return (await Promise.all(itens.map(async (linha): Promise<ItemResolvido | ItemResolvido[]> => {
         const produto = produtoPorId.get(linha.produtoId)!;
         const chope = isBebidaChopeOperacao(produto);
         const volumeMenu = chope ? linha.volumeMl! : 0;
         const precoKey = cardapioProdutoVolumeKey(produto.id, volumeMenu);
         const precoTurno = precosTurno.get(precoKey);
         const precoTemplate = precosTemplate?.get(precoKey);
-        const opcionais = await resolverOpcionais(tx, produto.id, linha.opcionais);
         const precoCatalogo = chope
           ? toNumber(produto.precos.find((preco) => preco.volumeMl === linha.volumeMl)?.preco ?? 0)
           : toNumber(produto.precos[0]?.preco ?? 0);
         const precoBase = precoTurno ?? precoTemplate ?? precoCatalogo;
+        if (produto.combo) return itensDoCombo(tx, produto, linha, precoBase, precoCatalogo, opts.sessaoCaixaId);
+        const opcionais = await resolverOpcionais(tx, produto.id, linha.opcionais);
         return {
           produtoId: produto.id,
           tapId: chope ? linha.tapId! : null,
@@ -262,7 +314,7 @@ export async function resolverItens(
           observacao: linha.observacao?.trim() || null,
           opcionais,
         };
-      }));
+      }))).flat();
     }
   }
 
@@ -278,12 +330,13 @@ export async function resolverItens(
   }
 
   const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));
-  return Promise.all(itens.map(async (linha) => {
+  return (await Promise.all(itens.map(async (linha): Promise<ItemResolvido | ItemResolvido[]> => {
     const produto = produtoPorId.get(linha.produtoId)!;
     const chope = isBebidaChopeOperacao(produto);
     const precoBase = chope
       ? toNumber(produto.precos.find((preco) => preco.volumeMl === linha.volumeMl)?.preco ?? 0)
       : toNumber(produto.precos[0]?.preco ?? 0);
+    if (produto.combo) return itensDoCombo(tx, produto, linha, precoBase, precoBase);
     const opcionais = await resolverOpcionais(tx, produto.id, linha.opcionais);
     return {
       produtoId: produto.id,
@@ -300,7 +353,7 @@ export async function resolverItens(
       observacao: linha.observacao?.trim() || null,
       opcionais,
     };
-  }));
+  }))).flat();
 }
 
 export function totalEmCentavos(itens: Array<{ precoUnit: unknown; quantidade: number }>): number {
@@ -437,6 +490,12 @@ async function criarPedidoUnico(
       exigePreparo: itemVaiParaPreparo(item, params.estacoes),
       estacaoPreparo: estacaoDoItem(item),
       pedidoCozinhaId: pedido.id,
+      ...(item.combo ? {
+        comboInstanciaId: item.combo.instanciaId,
+        comboProdutoId: item.combo.produtoId,
+        comboNome: item.combo.nome,
+        comboGrupoNome: item.combo.grupoNome,
+      } : {}),
     } });
     itensCriados.push(criado);
   }
@@ -619,6 +678,9 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveCobrancaAoLanca
       exigePreparo: item.exigePreparo,
       estacaoPreparo: estacaoDoItem(item),
       balcaoAtendidoEm: item.balcaoAtendidoEm ?? null,
+      combo: item.comboInstanciaId
+        ? { instanciaId: item.comboInstanciaId, produtoId: item.comboProdutoId, nome: item.comboNome ?? '', grupoNome: item.comboGrupoNome ?? '' }
+        : null,
     })),
   }));
 

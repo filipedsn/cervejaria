@@ -119,6 +119,7 @@ export function resumoPedidoCozinha(pedido: PedidoCozinha | PedidoCozinhaComClie
         // agregado a cada linha marca incorretamente todos os itens irmãos.
         paraViagem: item.paraViagem,
         observacao: item.observacao,
+        comboNome: item.comboNome ?? null,
         opcionais: (item.opcionais ?? []).map((opcional) => ({
           id: opcional.id,
           nome: opcional.nome,

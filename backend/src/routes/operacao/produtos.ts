@@ -18,6 +18,9 @@ import { requirePermissaoOuDono } from '../../lib/operacao/permissoes.js';
 import { catalogoCategoriasCanonicoAtivo, categoriaPdvInputSchema, normalizarNomeCategoria } from '../../lib/operacao/catalogo-categorias.js';
 import { filtrarCategoriaChopeSeTapsDesligados } from '../../lib/operacao/categoria-chope-torneiras.js';
 import { diffPriceChanges, emitPriceChangeAudit } from '../../lib/audit/price-changes.js';
+import { composicaoComboSchema, listarComposicaoCombo, substituirComposicaoCombo } from '../../lib/operacao/combo.js';
+import { resolveUniqueOpenCashSession } from '../../lib/operacao/cash-session-resolution.js';
+import { operacaoUsaCardapio } from '../../lib/cardapio-toggle.js';
 
 const precoProdutoSchema = z.object({ volumeMl: z.number().int().positive(), preco: z.number().positive() });
 const tipoProdutoSchema = z.enum(['BEBIDA', 'COMIDA']);
@@ -39,9 +42,10 @@ const createProdutoSchema = z.object({
   prepararEmPedidoSeparado: z.boolean().default(false),
   controlaEstoque: z.boolean().default(true),
   ordem: z.number().int().min(0).default(0),
+  combo: z.boolean().default(false),
 });
 
-const updateProdutoSchema = createProdutoSchema.partial().extend({
+const updateProdutoSchema = createProdutoSchema.partial().omit({ combo: true }).extend({
   ativo: z.boolean().optional(),
   categoria: z.string().trim().min(1).max(80).optional(),
 });
@@ -298,7 +302,63 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const body = opcionaisSchema.parse(request.body);
     const produto = await prisma.produto.findFirst({ where: { id, cervejariaId } });
     if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
+    if (produto.combo && body.opcionalIds.length) return reply.status(400).send({ error: 'Combos não aceitam opcionais' });
     return prisma.$transaction((tx) => substituirOpcionaisProduto(tx, id, cervejariaId, body.opcionalIds));
+  });
+
+  app.get('/:id/combo', async (request, reply) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    const query = z.object({ pontoVendaId: z.string().min(1).optional() }).parse(request.query);
+    const produto = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } } } });
+    if (!produto) return reply.status(404).send({ error: 'Produto não encontrado' });
+    if (!produto.combo) return reply.status(400).send({ error: 'Este produto não é um combo' });
+    const grupos = await listarComposicaoCombo(prisma, id);
+
+    let produtosDoTurno: Set<string> | null = null;
+    if (query.pontoVendaId && grupos.some((grupo) => grupo.somenteCardapioTurno) && await operacaoUsaCardapio(cervejariaId)) {
+      const sessoes = await prisma.sessaoCaixaOperacao.findMany({
+        where: { cervejariaId, pontoVendaId: query.pontoVendaId, status: 'ABERTO' },
+        select: { id: true },
+        take: 2,
+      });
+      const sessao = resolveUniqueOpenCashSession(sessoes);
+      if (sessao) {
+        const linhas = await prisma.sessaoCaixaProdutoOperacao.findMany({ where: { sessaoCaixaId: sessao.id }, select: { produtoId: true } });
+        produtosDoTurno = new Set(linhas.map((linha) => linha.produtoId));
+      }
+    }
+
+    return {
+      precoCatalogo: Number(produto.precos[0]?.preco ?? 0),
+      grupos: grupos.map((grupo) => ({
+        ...grupo,
+        opcoes: grupo.opcoes.map((opcao) => ({
+          ...opcao,
+          disponivel: opcao.ativo && (!grupo.somenteCardapioTurno || !produtosDoTurno || produtosDoTurno.has(opcao.produtoId)),
+        })),
+      })),
+    };
+  });
+
+  app.put('/:id/combo', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => {
+    const { cervejariaId } = request.operacao;
+    const { id } = request.params as { id: string };
+    const body = composicaoComboSchema.parse(request.body);
+    const precoAntes = await prisma.preco.findMany({ where: { produtoId: id }, select: { volumeMl: true, preco: true } });
+    const grupos = await prisma.$transaction((tx) => substituirComposicaoCombo(tx, cervejariaId, id, body.grupos));
+    const precoDepois = await prisma.preco.findMany({ where: { produtoId: id }, select: { volumeMl: true, preco: true } });
+    emitPriceChangeAudit({
+      cervejariaId,
+      entityType: 'Produto',
+      entityId: id,
+      source: 'operacao.produto.combo',
+      changes: diffPriceChanges(
+        precoAntes.map((p) => ({ produtoId: id, volumeMl: p.volumeMl, preco: p.preco })),
+        precoDepois.map((p) => ({ produtoId: id, volumeMl: p.volumeMl, preco: p.preco })),
+      ),
+    });
+    return { precoCatalogo: Number(precoDepois[0]?.preco ?? 0), grupos };
   });
 
   app.post('/', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
@@ -313,20 +373,24 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
       categoria = categoriaPdv.nome;
       categoriaPdvId = categoriaPdv.id;
     }
-    const chope = categoria === 'Chope' || body.formato === 'CHOPE';
+    // O preço do combo nasce zerado e passa a ser a soma da composição ao salvá-la.
+    const combo = body.combo;
+    const chope = !combo && (categoria === 'Chope' || body.formato === 'CHOPE');
+    if (combo && categoria === 'Chope') return reply.status(400).send({ error: 'Combos não podem ficar na categoria Chope' });
     if (chope && categoria !== 'Chope' && !catalogoCategoriasCanonicoAtivo()) return reply.status(400).send({ error: 'Selecione a categoria Chope para cadastrar preços por volume' });
     if (chope && !tapsEnabled) return reply.status(404).send({ error: 'Submódulo de Tap/Chope desativado' });
     if (chope && !(body.precos ?? []).some((preco) => preco.volumeMl > 1 && preco.preco > 0)) {
       return reply.status(400).send({ error: 'Informe pelo menos um preço por volume para o chope' });
     }
-    if (!chope && !body.precoUnit) return reply.status(400).send({ error: 'Informe um preço unitário maior que zero' });
-    if (!chope && body.exigePreparo && body.estacaoPreparo === 'BAR' && !request.operacao.temBar) {
+    if (!chope && !combo && !body.precoUnit) return reply.status(400).send({ error: 'Informe um preço unitário maior que zero' });
+    if (!chope && !combo && body.exigePreparo && body.estacaoPreparo === 'BAR' && !request.operacao.temBar) {
       return reply.status(400).send({ error: 'Ative o Bar nas configurações antes de enviar produtos para o bar' });
     }
 
-    const tipo = chope ? 'BEBIDA' : body.tipo ?? 'BEBIDA';
+    const tipo = combo ? 'COMIDA' : chope ? 'BEBIDA' : body.tipo ?? 'BEBIDA';
     const formato = chope ? 'CHOPE' : tipo === 'BEBIDA' ? body.formato ?? 'OUTRO' : null;
-    const precos = chope ? body.precos! : [{ volumeMl: 1, preco: body.precoUnit! }];
+    const precos = combo ? [{ volumeMl: 1, preco: 0 }] : chope ? body.precos! : [{ volumeMl: 1, preco: body.precoUnit! }];
+    const exigePreparo = chope || combo ? false : body.exigePreparo;
 
     const produto = await prisma.produto.create({
       data: {
@@ -339,10 +403,11 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         formato,
         descricao: chope ? body.descricao : undefined,
         estilo: chope ? body.estilo : undefined,
-        exigePreparo: chope ? false : body.exigePreparo,
-        estacaoPreparo: chope ? 'COZINHA' : body.estacaoPreparo ?? 'COZINHA',
-        ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: chope || !body.exigePreparo ? false : body.prepararEmPedidoSeparado } : {}),
-        controlaEstoque: body.controlaEstoque,
+        exigePreparo,
+        estacaoPreparo: chope || combo ? 'COZINHA' : body.estacaoPreparo ?? 'COZINHA',
+        ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: exigePreparo ? body.prepararEmPedidoSeparado : false } : {}),
+        controlaEstoque: combo ? false : body.controlaEstoque,
+        combo,
         ordem: body.ordem,
         precos: { create: precos },
       },
@@ -359,11 +424,16 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
   app.put('/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId, tapsEnabled } = request.operacao;
     const { id } = request.params as { id: string };
-    const body = updateProdutoSchema.parse(request.body);
+    const entrada = updateProdutoSchema.parse(request.body);
 
     const canonicalCategoriesEnabled = catalogoCategoriasCanonicoAtivo();
     const existing = await prisma.produto.findFirst({ where: { id, cervejariaId }, include: { precos: { orderBy: { volumeMl: 'asc' } }, ...(canonicalCategoriesEnabled ? { categoriaPdv: true } : {}) } });
     if (!existing) return reply.status(404).send({ error: 'Produto não encontrado' });
+    // Preço, classificação, preparo e estoque do combo vêm da composição.
+    const body = existing.combo
+      ? { ...entrada, precoUnit: undefined, precos: undefined, tipo: undefined, formato: undefined, exigePreparo: undefined, estacaoPreparo: undefined, prepararEmPedidoSeparado: undefined, controlaEstoque: undefined }
+      : entrada;
+    if (existing.combo && body.categoria === 'Chope') return reply.status(400).send({ error: 'Combos não podem ficar na categoria Chope' });
 
     let categoria = body.categoria ?? (canonicalCategoriesEnabled ? existing.categoriaPdv?.nome ?? existing.categoria : normalizeCategoriaProduto(existing.categoria)) ?? 'Outros';
     let categoriaPdvId: string | null | undefined;
