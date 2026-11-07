@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ApiError } from './api';
-import { classifyUserFacingError } from './report-user-facing-error';
+import { ApiError } from '../src/lib/api.ts';
+import { classifyUserFacingError } from '../src/lib/report-user-facing-error.ts';
 
 describe('classifyUserFacingError', () => {
   it('classifies network ApiError (status 0)', () => {
