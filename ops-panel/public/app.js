@@ -234,6 +234,48 @@ function backupsBlock(backups) {
   </div>`;
 }
 
+function scheduleRow(s, manage) {
+  const state = !s.present
+    ? '<span class="chip" data-level="warn">ausente</span>'
+    : s.enabled
+      ? '<span class="chip" data-level="ok">ligado</span>'
+      : '<span class="chip" data-level="warn">desligado</span>';
+  let actions = '';
+  if (manage) {
+    const buttons = [];
+    if (s.canDisable) {
+      buttons.push(backupButton({ name: 'schedule.disable', confirm: 'schedule-disable', schedule: s }, 'Desligar', 'danger'));
+    } else if (s.canEnable) {
+      buttons.push(backupButton({ name: 'schedule.enable', confirm: 'schedule-enable', schedule: s }, 'Ligar'));
+    }
+    if (s.canSetTime) {
+      buttons.push(backupButton({ name: 'schedule.setTime', confirm: 'schedule-set-time', schedule: s }, 'Horário'));
+    }
+    actions = `<td><span class="bk-actions">${buttons.join('') || '<span class="hint">—</span>'}</span></td>`;
+  }
+  return `<tr>
+    <td><strong>${esc(s.label)}</strong><div class="sch-desc">${esc(s.description)}</div><code class="sch-id">${esc(s.id)}</code></td>
+    <td>${state}</td>
+    <td>${esc(s.timeText)}</td>
+    ${actions}
+  </tr>`;
+}
+
+const scheduleRows = (schedules) =>
+  schedules.items.map((s) => scheduleRow(s, schedules.manage)).join('');
+
+function schedulesBlock(schedules) {
+  if (!schedules) return '';
+  return `<div class="infra-schedules">
+    <h3>Agendamentos do servidor <small data-infra="schedules-summary">${esc(schedules.summary)}</small></h3>
+    <p class="hint">Tarefas automáticas no VPS (horário de Brasília). Desligar renomeia o arquivo no servidor; o horário fica guardado para ligar de novo.${schedules.manage ? '' : ' Para ligar, desligar ou mudar o horário por aqui, quem desenvolve precisa configurar a chave de schedules neste PC.'}</p>
+    <div class="bk-wrap"><table class="bk sch">
+      <thead><tr><th>Agendamento</th><th>Estado</th><th>Quando</th>${schedules.manage ? '<th></th>' : ''}</tr></thead>
+      <tbody data-infra="schedules">${scheduleRows(schedules)}</tbody>
+    </table></div>
+  </div>`;
+}
+
 function infraBlock(card, below = '') {
   if (!card.infra) return below;
   const tiles = card.tiles
@@ -256,6 +298,7 @@ function infraBlock(card, below = '') {
       <ul class="ctrs" data-infra="containers">${infra.containers.map(containerCard).join('')}</ul>
     </div>
     ${backupsBlock(infra.backups)}
+    ${schedulesBlock(infra.schedules)}
   </div>`;
 }
 
@@ -273,6 +316,10 @@ function patchInfra(infra) {
   if (infra.backups) {
     parts['backups-summary'] = esc(infra.backups.summary);
     parts.backups = backupRows(infra.backups);
+  }
+  if (infra.schedules) {
+    parts['schedules-summary'] = esc(infra.schedules.summary);
+    parts.schedules = scheduleRows(infra.schedules);
   }
   for (const [key, html] of Object.entries(parts)) {
     const el = box.querySelector(`[data-infra="${key}"]`);
@@ -652,6 +699,67 @@ async function handle(action, button) {
       $('modal-confirm').disabled = !ok;
     });
     input.focus();
+    return;
+  }
+
+  if (action.confirm === 'schedule-enable') {
+    const s = action.schedule;
+    openModal(
+      `Ligar “${s.label}”?`,
+      `<p class="lead"><code>${esc(s.id)}</code> · ${esc(s.timeText)}</p>
+       <p>O arquivo volta a valer em <code>/etc/cron.d/</code> no servidor. O horário guardado é o mesmo de antes.</p>`,
+      'Ligar',
+      () => runAction(action, { id: s.id }),
+    );
+    return;
+  }
+
+  if (action.confirm === 'schedule-disable') {
+    const s = action.schedule;
+    openModal(
+      `Desligar “${s.label}”?`,
+      `<p class="lead warn-text"><code>${esc(s.id)}</code> · ${esc(s.timeText)}</p>
+       <ol class="plain">
+         <li>O agendamento deixa de rodar até você ligar de novo.</li>
+         <li>O horário fica guardado no servidor (arquivo <code>.disabled</code>).</li>
+         ${s.warnDisable ? `<li class="warn-text">${esc(s.warnDisable)}</li>` : ''}
+       </ol>
+       <label class="typed">Para confirmar, digite <code>${esc(s.id)}</code> <input id="schedule-word" autocomplete="off" spellcheck="false" /></label>`,
+      'Desligar',
+      null,
+    );
+    const input = $('schedule-word');
+    input.addEventListener('input', () => {
+      const ok = input.value.trim() === s.id;
+      onConfirm = ok ? () => runAction(action, { id: s.id, confirm: s.id }) : null;
+      $('modal-confirm').disabled = !ok;
+    });
+    input.focus();
+    return;
+  }
+
+  if (action.confirm === 'schedule-set-time') {
+    const s = action.schedule;
+    openModal(
+      `Alterar horário de “${s.label}”?`,
+      `<p class="lead"><code>${esc(s.id)}</code> · hoje: ${esc(s.timeText)}</p>
+       <p>Informe o novo horário em <strong>Brasília</strong>. O servidor grava em UTC.</p>
+       <label class="typed">Novo horário <input id="schedule-time" type="time" value="${esc(s.brtTime || '01:00')}" /></label>
+       <label class="typed">Para confirmar, digite o mesmo horário (HH:MM) <input id="schedule-time-word" autocomplete="off" spellcheck="false" placeholder="HH:MM" /></label>`,
+      'Salvar horário',
+      null,
+    );
+    const timeInput = $('schedule-time');
+    const word = $('schedule-time-word');
+    const sync = () => {
+      const time = timeInput.value;
+      const ok = /^\d{2}:\d{2}$/.test(time) && word.value.trim() === time;
+      onConfirm = ok ? () => runAction(action, { id: s.id, time, confirm: time }) : null;
+      $('modal-confirm').disabled = !ok;
+    };
+    timeInput.addEventListener('input', sync);
+    word.addEventListener('input', sync);
+    word.focus();
     return;
   }
 

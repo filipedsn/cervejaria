@@ -17,6 +17,11 @@ BACKUP_ENV="$COMPOSE_DIR/backup-postgres.env"
 HISTORY_FILE="/var/log/quiver-tap-deploy.log"
 API_CONTAINER="cervejaria-api"
 DB_CONTAINER="cervejaria-db"
+SCHEDULE_IDS=()
+if [[ -f "$APP_DIR/deploy/tap-quiver/cron-schedules.lib.sh" ]]; then
+  # shellcheck source=cron-schedules.lib.sh
+  source "$APP_DIR/deploy/tap-quiver/cron-schedules.lib.sh"
+fi
 
 str() {
   local s="${1//\\/\\\\}"
@@ -107,6 +112,27 @@ if [[ -r "$HISTORY_FILE" ]]; then
   done < <(tail -n 40 "$HISTORY_FILE")
 fi
 
+# Crons gerenciáveis (TAP-178): minuto/hora/dow como no arquivo (/etc/cron.d, UTC).
+schedules=""
+for sched_id in "${SCHEDULE_IDS[@]}"; do
+  sched_path="$(schedule_path "$sched_id")"
+  sched_enabled=false
+  sched_present=false
+  sched_min="" sched_hour="" sched_dow=""
+  if [[ -n "$sched_path" ]]; then
+    sched_present=true
+    schedule_enabled "$sched_id" && sched_enabled=true
+    if sched_fields="$(schedule_fields "$sched_path")"; then
+      read -r sched_min sched_hour _ _ sched_dow <<<"$sched_fields"
+    fi
+  fi
+  schedules+="${schedules:+,}{\"id\":$(str "$sched_id"),\"enabled\":$sched_enabled,\"present\":$sched_present"
+  if [[ -n "$sched_min" ]]; then schedules+=",\"minute\":$(str "$sched_min")"; else schedules+=",\"minute\":null"; fi
+  if [[ -n "$sched_hour" ]]; then schedules+=",\"hour\":$(str "$sched_hour")"; else schedules+=",\"hour\":null"; fi
+  if [[ -n "$sched_dow" ]]; then schedules+=",\"dow\":$(str "$sched_dow")"; else schedules+=",\"dow\":null"; fi
+  schedules+="}"
+done
+
 printf '{"now":%s,"release_sha":%s,' "$now" "$(opt_str "$release_sha")"
 printf '"api":{"status":%s,"health":%s,"started":%s,"restarts":%s},' \
   "$(opt_str "$api_status")" "$(opt_str "$api_health")" "$(opt_str "$api_started")" "$(num "$api_restarts")"
@@ -122,4 +148,5 @@ else
   printf '"backup":null,'
 fi
 printf '"backups":[%s],' "$backups"
+printf '"schedules":[%s],' "$schedules"
 printf '"deploys":[%s]}\n' "$deploys"
