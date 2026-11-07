@@ -8,7 +8,7 @@ import {
 } from './observability-alert-copy.js';
 import { formatObservabilityAlertTelegramText, truncateTelegramHtml } from './observability-alert-format.js';
 import { buildTechnicalDetailsFromLog } from './observability-alert-enrich.js';
-import { resolveOperationLabel } from './operation-labels.js';
+import { resolveOperationLabel, resolveUiFeatureLabel } from './operation-labels.js';
 
 describe('observability alert copy', () => {
   it('resolve copy for known 5xx rule', () => {
@@ -48,7 +48,7 @@ describe('observability alert copy', () => {
     assert.equal(resolveOperationLabel('transacao.operacao_caixa_aberto'), 'Abrir caixa do operacao');
   });
 
-  it('operational telegram uses empresa, usuario, operacao e cenario layout', () => {
+  it('operational telegram uses empresa, funcionalidade, usuario e cenario layout', () => {
     const text = formatObservabilityAlertTelegramText({
       ruleName: 'quiver-tap-transacao-failure-prd',
       alertState: 'active',
@@ -75,16 +75,27 @@ describe('observability alert copy', () => {
     assert.match(text, /CIA Maritima/);
     assert.match(text, /Usuario:/);
     assert.match(text, /Filipe/);
-    assert.match(text, /Operacao:/);
+    assert.match(text, /Funcionalidade:/);
     assert.match(text, /Fechar comanda/);
     assert.match(text, /Cenario:/);
     assert.match(text, /timeout no banco/);
-    assert.match(text, /Descricao do erro:/);
+    assert.doesNotMatch(text, /Descricao do erro:/);
     assert.match(text, /Detalhamento:/);
     assert.match(text, /transacao\.comanda_fechada/);
     assert.match(text, /Trace ID/);
     assert.doesNotMatch(text, /O que aconteceu/);
     assert.match(text, /Abrir no Kibana/);
+  });
+
+  it('maps ui.page detalhe de comanda to feature label', () => {
+    assert.equal(
+      resolveUiFeatureLabel('/operacao/comandas/cmw5mmn8b08cjl601ul30q44d'),
+      'Detalhe da comanda (Operacao)',
+    );
+    assert.equal(
+      resolveOperationLabel('ui.error', undefined, undefined, undefined),
+      'Erro na tela do app',
+    );
   });
 
   it('401-surge telegram uses operational layout with business cenario', () => {

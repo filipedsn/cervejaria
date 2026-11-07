@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   build401Cenario,
   buildEnrichedContextFromLogs,
+  buildUiErrorCenario,
   extractResponseErrorMessage,
   formatUsuario,
   parseAuditLogSource,
@@ -119,5 +120,89 @@ describe('observability alert enrich', () => {
     assert.equal(ctx?.errorDescription, 'Comanda encerrada. Identifique-se novamente.');
     assert.match(ctx?.cenario ?? '', /comanda nao esta mais aberta/i);
     assert.ok(ctx?.technicalDetails?.some((line) => line.includes('Erro da API')));
+  });
+
+  it('reads staff identity from user.name / user.email (ECS), not only actor.name', () => {
+    const log = parseAuditLogSource({
+      attributes: {
+        'event.action': 'ui.error',
+        'event.outcome': 'failure',
+        'cervejaria.slug': 'churrasquinho-do-thiago',
+        'actor.type': 'usuario',
+        'actor.id': 'cmsry9xrs0002hvlgkaq7g6c5',
+        'user.name': 'Thiago Silva',
+        'user.email': 'thiago@example.test',
+        'ui.page': '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+        message: 'Erro na interface em /operacao/comandas/:id: Servidor indisponível. Execute npm run restart na raiz do projeto.',
+      },
+    });
+
+    assert.equal(log.actorName, 'Thiago Silva');
+    assert.equal(log.actorEmail, 'thiago@example.test');
+    assert.equal(formatUsuario(log), 'Thiago Silva (thiago@example.test)');
+  });
+
+  it('builds ui.error network cenario with empresa, funcionalidade and no restart instruction', () => {
+    const log = parseAuditLogSource({
+      attributes: {
+        'event.action': 'ui.error',
+        'event.outcome': 'failure',
+        'cervejaria.slug': 'churrasquinho-do-thiago',
+        'actor.type': 'usuario',
+        'actor.id': 'cmsry9xrs0002hvlgkaq7g6c5',
+        'user.name': 'Thiago Silva',
+        'user.email': 'thiago@example.test',
+        'ui.page': '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+        'ui.label': 'frontend_error',
+        message:
+          'Erro na interface em /operacao/comandas/:id: Servidor indisponível. Execute npm run restart na raiz do projeto.',
+        metadata: '{"outcome":"network_error","kind":"unhandledrejection"}',
+      },
+    });
+
+    const cenario = buildUiErrorCenario(log, {
+      ruleName: 'quiver-tap-ui-error-prd',
+      alertState: 'active',
+      reason: 'Document count is 1 in the last 15m in logs-audit*.otel-prd index. Alert when greater than 0.',
+    });
+
+    assert.match(cenario, /Thiago Silva/);
+    assert.match(cenario, /Churrasquinho Do Thiago/);
+    assert.match(cenario, /Detalhe da comanda/i);
+    assert.match(cenario, /navegador nao conseguiu falar com o servidor/i);
+    assert.match(cenario, /Nao prova que a API caiu/i);
+    assert.doesNotMatch(cenario, /Execute npm run restart/i);
+  });
+
+  it('enrich context for ui-error exposes empresa, usuario, funcionalidade and cenario', () => {
+    const log = parseAuditLogSource({
+      attributes: {
+        'event.action': 'ui.error',
+        'event.outcome': 'failure',
+        'cervejaria.slug': 'churrasquinho-do-thiago',
+        'actor.type': 'usuario',
+        'actor.id': 'cmsry9xrs0002hvlgkaq7g6c5',
+        'user.name': 'Thiago Silva',
+        'ui.page': '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+        message:
+          'Erro na interface em /operacao/comandas/:id: Servidor indisponível. Execute npm run restart na raiz do projeto.',
+      },
+    });
+
+    const ctx = buildEnrichedContextFromLogs(
+      {
+        ruleName: 'quiver-tap-ui-error-prd',
+        alertState: 'active',
+        reason: 'Document count is 1 in the last 15m',
+      },
+      [log],
+    );
+
+    assert.ok(ctx);
+    assert.equal(ctx?.empresa, 'Churrasquinho Do Thiago');
+    assert.equal(ctx?.usuario, 'Thiago Silva');
+    assert.equal(ctx?.operacao, 'Detalhe da comanda (Operacao)');
+    assert.match(ctx?.cenario ?? '', /navegador nao conseguiu falar com o servidor/i);
+    assert.doesNotMatch(ctx?.cenario ?? '', /Execute npm run restart/i);
   });
 });

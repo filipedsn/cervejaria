@@ -1,11 +1,16 @@
 import type { KibanaAlertPayload } from './kibana-alert-email.js';
 import { redactObject } from './audit/redact.js';
-import { resolveOperationLabel, slugToDisplayName } from './operation-labels.js';
+import {
+  resolveOperationLabel,
+  resolveUiFeatureLabel,
+  slugToDisplayName,
+} from './operation-labels.js';
 import { isOperationalAlertRule } from './observability-alert-copy.js';
 
 export type AlertEnrichedContext = {
   empresa?: string;
   usuario?: string;
+  /** Funcionalidade / operacao de negocio (campo historico `operacao` no contexto). */
   operacao?: string;
   /** Resumo legivel do erro (uma linha). */
   errorDescription?: string;
@@ -46,6 +51,7 @@ export type ParsedLog = {
   uiPage?: string;
   uiElement?: string;
   uiLabel?: string;
+  uiRoute?: string;
   traceId?: string;
   spanId?: string;
   serviceName?: string;
@@ -197,8 +203,9 @@ export function parseAuditLogSource(source: Record<string, unknown>): ParsedLog 
     cervejariaSlug: asString(pick(attrs, 'cervejaria.slug')),
     actorType: asString(pick(attrs, 'actor.type')),
     actorId: asString(pick(attrs, 'actor.id')) ?? asString(pick(attrs, 'actor.cliente_id')),
-    actorName: asString(pick(attrs, 'actor.name')),
-    actorEmail: asString(pick(attrs, 'actor.email')),
+    // Audit emit writes ECS user.*; older/partial docs may still carry actor.name.
+    actorName: asString(pick(attrs, 'user.name')) ?? asString(pick(attrs, 'actor.name')),
+    actorEmail: asString(pick(attrs, 'user.email')) ?? asString(pick(attrs, 'actor.email')),
     entityType: asString(pick(attrs, 'entity.type')),
     entityId: asString(pick(attrs, 'entity.id')),
     httpMethod: asString(pick(attrs, 'http.request.method')),
@@ -212,6 +219,7 @@ export function parseAuditLogSource(source: Record<string, unknown>): ParsedLog 
     uiPage: asString(pick(attrs, 'ui.page')),
     uiElement: asString(pick(attrs, 'ui.element')),
     uiLabel: asString(pick(attrs, 'ui.label')),
+    uiRoute: asString(pick(attrs, 'ui.route')),
     traceId: asString(source.trace_id) ?? asString(pick(attrs, 'trace_id')),
     spanId: asString(source.span_id) ?? asString(pick(attrs, 'span_id')),
     serviceName: asString(pick(resourceAttrs, 'service.name')),
@@ -236,6 +244,10 @@ function is401SurgeRule(ruleName?: string): boolean {
   return (ruleName ?? '').toLowerCase().includes('401-surge');
 }
 
+function isUiErrorRule(ruleName?: string): boolean {
+  return (ruleName ?? '').toLowerCase().includes('ui-error');
+}
+
 function matchesRule(log: ParsedLog, ruleName?: string): boolean {
   const key = (ruleName ?? '').toLowerCase();
   const action = log.eventAction?.toLowerCase() ?? '';
@@ -246,7 +258,7 @@ function matchesRule(log: ParsedLog, ruleName?: string): boolean {
   if (key.includes('transacao-failure')) {
     return action.startsWith('transacao.');
   }
-  if (key.includes('ui-error')) {
+  if (isUiErrorRule(ruleName)) {
     return action === 'ui.error';
   }
   if (key.includes('5xx')) {
@@ -357,6 +369,11 @@ function extractCountFromReason(reason?: string): number | undefined {
 }
 
 function resolveOperacao(log: ParsedLog): string {
+  const action = log.eventAction?.trim().toLowerCase() ?? '';
+  if (action.startsWith('ui.')) {
+    const fromUi = resolveUiFeatureLabel(log.uiRoute ?? log.uiPage);
+    if (fromUi) return fromUi;
+  }
   return resolveOperationLabel(log.eventAction, log.message, log.httpRoute, log.httpMethod);
 }
 
@@ -413,6 +430,95 @@ function buildGenericCenario(log: ParsedLog, payload: KibanaAlertPayload): strin
   const apiError = extractResponseErrorMessage(log.metadata);
   const detail = apiError ?? log.message.trim() ?? payload.reason?.trim() ?? 'falha sem detalhe';
   return `${usuario} em ${empresa} ao executar "${operacao}": ${detail}.`;
+}
+
+function normalizeUiErrorText(log: ParsedLog): string {
+  const parts = [
+    extractResponseErrorMessage(log.metadata),
+    asString(log.metadata?.error),
+    asString(log.metadata?.outcome),
+    log.message,
+  ];
+  return parts.filter(Boolean).join(' \n ').toLowerCase();
+}
+
+function classifyUiErrorKind(log: ParsedLog): 'network' | 'server_unavailable' | 'ui_bug' | 'other' {
+  const outcome = asString(log.metadata?.outcome)?.toLowerCase();
+  if (outcome === 'network_error' || outcome === 'timeout' || outcome === 'aborted') {
+    return 'network';
+  }
+
+  const text = normalizeUiErrorText(log);
+  if (
+    text.includes('servidor indispon') ||
+    text.includes('nao foi possivel falar com o servidor') ||
+    text.includes('não foi possível falar com o servidor') ||
+    text.includes('failed to fetch') ||
+    text.includes('networkerror') ||
+    text.includes('load failed') ||
+    (text.includes('npm run restart') && text.includes('servidor'))
+  ) {
+    return 'network';
+  }
+
+  if (
+    text.includes('backend offline') ||
+    text.includes('servidor respondeu indispon') ||
+    /\b(502|503|504)\b/.test(text)
+  ) {
+    return 'server_unavailable';
+  }
+
+  const errorName = asString(log.metadata?.name) ?? asString(log.metadata?.errorName);
+  if (
+    errorName === 'TypeError' ||
+    errorName === 'ReferenceError' ||
+    text.includes('typeerror') ||
+    text.includes('cannot read propert') ||
+    text.includes('is not a function')
+  ) {
+    return 'ui_bug';
+  }
+
+  return 'other';
+}
+
+/** Cenario legivel para quiver-tap-ui-error-* (rede vs API vs quebra de UI). */
+export function buildUiErrorCenario(log: ParsedLog, payload: KibanaAlertPayload): string {
+  const empresa =
+    slugToDisplayName(log.cervejariaSlug) ?? log.cervejariaSlug ?? 'empresa nao identificada';
+  const usuario = formatUsuario(log) ?? 'usuario nao identificado';
+  const funcionalidade = resolveOperacao(log);
+  const kind = classifyUiErrorKind(log);
+  const rawDetail =
+    extractResponseErrorMessage(log.metadata) ??
+    log.message.trim() ??
+    payload.reason?.trim() ??
+    'falha sem detalhe';
+
+  if (kind === 'network') {
+    return (
+      `${usuario} em ${empresa} ao usar "${funcionalidade}": o navegador nao conseguiu falar com o servidor ` +
+      `(falha de rede no dispositivo ou no caminho ate a API). Nao prova que a API caiu; ` +
+      `se so este alerta disparou, trate como problema pontual do usuario/rede.`
+    );
+  }
+
+  if (kind === 'server_unavailable') {
+    return (
+      `${usuario} em ${empresa} ao usar "${funcionalidade}": o servidor respondeu indisponivel ` +
+      `(502/503 ou equivalente). Verifique saude da API/site publico e deploys recentes.`
+    );
+  }
+
+  if (kind === 'ui_bug') {
+    return (
+      `${usuario} em ${empresa} encontrou quebra de interface em "${funcionalidade}": ${rawDetail}. ` +
+      `Provavel bug de tela/JS; confira console e release do frontend.`
+    );
+  }
+
+  return `${usuario} em ${empresa} ao usar "${funcionalidade}": ${rawDetail}.`;
 }
 
 function appendMetadataDetails(lines: string[], metadata?: Record<string, unknown>): void {
@@ -517,11 +623,11 @@ export function buildTechnicalDetailsFromLog(
     if (log.dbQuery) pushLine(lines, 'Query', truncate(log.dbQuery, 500));
   }
 
-  if (log.uiPage || log.uiElement || log.uiLabel) {
+  if (log.uiPage || log.uiRoute || log.uiElement || log.uiLabel) {
     pushLine(
       lines,
       'UI',
-      [log.uiPage, log.uiElement, log.uiLabel].filter(Boolean).join(' / '),
+      [log.uiRoute ?? log.uiPage, log.uiElement, log.uiLabel].filter(Boolean).join(' / '),
     );
   }
 
@@ -636,7 +742,9 @@ export function buildEnrichedContextFromLogs(
   const usuario = formatUsuario(log);
   const cenario = is401SurgeRule(payload.ruleName)
     ? build401Cenario(logs, log, payload)
-    : buildGenericCenario(log, payload);
+    : isUiErrorRule(payload.ruleName)
+      ? buildUiErrorCenario(log, payload)
+      : buildGenericCenario(log, payload);
 
   return {
     empresa,

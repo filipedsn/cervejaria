@@ -73,13 +73,10 @@ function formatOperationalTelegram(payload: KibanaAlertPayload): string {
   if (!state.isRecovered) {
     lines.push(
       `<b>Empresa:</b> ${escapeHtml(fieldOrMissing(ctx.empresa))}`,
+      `<b>Funcionalidade:</b> ${escapeHtml(fieldOrMissing(ctx.operacao))}`,
       `<b>Usuario:</b> ${escapeHtml(fieldOrMissing(ctx.usuario))}`,
-      `<b>Operacao:</b> ${escapeHtml(fieldOrMissing(ctx.operacao))}`,
       `<b>Cenario:</b> ${escapeHtml(
         fieldOrMissing(ctx.cenario ?? ctx.errorDescription ?? payload.reason),
-      )}`,
-      `<b>Descricao do erro:</b> ${escapeHtml(
-        fieldOrMissing(ctx.errorDescription ?? payload.reason),
       )}`,
     );
     appendTechnicalSection(
@@ -90,7 +87,7 @@ function formatOperationalTelegram(payload: KibanaAlertPayload): string {
   } else {
     lines.push(
       `<b>Empresa:</b> ${escapeHtml(fieldOrMissing(ctx.empresa))}`,
-      `<b>Operacao:</b> ${escapeHtml(fieldOrMissing(ctx.operacao))}`,
+      `<b>Funcionalidade:</b> ${escapeHtml(fieldOrMissing(ctx.operacao))}`,
       `<b>Detalhamento:</b> ${escapeHtml(
         'O monitoramento indica que a condicao normalizou. Confira se a operacao concluiu corretamente no app.',
       )}`,
@@ -201,18 +198,15 @@ function formatOperationalEmailHtml(payload: KibanaAlertPayload): string {
   const bodyRows = state.isRecovered
     ? `
       <p><strong>Empresa:</strong> ${escapeHtml(fieldOrMissing(ctx.empresa))}<br>
-      <strong>Operacao:</strong> ${escapeHtml(fieldOrMissing(ctx.operacao))}</p>
+      <strong>Funcionalidade:</strong> ${escapeHtml(fieldOrMissing(ctx.operacao))}</p>
       <p><strong>Detalhamento:</strong> O monitoramento indica que a condicao normalizou. Confira se a operacao concluiu corretamente no app.</p>
     `
     : `
       <p><strong>Empresa:</strong> ${escapeHtml(fieldOrMissing(ctx.empresa))}<br>
-      <strong>Usuario:</strong> ${escapeHtml(fieldOrMissing(ctx.usuario))}<br>
-      <strong>Operacao:</strong> ${escapeHtml(fieldOrMissing(ctx.operacao))}</p>
+      <strong>Funcionalidade:</strong> ${escapeHtml(fieldOrMissing(ctx.operacao))}<br>
+      <strong>Usuario:</strong> ${escapeHtml(fieldOrMissing(ctx.usuario))}</p>
       <p><strong>Cenario:</strong> ${escapeHtml(
         fieldOrMissing(ctx.cenario ?? ctx.errorDescription ?? payload.reason),
-      )}</p>
-      <p><strong>Descricao do erro:</strong> ${escapeHtml(
-        fieldOrMissing(ctx.errorDescription ?? payload.reason),
       )}</p>
       ${
         (ctx.technicalDetails?.length ?? 0) > 0
