@@ -13,8 +13,13 @@ const settings = {
   kitchenEnabled: false,
   kitchenItemsChargeAtLaunch: false,
   allowCloseComandaWithPendingKitchenOrders: false,
+  barEnabled: false,
+  barItemsChargeAtLaunch: false,
+  allowCloseComandaWithPendingBarOrders: false,
+  agendaEnabled: true,
   whatsappPedidoProntoEnabled: false,
   whatsappPedidoProntoNaCozinha: false,
+  whatsappPedidoProntoNoBar: false,
   quantidadeMesas: 6,
 };
 const point = (overrides: Record<string, unknown> = {}) => ({

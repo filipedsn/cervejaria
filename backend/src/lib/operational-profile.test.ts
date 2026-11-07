@@ -43,7 +43,7 @@ test('mode derives only from plannedOperationsEnabled and taps remain independen
     cashRegister: false,
     inventory: false,
     kitchen: false,
-    bar: false,
+    bar: false, agenda: true,
     taps: true,
     cashMode: true,
     plannedOperations: false,
@@ -63,7 +63,7 @@ test('legacy QUIOSQUE derives direct sales, cash, inventory and kitchen from act
     cashRegister: true,
     inventory: true,
     kitchen: true,
-    bar: false,
+    bar: false, agenda: true,
     taps: false,
     cashMode: true,
     plannedOperations: false,
@@ -84,7 +84,7 @@ test('mixed physical resources do not override the persisted operational mode', 
     cashRegister: true,
     inventory: false,
     kitchen: true,
-    bar: false,
+    bar: false, agenda: true,
     taps: true,
     cashMode: true,
     plannedOperations: false,
@@ -149,20 +149,20 @@ test('canonical PDV parameters win while legacy EVENTO and conflicting capabilit
       source: 'CANONICAL_PDV', pointId: 'point-a', tapsEnabled: false, inventoryEnabled: false,
       kitchenEnabled: false, kitchenItemsChargeAtLaunch: false,
       allowCloseComandaWithPendingKitchenOrders: false, barEnabled: false, barItemsChargeAtLaunch: false,
-      allowCloseComandaWithPendingBarOrders: false, whatsappPedidoProntoEnabled: false,
+      allowCloseComandaWithPendingBarOrders: false, agendaEnabled: true, whatsappPedidoProntoEnabled: false,
       whatsappPedidoProntoNaCozinha: false, whatsappPedidoProntoNoBar: false, quantidadeMesas: 6,
     },
   }));
 
   assert.equal(profile.operationMode, 'CAIXA');
   assert.deepEqual(profile.capabilities, {
-    cashRegister: true, inventory: false, kitchen: false, bar: false, taps: false, cashMode: true, plannedOperations: false,
+    cashRegister: true, inventory: false, kitchen: false, bar: false, agenda: true, taps: false, cashMode: true, plannedOperations: false,
   });
   assert.deepEqual(profile.effectiveSettings, {
     source: 'CANONICAL_PDV', pointId: 'point-a', tapsEnabled: false, inventoryEnabled: false,
     kitchenEnabled: false, kitchenItemsChargeAtLaunch: false,
     allowCloseComandaWithPendingKitchenOrders: false, barEnabled: false, barItemsChargeAtLaunch: false,
-    allowCloseComandaWithPendingBarOrders: false, whatsappPedidoProntoEnabled: false,
+    allowCloseComandaWithPendingBarOrders: false, agendaEnabled: true, whatsappPedidoProntoEnabled: false,
     whatsappPedidoProntoNaCozinha: false, whatsappPedidoProntoNoBar: false, quantidadeMesas: 6,
   });
   assert.equal(profile.operations.planned, 4, 'agenda remains visible as context but does not switch engines');
@@ -176,11 +176,26 @@ test('canonical null table count does not fall back to legacy configuration', ()
       source: 'CANONICAL_PDV', pointId: 'point-a', tapsEnabled: false, inventoryEnabled: false,
       kitchenEnabled: false, kitchenItemsChargeAtLaunch: false,
       allowCloseComandaWithPendingKitchenOrders: false, barEnabled: false, barItemsChargeAtLaunch: false,
-      allowCloseComandaWithPendingBarOrders: false, whatsappPedidoProntoEnabled: false,
+      allowCloseComandaWithPendingBarOrders: false, agendaEnabled: true, whatsappPedidoProntoEnabled: false,
       whatsappPedidoProntoNaCozinha: false, whatsappPedidoProntoNoBar: false, quantidadeMesas: null,
     },
   }));
   assert.equal(profile.effectiveSettings.quantidadeMesas, 0);
+});
+
+test('TAP-182: canonical agendaEnabled false turns off the Agenda capability', () => {
+  const profile = deriveOperationalProfile(facts({
+    activePointsOfSale: 1,
+    canonicalPdvSettings: {
+      source: 'CANONICAL_PDV', pointId: 'point-a', tapsEnabled: false, inventoryEnabled: false,
+      kitchenEnabled: false, kitchenItemsChargeAtLaunch: false,
+      allowCloseComandaWithPendingKitchenOrders: false, barEnabled: false, barItemsChargeAtLaunch: false,
+      allowCloseComandaWithPendingBarOrders: false, agendaEnabled: false, whatsappPedidoProntoEnabled: false,
+      whatsappPedidoProntoNaCozinha: false, whatsappPedidoProntoNoBar: false, quantidadeMesas: 0,
+    },
+  }));
+  assert.equal(profile.capabilities.agenda, false);
+  assert.equal(profile.effectiveSettings.agendaEnabled, false);
 });
 
 test('legacy inactive operation keeps the current zero table-count behavior', () => {

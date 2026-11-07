@@ -22,9 +22,11 @@ export type OperacaoContexto = {
   barEnabled: boolean;
   barItemsChargeAtLaunch: boolean;
   allowCloseComandaWithPendingBarOrders: boolean;
+  agendaEnabled: boolean;
   controlaEstoque: boolean;
   temCozinha: boolean;
   temBar: boolean;
+  temAgenda: boolean;
   usaCardapio: boolean;
   quantidadeMesas: number;
   whatsappPedidoProntoEnabled: boolean;
@@ -47,9 +49,11 @@ const CONTEXTO_INATIVO: OperacaoContexto = {
   barEnabled: false,
   barItemsChargeAtLaunch: false,
   allowCloseComandaWithPendingBarOrders: false,
+  agendaEnabled: true,
   controlaEstoque: false,
   temCozinha: false,
   temBar: false,
+  temAgenda: true,
   usaCardapio: false,
   quantidadeMesas: 0,
   whatsappPedidoProntoEnabled: false,

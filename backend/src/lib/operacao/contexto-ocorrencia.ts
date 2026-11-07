@@ -17,7 +17,15 @@ export function cashOccurrenceContextEnabled(): boolean {
 
 export async function validateCashOccurrenceSelection(
   tx: Pick<Prisma.TransactionClient, 'ocorrenciaOperacional'>,
-  params: { cervejariaId: string; pontoVendaId: string; ocorrenciaId?: string | null; diaOperacional: Date; confirmarDataDiferente?: boolean },
+  params: {
+    cervejariaId: string;
+    pontoVendaId: string;
+    ocorrenciaId?: string | null;
+    diaOperacional: Date;
+    confirmarDataDiferente?: boolean;
+    /** When false, opening cash must not bind an occurrence (Agenda resource off). */
+    agendaEnabled?: boolean;
+  },
 ): Promise<string | null | undefined> {
   const enabled = cashOccurrenceContextEnabled();
   if (!enabled) {
@@ -28,6 +36,16 @@ export async function validateCashOccurrenceSelection(
       );
     }
     return undefined;
+  }
+
+  if (params.agendaEnabled === false) {
+    if (params.ocorrenciaId) {
+      throw new CashOccurrenceContextError(
+        'AGENDA_RESOURCE_DISABLED',
+        'A Agenda está desativada nos recursos do PDV; abra o caixa sem agendamento.',
+      );
+    }
+    return null;
   }
 
   if (!params.ocorrenciaId) return null;

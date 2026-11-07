@@ -82,7 +82,7 @@ export function PainelCaixaOperacao({ pontoVendaId, compacto = false, comandasAb
   const queryClient = useQueryClient();
   const { canPermission, isDono, cervejaria } = useAuth();
   const { contexto } = useOperacaoContexto();
-  const agendaCanonica = contexto.operationalSettingsSource === 'CANONICAL_PDV';
+  const agendaCanonica = contexto.operationalSettingsSource === 'CANONICAL_PDV' && contexto.temAgenda !== false;
   const usaCardapio = contexto.ativo ? (contexto.usaCardapio ?? false) : false;
   const pollMs = usePollInterval(30_000);
   const [trocoInicial, setTrocoInicial] = useState(() => formatCurrencyInputFromNumber(100));

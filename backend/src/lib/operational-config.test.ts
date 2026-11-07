@@ -267,8 +267,13 @@ const canonicalSettings = () => ({
   kitchenEnabled: true,
   kitchenItemsChargeAtLaunch: true,
   allowCloseComandaWithPendingKitchenOrders: true,
+  barEnabled: false,
+  barItemsChargeAtLaunch: false,
+  allowCloseComandaWithPendingBarOrders: false,
+  agendaEnabled: true,
   whatsappPedidoProntoEnabled: true,
   whatsappPedidoProntoNaCozinha: true,
+  whatsappPedidoProntoNoBar: false,
   quantidadeMesas: 6,
 });
 

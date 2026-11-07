@@ -8,6 +8,8 @@ export type SinglePdvOperationalSettings = {
   barEnabled?: boolean;
   barItemsChargeAtLaunch?: boolean;
   allowCloseComandaWithPendingBarOrders?: boolean;
+  /** Agenda defaults to enabled in the database when omitted. */
+  agendaEnabled?: boolean;
   whatsappPedidoProntoEnabled: boolean;
   whatsappPedidoProntoNaCozinha: boolean;
   whatsappPedidoProntoNoBar?: boolean;

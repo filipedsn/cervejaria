@@ -554,6 +554,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
       produtoIds: body.produtoIds,
       ocorrenciaId: body.ocorrenciaId,
       confirmarDataDiferente: body.confirmarDataDiferente,
+      agendaEnabled: request.operacao.temAgenda,
     });
     void caixaAuditNomes(cervejariaId, body.pontoVendaId).then((nomes) => registrarTransacao({
       cervejariaId,

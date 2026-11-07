@@ -7,6 +7,7 @@ export interface OperationalCapabilities {
   inventory: boolean;
   kitchen: boolean;
   bar: boolean;
+  agenda: boolean;
   taps: boolean;
   cashMode: boolean;
   plannedOperations: boolean;
@@ -36,6 +37,7 @@ export interface OperationalProfileFacts {
     barEnabled?: boolean | null;
     barItemsChargeAtLaunch?: boolean | null;
     allowCloseComandaWithPendingBarOrders?: boolean | null;
+    agendaEnabled?: boolean | null;
     whatsappPedidoProntoEnabled?: boolean | null;
     whatsappPedidoProntoNaCozinha?: boolean | null;
     whatsappPedidoProntoNoBar?: boolean | null;
@@ -81,6 +83,7 @@ export interface OperationalProfile {
     barEnabled: boolean;
     barItemsChargeAtLaunch: boolean;
     allowCloseComandaWithPendingBarOrders: boolean;
+    agendaEnabled: boolean;
     whatsappPedidoProntoEnabled: boolean;
     whatsappPedidoProntoNaCozinha: boolean;
     whatsappPedidoProntoNoBar: boolean;
@@ -121,6 +124,8 @@ export function deriveOperationalProfile(
     ?? (operacaoEnabled && facts.legacyOperacao!.temCozinha);
   // O Bar nasceu depois do modelo legado: sem escolha persistida, fica desligado.
   const barEnabled = canonical?.barEnabled ?? facts.operationalEnablement?.barEnabled ?? false;
+  // Agenda already existed for canonical PDVs; unset/null means enabled.
+  const agendaEnabled = canonical?.agendaEnabled ?? facts.operationalEnablement?.agendaEnabled ?? true;
   // Every active point of sale is cash-capable in CAIXA. Per-unit legacy
   // toggles are intentionally excluded from this decision.
   const hasCashRegisterUnit = canonical ? true : operationMode === 'CAIXA' && facts.activePointsOfSale > 0;
@@ -136,6 +141,7 @@ export function deriveOperationalProfile(
       inventory: inventoryEnabled,
       kitchen: kitchenEnabled,
       bar: barEnabled,
+      agenda: agendaEnabled,
       // Taps are evidenced by active physical resources, never tenant naming.
       taps: tapsEnabled,
       // Today, direct sales are the POS flow and require an active POS unit.
@@ -169,6 +175,7 @@ export function deriveOperationalProfile(
       barEnabled,
       barItemsChargeAtLaunch: canonical?.barItemsChargeAtLaunch ?? facts.operationalEnablement?.barItemsChargeAtLaunch ?? false,
       allowCloseComandaWithPendingBarOrders: canonical?.allowCloseComandaWithPendingBarOrders ?? facts.operationalEnablement?.allowCloseComandaWithPendingBarOrders ?? false,
+      agendaEnabled,
       whatsappPedidoProntoEnabled: canonical?.whatsappPedidoProntoEnabled ?? facts.operationalEnablement?.whatsappPedidoProntoEnabled ?? false,
       whatsappPedidoProntoNaCozinha: canonical?.whatsappPedidoProntoNaCozinha ?? facts.operationalEnablement?.whatsappPedidoProntoNaCozinha ?? false,
       whatsappPedidoProntoNoBar: canonical?.whatsappPedidoProntoNoBar ?? facts.operationalEnablement?.whatsappPedidoProntoNoBar ?? false,
@@ -239,6 +246,7 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
           barEnabled: true,
           barItemsChargeAtLaunch: true,
           allowCloseComandaWithPendingBarOrders: true,
+          agendaEnabled: true,
           whatsappPedidoProntoEnabled: true,
           whatsappPedidoProntoNaCozinha: true,
           whatsappPedidoProntoNoBar: true,

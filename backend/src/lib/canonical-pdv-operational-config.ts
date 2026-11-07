@@ -12,6 +12,7 @@ export type CanonicalPdvOperationalSettings = {
   barEnabled: boolean;
   barItemsChargeAtLaunch: boolean;
   allowCloseComandaWithPendingBarOrders: boolean;
+  agendaEnabled: boolean;
   whatsappPedidoProntoEnabled: boolean;
   whatsappPedidoProntoNaCozinha: boolean;
   whatsappPedidoProntoNoBar: boolean;
@@ -121,6 +122,7 @@ export async function readCanonicalPdvOperationalSettingsIfEnabled(
           barEnabled: true,
           barItemsChargeAtLaunch: true,
           allowCloseComandaWithPendingBarOrders: true,
+          agendaEnabled: true,
           whatsappPedidoProntoEnabled: true,
           whatsappPedidoProntoNaCozinha: true,
           whatsappPedidoProntoNoBar: true,

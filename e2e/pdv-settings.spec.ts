@@ -40,7 +40,7 @@ async function mock(page: Page, options: { source?: string; points?: typeof poin
     if (path === '/api/cervejaria/configuracao-operacional') {
       await options.configurationGate;
       if (options.configurationError) return route.fulfill({ status: 409, json: { error: 'Configuração operacional indisponível' } });
-      return reply({ configurationSource: source, enablements: { plannedOperations, cashRegister: !plannedOperations, cashMode: !plannedOperations, taps: tapsEnabled, inventory: false, kitchen: false }, configuration: { ...(source === 'CANONICAL_PDV' ? { configurationSource: source } : {}), setupCompletedAt, plannedOperationsEnabled: plannedOperations, tapsEnabled, inventoryEnabled: false, kitchenEnabled: false } });
+      return reply({ configurationSource: source, enablements: { plannedOperations, cashRegister: !plannedOperations, cashMode: !plannedOperations, taps: tapsEnabled, inventory: false, kitchen: false, agenda: true }, configuration: { ...(source === 'CANONICAL_PDV' ? { configurationSource: source } : {}), setupCompletedAt, plannedOperationsEnabled: plannedOperations, tapsEnabled, inventoryEnabled: false, kitchenEnabled: false, agendaEnabled: true } });
     }
     if (path === '/api/operacao/agenda/ocorrencias') return reply({ agendas: [], ocorrencias: [] });
     return route.abort();

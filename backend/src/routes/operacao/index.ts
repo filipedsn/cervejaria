@@ -59,11 +59,13 @@ export async function operacaoRoutes(app: FastifyInstance) {
       inventoryEnabled: profile?.capabilities.inventory ?? false,
       kitchenEnabled: profile?.capabilities.kitchen ?? false,
       barEnabled: profile?.capabilities.bar ?? false,
+      agendaEnabled: profile?.capabilities.agenda ?? true,
       // The context powers navigation and page guards, so it must expose the
       // same persisted capability decision as the operational settings panel.
       controlaEstoque: profile?.effectiveSettings.inventoryEnabled ?? false,
       temCozinha: profile?.effectiveSettings.kitchenEnabled ?? false,
       temBar: profile?.effectiveSettings.barEnabled ?? false,
+      temAgenda: profile?.effectiveSettings.agendaEnabled ?? true,
       // Cardápios salvos são padrão; o antigo toggle de ativação foi removido.
       usaCardapio: true,
       kitchenItemsChargeAtLaunch: profile?.effectiveSettings.kitchenItemsChargeAtLaunch ?? false,
@@ -154,6 +156,7 @@ export async function operacaoRoutes(app: FastifyInstance) {
                 barEnabled: request.operacao.temBar,
                 barItemsChargeAtLaunch: request.operacao.effectiveSettings.barItemsChargeAtLaunch,
                 allowCloseComandaWithPendingBarOrders: request.operacao.effectiveSettings.allowCloseComandaWithPendingBarOrders,
+                agendaEnabled: request.operacao.temAgenda,
                 whatsappPedidoProntoEnabled: request.operacao.effectiveSettings.whatsappPedidoProntoEnabled,
                 whatsappPedidoProntoNaCozinha: request.operacao.effectiveSettings.whatsappPedidoProntoNaCozinha,
                 whatsappPedidoProntoNoBar: request.operacao.effectiveSettings.whatsappPedidoProntoNoBar,

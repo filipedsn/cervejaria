@@ -233,8 +233,9 @@ export async function cervejariaRoutes(app: FastifyInstance) {
             inventory: configuration.inventoryEnabled,
             kitchen: configuration.kitchenEnabled,
             bar: configuration.barEnabled === true,
+            agenda: configuration.agendaEnabled !== false,
           }
-        : profile?.capabilities ?? { cashMode: false, cashRegister: false, plannedOperations: false, taps: false, inventory: false, kitchen: false, bar: false },
+        : profile?.capabilities ?? { cashMode: false, cashRegister: false, plannedOperations: false, taps: false, inventory: false, kitchen: false, bar: false, agenda: true },
     };
   });
 

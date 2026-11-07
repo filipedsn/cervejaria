@@ -210,6 +210,7 @@ export function Layout() {
     ...getOperacaoNavItems({
       temCozinha: operacao.temCozinha,
       temBar: operacao.temBar,
+      temAgenda: operacao.temAgenda,
       controlaEstoque: operacao.controlaEstoque,
       isDono,
       permissoesOperacao: usuario?.permissoesOperacao,
