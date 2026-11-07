@@ -547,7 +547,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                 </div>
               </div>
             ) : (
-              <button type="button" className="touch-btn-ghost w-full" onClick={() => setConfirmandoConversao(true)}>Transformar em combo</button>
+              <button type="button" className="touch-btn-secondary w-full" onClick={() => setConfirmandoConversao(true)}>Transformar em combo</button>
             )
           )}
 
