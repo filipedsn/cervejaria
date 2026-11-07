@@ -7,7 +7,7 @@ export function OperacaoAgendaPage() {
   return (
     <div className="space-y-5 pb-2">
       <PageHeader title="Agenda" />
-      {contexto.operationalSettingsSource === 'CANONICAL_PDV'
+      {contexto.operationalSettingsSource === 'CANONICAL_PDV' && contexto.temAgenda !== false
         ? <AgendaOperacionalPanel />
         : <div className="card text-sm text-ink-muted">A agenda operacional não está habilitada neste ponto de venda.</div>}
     </div>

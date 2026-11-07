@@ -211,6 +211,15 @@ function RequireEstoqueOperacao() {
   return <Outlet />;
 }
 
+/** Agenda desligada nos recursos do PDV: a tela nao existe nem por URL direta. */
+function RequireAgendaOperacao() {
+  const { contexto, isLoading } = useOperacaoContexto();
+  const { entryPath, isLoading: entryLoading } = useOperacaoEntry();
+  if (isLoading || entryLoading) return <Loading fullScreen />;
+  if (!contexto.ativo || contexto.temAgenda === false) return <Navigate to={entryPath} replace />;
+  return <Outlet />;
+}
+
 function RequireModuloCervejaria() {
   return <Outlet />;
 }
@@ -473,7 +482,10 @@ const router = createBrowserRouter([
                             children: [{ path: 'bar', element: <RequirePermissionRoute permission="bar.read" />, children: [{ index: true, element: <OperacaoCozinhaPage estacao="bar" /> }] }],
                           },
                           { path: 'catalogo', element: <RequirePermissionRoute permission="catalog.manage" />, children: [{ index: true, element: <OperacaoCatalogoPage /> }] },
-                          { path: 'agenda', element: <RequirePermissionRoute permission="agenda.manage" />, children: [{ index: true, element: <OperacaoAgendaPage /> }] },
+                          {
+                            element: <RequireAgendaOperacao />,
+                            children: [{ path: 'agenda', element: <RequirePermissionRoute permission="agenda.manage" />, children: [{ index: true, element: <OperacaoAgendaPage /> }] }],
+                          },
                           {
                             element: <RequireDonoOperacao />,
                             children: [

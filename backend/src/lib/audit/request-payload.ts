@@ -15,6 +15,7 @@ const FIELDS = new Set([
   'operationMode', 'tapsEnabled', 'inventoryEnabled', 'kitchenEnabled',
   'kitchenItemsChargeAtLaunch', 'allowCloseComandaWithPendingKitchenOrders',
   'barEnabled', 'barItemsChargeAtLaunch', 'allowCloseComandaWithPendingBarOrders',
+  'agendaEnabled',
   'whatsappPedidoProntoEnabled', 'whatsappPedidoProntoNaCozinha', 'whatsappPedidoProntoNoBar', 'completeInitialSetup',
   'podeDarDescontoOperacao',
   'itens', 'opcionais', 'pagamentos', 'forma', 'status', 'tipo', 'operacao', 'papel',

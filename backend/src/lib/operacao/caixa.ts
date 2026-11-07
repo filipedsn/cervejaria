@@ -401,6 +401,7 @@ export async function abrirCaixa(params: {
   produtoIds?: string[];
   ocorrenciaId?: string;
   confirmarDataDiferente?: boolean;
+  agendaEnabled?: boolean;
 }) {
   const escolheuCardapio = Boolean(params.cardapioId);
   const montouCardapio = Boolean(params.produtoIds?.length);
@@ -456,13 +457,16 @@ export async function abrirCaixa(params: {
   const sessao = await prisma.$transaction(async (tx) => {
     await lockCaixaEmTx(tx, params.cervejariaId, params.pontoVendaId, dia);
     await assertCervejariaAtivaEmTx(tx, params.cervejariaId);
-    if (canonicalPdv && params.ocorrenciaId) await lockAgendaResource(tx, params, 'ocorrencia', params.ocorrenciaId);
+    if (canonicalPdv && params.agendaEnabled !== false && params.ocorrenciaId) {
+      await lockAgendaResource(tx, params, 'ocorrencia', params.ocorrenciaId);
+    }
     const ocorrenciaId = await validateCashOccurrenceSelection(tx, {
       cervejariaId: params.cervejariaId,
       pontoVendaId: params.pontoVendaId,
       ocorrenciaId: params.ocorrenciaId,
       diaOperacional: dia,
       confirmarDataDiferente: params.confirmarDataDiferente,
+      agendaEnabled: params.agendaEnabled,
     });
     const abertasAgora = await tx.sessaoCaixaOperacao.findMany({
       where: {

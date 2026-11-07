@@ -236,6 +236,7 @@ export type NavItem = {
   somenteCozinha?: boolean;
   somenteBar?: boolean;
   somenteEstoque?: boolean;
+  somenteAgenda?: boolean;
 };
 
 /** Navegacao do modulo cervejaria. */
@@ -302,6 +303,8 @@ type OperacaoNavContext = {
   temCozinha: boolean;
   /** Ausente = Bar desligado. */
   temBar?: boolean;
+  /** Ausente = Agenda ligada (compatível com tenants sem o campo). */
+  temAgenda?: boolean;
   controlaEstoque: boolean;
 };
 
@@ -341,7 +344,14 @@ export const CAIXA_NAV_ITEMS: NavItem[] = [
     permissionOnly: 'dashboard.read' as const,
   },
   { path: '/operacao/catalogo', label: 'Cardápio', shortLabel: 'Cardápio', Icon: IconListMenu, permissionOnly: 'catalog.manage' as const },
-  { path: '/operacao/agenda', label: 'Agenda', shortLabel: 'Agenda', Icon: IconCalendar, permissionOnly: 'agenda.manage' as const },
+  {
+    path: '/operacao/agenda',
+    label: 'Agenda',
+    shortLabel: 'Agenda',
+    Icon: IconCalendar,
+    permissionOnly: 'agenda.manage' as const,
+    somenteAgenda: true as const,
+  },
   {
     path: '/operacao/configuracoes',
     label: 'Configurações',
@@ -360,7 +370,8 @@ export function getOperacaoNavItems(contexto: OperacaoNavFilterContext) {
       (!('permissionOnly' in item && item.permissionOnly) || contexto.isDono || contexto.permissoesOperacao === undefined || contexto.permissoesOperacao.includes(item.permissionOnly)) &&
       (!('somenteCozinha' in item && item.somenteCozinha) || contexto.temCozinha) &&
       (!('somenteBar' in item && item.somenteBar) || contexto.temBar === true) &&
-      (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque),
+      (!('somenteEstoque' in item && item.somenteEstoque) || contexto.controlaEstoque) &&
+      (!('somenteAgenda' in item && item.somenteAgenda) || contexto.temAgenda !== false),
   );
   if (contexto.operationMode !== 'EVENTO') return items;
 

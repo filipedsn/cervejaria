@@ -59,3 +59,9 @@ test('EVENTO navigation opens event commands and keeps CAIXA navigation unchange
   assert.equal(getOperacaoNavItems({ ...capabilities, operationMode: 'EVENTO' })[0].path, '/comandas');
   assert.equal(getOperacaoNavItems({ ...capabilities, operationMode: 'CAIXA' })[0].path, '/operacao/comandas');
 });
+
+test('TAP-182: Agenda some da nav quando temAgenda é false', () => {
+  const base = { temCozinha: false, controlaEstoque: false, isDono: true, temAgenda: true };
+  assert.equal(getOperacaoNavItems(base).some((item) => item.path === '/operacao/agenda'), true);
+  assert.equal(getOperacaoNavItems({ ...base, temAgenda: false }).some((item) => item.path === '/operacao/agenda'), false);
+});

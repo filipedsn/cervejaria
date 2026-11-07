@@ -237,6 +237,8 @@ model ConfiguracaoOperacional {
   barItemsChargeAtLaunch    Boolean @default(false)
   /// Allow closing and paying a comanda while bar orders are still pending.
   allowCloseComandaWithPendingBarOrders Boolean @default(false)
+  /// Operational schedule module (Agenda). Null preserves legacy fallback; unset means on.
+  agendaEnabled             Boolean?
   whatsappPedidoProntoEnabled Boolean @default(false)
   whatsappPedidoProntoNaCozinha Boolean @default(false)
   whatsappPedidoProntoNoBar Boolean @default(false)
@@ -275,6 +277,8 @@ model ConfiguracaoPontoVenda {
   barEnabled Boolean @default(false)
   barItemsChargeAtLaunch Boolean @default(false)
   allowCloseComandaWithPendingBarOrders Boolean @default(false)
+  /// Operational schedule (Agenda). Defaults on so existing PDVs keep current behavior.
+  agendaEnabled Boolean @default(true)
   whatsappPedidoProntoEnabled Boolean
   whatsappPedidoProntoNaCozinha Boolean
   whatsappPedidoProntoNoBar Boolean @default(false)

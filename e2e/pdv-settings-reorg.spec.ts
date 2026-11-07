@@ -49,7 +49,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     if (path === '/api/cervejaria/configuracao-operacional' && route.request().method() === 'GET') {
       return reply({
         configurationSource: source,
-        enablements: { cashMode: true, cashRegister: true, plannedOperations: false, taps: tapsEnabled, inventory: false, kitchen: true },
+        enablements: { cashMode: true, cashRegister: true, plannedOperations: false, taps: tapsEnabled, inventory: false, kitchen: true, agenda: true },
         configuration: {
           ...(source === 'CANONICAL_PDV' ? { configurationSource: source } : {}), setupCompletedAt: '2026-10-09T00:00:00.000Z', tapsEnabled, inventoryEnabled: false, kitchenEnabled: true,
           kitchenItemsChargeAtLaunch: true, allowCloseComandaWithPendingKitchenOrders: false,

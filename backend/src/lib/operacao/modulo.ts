@@ -14,6 +14,7 @@ export interface ContextoOperacao {
   controlaEstoque: boolean;
   temCozinha: boolean;
   temBar: boolean;
+  temAgenda: boolean;
   tapsEnabled: boolean;
   quantidadeMesas: number;
   /** Cobrança no lançamento por estação, derivada de effectiveSettings. */
@@ -53,6 +54,11 @@ export function hasBarAccess(profile: OperationalProfile | null): boolean {
   return profile?.capabilities.bar === true;
 }
 
+/** Operational Agenda is a tenant resource; unset capability defaults to on. */
+export function hasAgendaAccess(profile: OperationalProfile | null): boolean {
+  return profile?.capabilities.agenda !== false;
+}
+
 /** Inventory is tenant-wide; product stock participation remains separate. */
 export function hasInventoryAccess(profile: OperationalProfile | null): boolean {
   return profile?.capabilities.inventory === true;
@@ -78,6 +84,7 @@ function attachOperacaoContext(
     controlaEstoque: hasInventoryAccess(profile),
     temCozinha: hasKitchenAccess(profile),
     temBar: hasBarAccess(profile),
+    temAgenda: hasAgendaAccess(profile),
     tapsEnabled: profile.capabilities.taps,
     quantidadeMesas: profile.effectiveSettings.quantidadeMesas,
     cobrancaAoLancar: cobrancaAoLancarDasConfiguracoes(profile.effectiveSettings),

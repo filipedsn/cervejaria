@@ -4,22 +4,23 @@ import { Link } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { ToggleAtivo } from './ToggleAtivo';
 
-type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled' | 'barEnabled';
+type CapabilityKey = 'tapsEnabled' | 'inventoryEnabled' | 'kitchenEnabled' | 'barEnabled' | 'agendaEnabled';
 type BooleanSettingKey =
   | 'whatsappPedidoProntoEnabled' | 'whatsappPedidoProntoNaCozinha' | 'whatsappPedidoProntoNoBar'
   | 'kitchenItemsChargeAtLaunch' | 'allowCloseComandaWithPendingKitchenOrders'
   | 'barItemsChargeAtLaunch' | 'allowCloseComandaWithPendingBarOrders';
 type OperationalConfiguration = Record<CapabilityKey | 'plannedOperationsEnabled' | BooleanSettingKey, boolean | null>;
-type Enablements = { plannedOperations: boolean; cashRegister: boolean; cashMode: boolean; taps: boolean; inventory: boolean; kitchen: boolean; bar?: boolean };
+type Enablements = { plannedOperations: boolean; cashRegister: boolean; cashMode: boolean; taps: boolean; inventory: boolean; kitchen: boolean; bar?: boolean; agenda?: boolean };
 type OperationalConfigResponse = { configurationSource: 'LEGACY' | 'CANONICAL_PDV'; enablements: Enablements; configuration: OperationalConfiguration | null };
 type CapabilitySection = 'all' | 'resources' | 'attendance' | 'notifications';
 type OperationalCapabilitiesPanelProps = { section?: CapabilitySection };
-const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen', barEnabled: 'bar' };
+const ENABLEMENT_BY_KEY: Record<CapabilityKey, keyof Enablements> = { tapsEnabled: 'taps', inventoryEnabled: 'inventory', kitchenEnabled: 'kitchen', barEnabled: 'bar', agendaEnabled: 'agenda' };
 const CAPABILITIES: Array<{ key: CapabilityKey; title: string; description: string }> = [
   { key: 'tapsEnabled', title: 'Torneiras de chope', description: 'Utilizar torneiras nas operações.' },
   { key: 'inventoryEnabled', title: 'Controle de estoque', description: 'Controlar saldo e movimentação dos produtos.' },
   { key: 'kitchenEnabled', title: 'Cozinha / preparo', description: 'Utilizar o fluxo de preparo de pedidos.' },
   { key: 'barEnabled', title: 'Bar / preparo de bebidas', description: 'Utilizar uma fila própria para drinks e bebidas preparadas no bar.' },
+  { key: 'agendaEnabled', title: 'Agenda operacional', description: 'Agendar turnos e vincular o caixa a ocorrências do dia.' },
 ];
 
 /** Regras de cobrança e fechamento são independentes por estação. */
@@ -72,7 +73,9 @@ export function OperationalCapabilitiesPanel({ section = 'all' }: OperationalCap
   ]);
   async function toggle(key: CapabilityKey) {
     if (!data) return;
-    const enabled = !data.enablements[ENABLEMENT_BY_KEY[key]];
+    const current = data.enablements[ENABLEMENT_BY_KEY[key]];
+    // Agenda defaults to on when the enablement key is absent (existing tenants).
+    const enabled = !(key === 'agendaEnabled' ? current !== false : current === true);
     setSaving(key); setError('');
     try { await api.patch('/api/cervejaria/configuracao-operacional', { [key]: enabled, ...(key === 'inventoryEnabled' ? { confirmacaoEstoque: true } : {}) }); await refresh(key); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Não foi possível salvar a configuração'); }
@@ -154,7 +157,11 @@ export function OperationalCapabilitiesPanel({ section = 'all' }: OperationalCap
     {section === 'resources' && canonicalPdv && <p className="text-sm text-ink-muted">O PDV opera por caixa. Você pode associar uma ocorrência ao abrir o caixa.</p>}
     {showMode && <p className="text-sm font-semibold text-ink">Recursos complementares</p>}
     {configurationSource && showResources && <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-      {CAPABILITIES.map(({ key, title, description }) => <div key={key} className="flex min-h-20 items-center justify-between gap-3 px-4 py-4"><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{title}</p><p className="mt-1 text-sm leading-relaxed text-ink-muted">{description}</p></div><ToggleAtivo ativo={data?.enablements[ENABLEMENT_BY_KEY[key]] ?? false} loading={isLoading || saving !== null} onToggle={() => toggle(key)} labelAtivo={`Desativar ${title}`} labelInativo={`Ativar ${title}`} /></div>)}
+      {CAPABILITIES.map(({ key, title, description }) => {
+        const enablement = data?.enablements[ENABLEMENT_BY_KEY[key]];
+        const ativo = key === 'agendaEnabled' ? enablement !== false : Boolean(enablement);
+        return <div key={key} className="flex min-h-20 items-center justify-between gap-3 px-4 py-4"><div className="min-w-0 flex-1"><p className="font-semibold text-ink">{title}</p><p className="mt-1 text-sm leading-relaxed text-ink-muted">{description}</p></div><ToggleAtivo ativo={ativo} loading={isLoading || saving !== null} onToggle={() => toggle(key)} labelAtivo={`Desativar ${title}`} labelInativo={`Ativar ${title}`} /></div>;
+      })}
       {section === 'all' && showAttendance && attendanceControls}
     </div>}
     {section !== 'all' && showAttendance && configurationSource && <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">{attendanceControls}</div>}

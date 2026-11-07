@@ -56,9 +56,23 @@ async function canonicalPointId(cervejariaId: string): Promise<string | null> {
   return settings?.pointId ?? null;
 }
 
+function agendaUnavailable(request: { operacao: { temAgenda: boolean } }, reply: { status: (code: number) => { send: (body: object) => unknown } }, withCode = false) {
+  if (!canonicalPdvQaActivationEnabled()) {
+    return reply.status(404).send(withCode
+      ? { code: 'OPERATIONAL_SCHEDULE_DISABLED', error: 'Agenda operacional indisponível nesta instalação' }
+      : { error: 'Agenda operacional indisponível nesta instalação' });
+  }
+  if (!request.operacao.temAgenda) {
+    return reply.status(404).send(withCode
+      ? { code: 'AGENDA_RESOURCE_DISABLED', error: 'A Agenda está desativada nos recursos do PDV' }
+      : { error: 'A Agenda está desativada nos recursos do PDV' });
+  }
+  return null;
+}
+
 export async function agendaOperacionalRoutes(app: FastifyInstance) {
   app.get('/ocorrencias', async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ code: 'OPERATIONAL_SCHEDULE_DISABLED', error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply, true)) return;
     const query = z.object({ inicio: dateSchema, fim: dateSchema }).strict().parse(request.query);
     const inicio = parseDateOnly(query.inicio);
     const fim = parseDateOnly(query.fim);
@@ -75,13 +89,13 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.get('/agendas/arquivadas', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply)) return;
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
     return { agendas: await prisma.agendaOperacional.findMany({ where: { cervejariaId, pontoVendaId, archivedAt: { not: null } }, include: { _count: { select: { ocorrencias: true } } }, orderBy: [{ archivedAt: 'desc' }, { nome: 'asc' }] }) };
   });
   app.post('/agendas/:id/arquivar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply)) return;
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
@@ -89,7 +103,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.post('/agendamentos', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply)) return;
     const body = schedulingSchema.parse(request.body);
     const cervejariaId = request.operacao.cervejariaId;
     const pontoVendaId = await canonicalPointId(cervejariaId);
@@ -103,14 +117,14 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.post('/ocorrencias/:id/cancelar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply)) return;
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
     return prisma.$transaction((tx) => cancelOccurrence(tx, { cervejariaId, pontoVendaId, usuarioId: getAuthUser(request).sub }, id), { timeout: 15000 });
   });
   app.post('/ocorrencias/:id/restaurar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply)) return;
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     const body = restorationSchema.parse(request.body);
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
@@ -118,7 +132,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
     return prisma.$transaction((tx) => restoreOccurrence(tx, { cervejariaId, pontoVendaId, usuarioId: getAuthUser(request).sub }, id, body), { timeout: 15000 });
   });
   app.post('/agendas/:id/interromper', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply)) return;
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ error: 'PDV canônico indisponível' });
@@ -126,7 +140,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.post('/agendas/:id/retomar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponÃ­vel nesta instalaÃ§Ã£o' });
+    if (agendaUnavailable(request, reply)) return;
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     const body = resumeSchema.parse(request.body);
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
@@ -135,7 +149,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.post('/agendas/:id/salvar-e-ativar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ error: 'Agenda operacional indisponÃ­vel nesta instalaÃ§Ã£o' });
+    if (agendaUnavailable(request, reply)) return;
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     const body = activateAgendaSchema.parse(request.body);
     const cervejariaId = request.operacao.cervejariaId; const pontoVendaId = await canonicalPointId(cervejariaId);
@@ -144,7 +158,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.post('/agendas', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ code: 'OPERATIONAL_SCHEDULE_DISABLED', error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply, true)) return;
     const body = agendaCreateSchema.parse(request.body);
     const pontoVendaId = await canonicalPointId(request.operacao.cervejariaId);
     if (!pontoVendaId) return reply.status(409).send({ code: 'CANONICAL_PDV_UNAVAILABLE', error: 'A empresa precisa ter exatamente um PDV ativo' });
@@ -163,7 +177,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.patch('/agendas/:agendaId', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ code: 'OPERATIONAL_SCHEDULE_DISABLED', error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply, true)) return;
     const { agendaId } = z.object({ agendaId: z.string().min(1) }).parse(request.params);
     const body = agendaUpdateSchema.parse(request.body);
     if (Object.keys(body).length === 0) return reply.status(400).send({ error: 'Informe pelo menos um campo para editar' });
@@ -192,7 +206,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.post('/ocorrencias', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ code: 'OPERATIONAL_SCHEDULE_DISABLED', error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply, true)) return;
     const body = occurrenceCreateSchema.parse(request.body);
     validateAgendaInterval(body.horaInicio, body.horaFim);
     const cervejariaId = request.operacao.cervejariaId;
@@ -209,7 +223,7 @@ export async function agendaOperacionalRoutes(app: FastifyInstance) {
   });
 
   app.post('/agendas/:agendaId/gerar', { preHandler: [requirePermissaoOuDono(app, 'agenda.manage')] }, async (request, reply) => {
-    if (!canonicalPdvQaActivationEnabled()) return reply.status(404).send({ code: 'OPERATIONAL_SCHEDULE_DISABLED', error: 'Agenda operacional indisponível nesta instalação' });
+    if (agendaUnavailable(request, reply, true)) return;
     const { agendaId } = z.object({ agendaId: z.string().min(1) }).parse(request.params);
     const body = generationSchema.parse(request.body);
     const inicio = parseDateOnly(body.inicio);

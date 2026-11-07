@@ -30,6 +30,7 @@ export const updateOperationalConfigSchema = z
     barEnabled: z.boolean().optional(),
     barItemsChargeAtLaunch: z.boolean().optional(),
     allowCloseComandaWithPendingBarOrders: z.boolean().optional(),
+    agendaEnabled: z.boolean().optional(),
     whatsappPedidoProntoEnabled: z.boolean().optional(),
     whatsappPedidoProntoNaCozinha: z.boolean().optional(),
     whatsappPedidoProntoNoBar: z.boolean().optional(),
@@ -50,6 +51,7 @@ export const updateOperationalConfigSchema = z
       body.barEnabled !== undefined ||
       body.barItemsChargeAtLaunch !== undefined ||
       body.allowCloseComandaWithPendingBarOrders !== undefined ||
+      body.agendaEnabled !== undefined ||
       body.whatsappPedidoProntoEnabled !== undefined ||
       body.whatsappPedidoProntoNaCozinha !== undefined ||
       body.whatsappPedidoProntoNoBar !== undefined ||
@@ -216,6 +218,7 @@ function canonicalConfigurationView(canonical: CanonicalPdvOperationalSettings, 
     barEnabled: canonical.barEnabled,
     barItemsChargeAtLaunch: canonical.barItemsChargeAtLaunch,
     allowCloseComandaWithPendingBarOrders: canonical.allowCloseComandaWithPendingBarOrders,
+    agendaEnabled: canonical.agendaEnabled,
     whatsappPedidoProntoEnabled: canonical.whatsappPedidoProntoEnabled,
     whatsappPedidoProntoNaCozinha: canonical.whatsappPedidoProntoNaCozinha,
     whatsappPedidoProntoNoBar: canonical.whatsappPedidoProntoNoBar,
@@ -349,6 +352,7 @@ export async function updateOperationalConfig(
     ...(clearPendingClosePermission
       ? { allowCloseComandaWithPendingKitchenOrders: false }
       : {}),
+    ...(input.agendaEnabled !== undefined ? { agendaEnabled: input.agendaEnabled } : {}),
     ...(input.whatsappPedidoProntoEnabled !== undefined
       ? { whatsappPedidoProntoEnabled: input.whatsappPedidoProntoEnabled }
       : {}),
@@ -412,6 +416,7 @@ async function updateCanonicalOperationalConfig(
       ? { allowCloseComandaWithPendingKitchenOrders: input.allowCloseComandaWithPendingKitchenOrders }
       : {}),
     ...(clearPendingClosePermission ? { allowCloseComandaWithPendingKitchenOrders: false } : {}),
+    ...(input.agendaEnabled !== undefined ? { agendaEnabled: input.agendaEnabled } : {}),
     ...(input.whatsappPedidoProntoEnabled !== undefined
       ? { whatsappPedidoProntoEnabled: input.whatsappPedidoProntoEnabled }
       : {}),
