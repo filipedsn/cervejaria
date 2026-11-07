@@ -7,6 +7,14 @@ import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../NavIcons';
 import { api, formatCurrency } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
+  escolhasCompletas,
+  fatorPrecoCombo,
+  precoEscolhasCombo,
+  resumoEscolhasCombo,
+  type ComposicaoCombo,
+  type EscolhaCombo,
+} from '../../lib/combo';
+import {
   classificarGrupoProdutoOperacao,
   isChopeOperacao,
   normalizeCategoriaProduto,
@@ -27,6 +35,7 @@ type Config = {
   paraViagem?: boolean;
   observacao?: string;
   opcionais?: { opcionalId: string; nome: string; precoAdicional: number; quantidade: number }[];
+  combo?: { escolhas: EscolhaCombo[]; resumo: string[] };
 };
 
 const IconHash = IconPackage;
@@ -103,6 +112,9 @@ export function AdicionarItensOperacaoModal({
   const [paraViagemItem, setParaViagemItem] = useState(false);
   const [observacao, setObservacao] = useState('');
   const [opcionais, setOpcionais] = useState<Record<string, number>>({});
+  const [composicao, setComposicao] = useState<ComposicaoCombo | null>(null);
+  const [escolhasCombo, setEscolhasCombo] = useState<Record<string, string[]>>({});
+  const [erroCombo, setErroCombo] = useState('');
 
   const contextoTapRef = useRef(`${pontoVendaId}:${sessaoCaixaId ?? ''}`);
   const { data: tapsData, isLoading: carregandoTaps, isFetching: atualizandoTaps, error: erroCarregarTaps, refetch: recarregarTaps } = useQuery({
@@ -134,6 +146,20 @@ export function AdicionarItensOperacaoModal({
   }, [pontoVendaId, sessaoCaixaId]);
 
   const produtoEhChope = produto ? isChopeOperacao(produto) : false;
+  const fatorCombo = produto?.combo && composicao
+    ? fatorPrecoCombo(Number(produto.precoEfetivo ?? produto.precoUnit), composicao.precoCatalogo)
+    : 1;
+  const precoCombo = composicao ? precoEscolhasCombo(composicao.grupos, escolhasCombo, fatorCombo) : 0;
+  const comboCompleto = Boolean(composicao && escolhasCompletas(composicao.grupos, escolhasCombo));
+  const alternarEscolhaCombo = (grupo: ComposicaoCombo['grupos'][number], opcaoId: string) => {
+    setEscolhasCombo((atual) => {
+      const marcadas = atual[grupo.id] ?? [];
+      if (marcadas.includes(opcaoId)) return { ...atual, [grupo.id]: marcadas.filter((id) => id !== opcaoId) };
+      if (grupo.maximo === 1) return { ...atual, [grupo.id]: [opcaoId] };
+      if (marcadas.length >= grupo.maximo) return atual;
+      return { ...atual, [grupo.id]: [...marcadas, opcaoId] };
+    });
+  };
   const tapsAtivas = (tapsData?.taps ?? []).filter((tap) => tap.ativo);
   const tapsDoProduto = produtoEhChope
     ? tapsAtivas.filter((tap) => tap.chopeAtual?.id === produto?.id)
@@ -243,6 +269,25 @@ export function AdicionarItensOperacaoModal({
     setParaViagemItem(false);
     setObservacao('');
     setOpcionais({});
+    setComposicao(null);
+    setEscolhasCombo({});
+    setErroCombo('');
+    if (item.combo) {
+      api.get<ComposicaoCombo>(`/api/operacao/produtos/${item.id}/combo?pontoVendaId=${encodeURIComponent(pontoVendaId)}`)
+        .then((dados) => {
+          const iniciais: Record<string, string[]> = {};
+          for (const grupo of dados.grupos) {
+            const disponiveis = grupo.opcoes.filter((opcao) => opcao.disponivel !== false);
+            if (grupo.minimo > 0 && grupo.minimo === grupo.maximo && disponiveis.length === grupo.minimo) {
+              iniciais[grupo.id] = disponiveis.map((opcao) => opcao.id);
+            }
+          }
+          setComposicao(dados);
+          setEscolhasCombo(iniciais);
+        })
+        .catch((erro) => setErroCombo(erro instanceof Error ? erro.message : 'Não foi possível carregar o combo'));
+      return;
+    }
     api.get<Array<{ opcional: { id: string; nome: string; preco: number | string } }>>(`/api/operacao/produtos/${item.id}/opcionais`)
       .then((vinculos) => {
         const opcoes = vinculos.map(({ opcional }) => ({ id: opcional.id, nome: opcional.nome, precoAdicional: Number(opcional.preco) }));
@@ -262,6 +307,22 @@ export function AdicionarItensOperacaoModal({
     if (limite !== null && quantidade > limite) return;
     const tapDeVenda = tapsAtivas.find((tap) => tap.id === tapId);
     if (produtoEhChope && (!tapDeVenda || tapDeVenda.chopeAtual?.id !== produto.id || !tapsDoProduto.some((tap) => tap.id === tapId) || !volumeMl || !(precoSelecionado > 0))) return;
+    if (produto.combo) {
+      if (!composicao || !comboCompleto) return;
+      onSelecionar(produto, {
+        quantidade,
+        precoUnit: precoCombo,
+        paraViagem: paraViagemItem,
+        observacao: observacao.trim() || undefined,
+        opcionais: [],
+        combo: {
+          escolhas: composicao.grupos.map((grupo) => ({ grupoId: grupo.id, opcaoIds: escolhasCombo[grupo.id] ?? [] })),
+          resumo: resumoEscolhasCombo(composicao.grupos, escolhasCombo),
+        },
+      });
+      setProduto(null);
+      return;
+    }
     const opcoes = produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes.filter((opcao) => opcionais[opcao.id]).map((opcao) => ({ opcionalId: opcao.id, nome: opcao.nome, precoAdicional: Number(opcao.precoAdicional), quantidade: opcionais[opcao.id] }))) ?? [];
     onSelecionar(produto, {
       quantidade,
@@ -411,12 +472,49 @@ export function AdicionarItensOperacaoModal({
         )}
       </div>
     </Modal>
-    <Modal open={Boolean(produto)} onClose={() => { setProduto(null); setTapId(''); setProdutoMontadoSelecionado(undefined); setVolumeMl(undefined); }} title="" hideHeaderClose footer={<><button type="button" className="touch-btn-primary w-full flex items-center justify-center gap-2" disabled={produtoEhChope && (!tapId || !volumeMl || !(precoSelecionado > 0) || !tapsDoProduto.some((tap) => tap.id === tapId))} onClick={confirmar}><IconPlus className="h-5 w-5" />Adicionar item</button><button type="button" className="touch-btn-orange w-full flex items-center justify-center gap-2" onClick={() => { setProduto(null); setTapId(''); setProdutoMontadoSelecionado(undefined); setVolumeMl(undefined); }}>Voltar</button></>}>
+    <Modal open={Boolean(produto)} onClose={() => { setProduto(null); setTapId(''); setProdutoMontadoSelecionado(undefined); setVolumeMl(undefined); }} title="" hideHeaderClose footer={<><button type="button" className="touch-btn-primary w-full flex items-center justify-center gap-2" disabled={(produto?.combo && !comboCompleto) || (produtoEhChope && (!tapId || !volumeMl || !(precoSelecionado > 0) || !tapsDoProduto.some((tap) => tap.id === tapId)))} onClick={confirmar}><IconPlus className="h-5 w-5" />Adicionar item</button><button type="button" className="touch-btn-orange w-full flex items-center justify-center gap-2" onClick={() => { setProduto(null); setTapId(''); setProdutoMontadoSelecionado(undefined); setVolumeMl(undefined); }}>Voltar</button></>}>
       {produto && <div className="space-y-6 rounded-2xl border border-line bg-surface-lighter p-5 sm:p-7">
         <h2 className="text-2xl sm:text-3xl font-bold text-ink">{produto.nome}{produtoEhChope && (produto.volumeMl ?? 0) > 1 ? ` (${produto.volumeMl} ml)` : ''}</h2>
         {limiteQuantidadeSelecionada !== null && <p className="text-sm text-ink-muted">Disponível para esta comanda: {limiteQuantidadeSelecionada} un</p>}
         {produtoEhChope && <section className="space-y-3 border-b border-line pb-5"><div><h3 className="text-lg font-bold">Tap e volume</h3><p className="text-sm text-ink-muted">Escolha a Tap com este chope montado e o volume da venda.</p></div>{tapsDoProduto.length === 0 ? <p className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">Nenhuma Tap ativa está montada com este chope neste turno.</p> : <select className="input" aria-label="Tap selecionada" value={tapId} onChange={(e) => { const tap = tapsDoProduto.find((item) => item.id === e.target.value); setTapId(tap?.id ?? ''); setProdutoMontadoSelecionado(tap?.chopeAtual?.id ?? undefined); setVolumeMl(undefined); setMontagemAlterada(false); }}><option value="">Selecione a Tap</option>{tapsDoProduto.map((tap) => <option key={tap.id} value={tap.id}>Tap {tap.numero}{tap.nome ? ` — ${tap.nome}` : ''}</option>)}</select>}{volumesDoTap.length === 0 || !volumesDoTap.some((item) => item.preco > 0) ? <p role="status" className="text-sm text-ink-muted">Este chope não tem volume com preço elegível no cardápio deste turno.</p> : null}<div className="grid grid-cols-2 gap-2">{volumesDoTap.filter((preco) => preco.preco > 0).map((preco) => <button key={preco.volumeMl} type="button" aria-pressed={volumeMl === preco.volumeMl} disabled={!tapId || !tapsDoProduto.some((tap) => tap.id === tapId)} className={`rounded-xl border px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-50 ${volumeMl === preco.volumeMl ? 'border-brand-500 bg-brand-500/10' : 'border-line bg-surface'}`} onClick={() => setVolumeMl(preco.volumeMl)}><span className="block font-semibold">{preco.volumeMl} ml</span><span className="text-sm text-ink-muted">{formatCurrency(Number(preco.preco))}</span></button>)}</div>{montagemAlterada && <p role="alert" className="text-sm text-amber-700">A montagem ou os preços desta Tap mudaram. Escolha a Tap e o volume novamente.</p>}</section>}
-        {!produtoEhChope && <section className="space-y-3 border-b border-line pb-5"><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconChefHat className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Opcionais</h3><p className="text-sm text-ink-muted">Selecione os opcionais que desejar</p></div></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes).map((opcao) => <label key={opcao.id} className="flex min-h-16 cursor-pointer items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10"><span className="flex items-center gap-3"><input className="h-5 w-5 accent-brand-500" type="checkbox" checked={Boolean(opcionais[opcao.id])} onChange={() => setOpcionais((atual) => atual[opcao.id] ? Object.fromEntries(Object.entries(atual).filter(([id]) => id !== opcao.id)) : { ...atual, [opcao.id]: 1 })} /><span className="font-semibold">{opcao.nome}</span></span><span className="text-sm text-ink-muted">{Number(opcao.precoAdicional) > 0 ? `+${formatCurrency(Number(opcao.precoAdicional))}` : 'Grátis'}</span></label>)}</div></section>}
+        {produto.combo && <section className="space-y-5 border-b border-line pb-5">
+          {erroCombo && <p role="alert" className="alert-error text-sm">{erroCombo}</p>}
+          {!composicao && !erroCombo && <p role="status" className="text-sm text-ink-muted">Carregando opções do combo...</p>}
+          {composicao?.grupos.map((grupo) => {
+            const marcadas = escolhasCombo[grupo.id] ?? [];
+            const regra = grupo.minimo === grupo.maximo
+              ? `Escolha ${grupo.minimo}`
+              : grupo.minimo === 0 ? `Opcional, até ${grupo.maximo}` : `Escolha de ${grupo.minimo} a ${grupo.maximo}`;
+            return <div key={grupo.id} className="space-y-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="text-lg font-bold">{grupo.nome}</h3>
+                <span className={`text-xs font-semibold ${marcadas.length >= grupo.minimo ? 'text-ink-faint' : 'text-orange'}`}>{regra}</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {grupo.opcoes.map((opcao) => {
+                  const marcada = marcadas.includes(opcao.id);
+                  const indisponivel = opcao.disponivel === false;
+                  return <button
+                    key={opcao.id}
+                    type="button"
+                    aria-pressed={marcada}
+                    disabled={indisponivel || (!marcada && grupo.maximo > 1 && marcadas.length >= grupo.maximo)}
+                    onClick={() => alternarEscolhaCombo(grupo, opcao.id)}
+                    className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${marcada ? 'border-brand-500 bg-brand-500/10' : 'border-line bg-surface'}`}
+                  >
+                    <span className="min-w-0 font-semibold">{opcao.quantidade > 1 ? `${opcao.quantidade}× ` : ''}{opcao.nome}{indisponivel ? ' (fora do cardápio)' : ''}</span>
+                    <span className="shrink-0 text-sm text-ink-muted">{formatCurrency(Math.round(opcao.precoNoCombo * opcao.quantidade * fatorCombo * 100) / 100)}</span>
+                  </button>;
+                })}
+              </div>
+            </div>;
+          })}
+          {composicao && <div className="flex items-baseline justify-between rounded-xl border border-line bg-surface px-4 py-3">
+            <span className="text-sm text-ink-muted">Valor do combo</span>
+            <span className="text-xl font-bold text-brand-400">{formatCurrency(precoCombo * quantidade)}</span>
+          </div>}
+        </section>}
+        {!produtoEhChope && !produto.combo && <section className="space-y-3 border-b border-line pb-5"><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconChefHat className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Opcionais</h3><p className="text-sm text-ink-muted">Selecione os opcionais que desejar</p></div></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{produto.gruposOpcionais?.flatMap((grupo) => grupo.opcoes).map((opcao) => <label key={opcao.id} className="flex min-h-16 cursor-pointer items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10"><span className="flex items-center gap-3"><input className="h-5 w-5 accent-brand-500" type="checkbox" checked={Boolean(opcionais[opcao.id])} onChange={() => setOpcionais((atual) => atual[opcao.id] ? Object.fromEntries(Object.entries(atual).filter(([id]) => id !== opcao.id)) : { ...atual, [opcao.id]: 1 })} /><span className="font-semibold">{opcao.nome}</span></span><span className="text-sm text-ink-muted">{Number(opcao.precoAdicional) > 0 ? `+${formatCurrency(Number(opcao.precoAdicional))}` : 'Grátis'}</span></label>)}</div></section>}
         <section className="flex items-center justify-between gap-4 border-b border-line pb-5"><div className="flex items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconHash className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Quantidade</h3><p className="text-sm text-ink-muted">Escolha a quantidade deste item</p></div></div><div className="flex items-center gap-4 rounded-2xl border border-line bg-surface px-3 py-2"><button type="button" className="min-h-10 min-w-10 rounded-xl bg-surface-lighter text-xl font-bold" onClick={() => setQuantidade((v) => Math.max(1, v - 1))}>−</button><span className="min-w-8 text-center text-2xl font-bold">{quantidade}</span><button type="button" className="min-h-10 min-w-10 rounded-xl bg-brand-600 text-xl font-bold text-white" onClick={() => setQuantidade((v) => v + 1)}><IconPlus className="mx-auto h-5 w-5" /></button></div></section>
         {!produtoEhChope && <><section><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconChefHat className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Para viagem</h3><p className="text-sm text-ink-muted">A cozinha deve embalar este item</p></div></div><label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-4 py-3"><input type="checkbox" className="h-5 w-5 accent-brand-500" checked={paraViagemItem} onChange={(e) => setParaViagemItem(e.target.checked)} /><span className="font-semibold">Marcar item para viagem</span></label></section>
         <section><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/10 text-brand-400"><IconClipboard className="h-6 w-6" /></span><div><h3 className="text-lg font-bold">Observação do item</h3><p className="text-sm text-ink-muted">Adicione alguma observação, se necessário</p></div></div><textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={280} rows={2} placeholder="Ex.: sem cebola" className="w-full rounded-2xl border border-line bg-surface px-4 py-3" /></section></>}

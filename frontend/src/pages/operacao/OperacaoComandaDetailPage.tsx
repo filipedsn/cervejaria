@@ -75,6 +75,7 @@ function fingerprintItensLancamento(itens: LinhaCarrinho[]): string {
     paraViagem: linha.paraViagem ?? false,
     observacao: linha.observacao ?? null,
     opcionais: (linha.opcionais ?? []).map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
+    escolhasCombo: linha.combo?.escolhas ?? null,
   })));
 }
 
@@ -287,9 +288,9 @@ export function OperacaoComandaDetailPage() {
     setPaymentForm((prev) => syncCoveringPaymentForm(prev, total));
   }, [descontoInput, showPayment, comanda?.subtotal]);
 
-  const adicionar = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; tapId?: string; volumeMl?: number; precoUnit?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
+  const adicionar = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; tapId?: string; volumeMl?: number; precoUnit?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais']; combo?: LinhaCarrinho['combo'] }) => {
     setCarrinho((atual) => {
-      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
+      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) && JSON.stringify(linha.combo?.escolhas ?? null) === JSON.stringify(configuracao?.combo?.escolhas ?? null));
       const quantidadeAtual = existente?.quantidade ?? 0;
       const litrosJaNoCarrinho = atual.filter((linha) => linha.produto.id === produto.id && isChopeOperacao(linha.produto)).reduce((total, linha) => total + ((linha.volumeMl ?? 0) * linha.quantidade) / 1000, 0);
       const consumoChope = isChopeOperacao(produto) && configuracao?.volumeMl
@@ -298,9 +299,9 @@ export function OperacaoComandaDetailPage() {
       if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque, consumoChope)) {
         return atual;
       }
-      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, tapId: configuracao?.tapId, volumeMl: configuracao?.volumeMl, precoUnit: configuracao?.precoUnit, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
+      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, tapId: configuracao?.tapId, volumeMl: configuracao?.volumeMl, precoUnit: configuracao?.precoUnit, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais, combo: configuracao?.combo }];
       return atual.map((linha) =>
-        linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
+        linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) && JSON.stringify(linha.combo?.escolhas ?? null) === JSON.stringify(configuracao?.combo?.escolhas ?? null) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
       );
     });
   };
@@ -343,6 +344,7 @@ export function OperacaoComandaDetailPage() {
           paraViagem: linha.paraViagem ?? false,
           observacao: linha.observacao,
           opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
+          escolhasCombo: linha.combo?.escolhas,
         })),
       }),
     meta: auditMutationMeta<{ itens: LinhaCarrinho[]; idempotencyKey: string; limparCarrinho: boolean }>({
@@ -809,7 +811,7 @@ export function OperacaoComandaDetailPage() {
             {pedido.observacao && <p className="border-t border-line py-1.5 text-xs text-ink-muted">Obs: {pedido.observacao}</p>}
             {pedido.itens.map((item) => {
               const itemEmCancelamento = Boolean(item.cancelamentoPendenteEm || item.canceladoEm);
-              const quantidadeEditavel = aberta && !itemEmCancelamento && podeAlterarQuantidadeItemComanda(comanda, pedido, item);
+              const quantidadeEditavel = aberta && !itemEmCancelamento && !item.combo && podeAlterarQuantidadeItemComanda(comanda, pedido, item);
               const entregue = pedido.status === 'ENTREGUE' || (Boolean(item.tapId) && !item.exigePreparo && pedido.status !== 'CANCELADO' && pedido.status !== 'CANCELAMENTO_PENDENTE');
               const removivel = aberta && !itemEmCancelamento && (entregue
                 ? podeCancelarItemEntregue
@@ -894,8 +896,9 @@ export function OperacaoComandaDetailPage() {
                     )}
                   </div>
                 </div>
-                {(item.opcionais?.length || item.observacao || item.paraViagem) ? (
+                {(item.combo || item.opcionais?.length || item.observacao || item.paraViagem) ? (
                   <div className="pl-12 pt-1 text-xs leading-snug text-ink-muted">
+                    {item.combo ? <div>Combo {item.combo.nome}{item.combo.grupoNome ? ` · ${item.combo.grupoNome}` : ''}</div> : null}
                     {item.opcionais?.length ? <div>Opcionais: {item.opcionais.map((o) => o.nome).join(', ')}</div> : null}
                     {item.observacao ? <div>Obs: {item.observacao}</div> : null}
                     {item.paraViagem ? <div>Para viagem</div> : null}

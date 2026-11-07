@@ -20,6 +20,8 @@ export interface ProdutoOperacao {
   controlaEstoque: boolean;
   ativo: boolean;
   ordem: number;
+  /** Combo: o preço é a soma das escolhas; estoque e preparo seguem cada componente. */
+  combo?: boolean;
   gruposOpcionais?: GrupoOpcionalProduto[];
 }
 
@@ -202,6 +204,8 @@ export interface ItemPedido {
   paraViagem?: boolean;
   observacao?: string | null;
   opcionais?: Array<{ id: string; nome: string; precoAdicional: number; quantidade: number }>;
+  /** Componente de um combo; itens da mesma venda do combo compartilham `instanciaId`. */
+  combo?: { instanciaId: string; produtoId: string | null; nome: string; grupoNome: string | null } | null;
 }
 
 export type StatusPedido = 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELAMENTO_PENDENTE' | 'CANCELADO';
@@ -257,6 +261,7 @@ export interface PedidoCozinha {
     paraViagem?: boolean;
     observacao?: string | null;
     opcionais?: Array<{ id: string; nome: string; precoAdicional: number; quantidade: number }>;
+    comboNome?: string | null;
   }>;
 }
 
@@ -319,6 +324,7 @@ export interface LinhaCarrinho {
   paraViagem?: boolean;
   observacao?: string;
   opcionais?: Array<{ opcionalId: string; nome: string; precoAdicional: number; quantidade: number }>;
+  combo?: { escolhas: Array<{ grupoId: string; opcaoIds: string[] }>; resumo: string[] };
 }
 
 export function totalCarrinho(linhas: LinhaCarrinho[]): number {
