@@ -172,7 +172,21 @@ export function journeyRuleName(env) {
   return `quiver-tap-ui-error-surge-${env}`;
 }
 
-/** .es-query: more than `threshold` ui.error events per screen within 10 minutes. */
+/** Alertable ui.error: unhandled/legacy or unexpected kind (TAP-177). */
+export function uiErrorAlertFilter() {
+  return {
+    bool: {
+      should: [
+        { term: { 'attributes.metadata.handled': false } },
+        { bool: { must_not: [{ exists: { field: 'attributes.metadata.handled' } }] } },
+        { terms: { 'attributes.metadata.kind': ['network', 'api_server', 'ui_bug'] } },
+      ],
+      minimum_should_match: 1,
+    },
+  };
+}
+
+/** .es-query: more than `threshold` alertable ui.error events per screen within 10 minutes. */
 export function journeyRule(env, threshold = 5) {
   assertEnv(env);
   return {
@@ -185,7 +199,16 @@ export function journeyRule(env, threshold = 5) {
     params: {
       index: [`logs-audit*.otel-${env}`],
       timeField: '@timestamp',
-      esQuery: JSON.stringify({ query: { bool: { filter: [{ term: { 'attributes.event.action': 'ui.error' } }] } } }),
+      esQuery: JSON.stringify({
+        query: {
+          bool: {
+            filter: [
+              { term: { 'attributes.event.action': 'ui.error' } },
+              uiErrorAlertFilter(),
+            ],
+          },
+        },
+      }),
       size: 10,
       timeWindowSize: 10,
       timeWindowUnit: 'm',

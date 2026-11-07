@@ -369,6 +369,14 @@ function extractCountFromReason(reason?: string): number | undefined {
 }
 
 function resolveOperacao(log: ParsedLog): string {
+  const feature = asString(log.metadata?.feature);
+  const operation = asString(log.metadata?.operation);
+  if (feature || operation) {
+    const fromUi = resolveUiFeatureLabel(log.uiRoute ?? log.uiPage);
+    if (fromUi) return fromUi;
+    if (operation) return operation;
+    if (feature) return feature;
+  }
   const action = log.eventAction?.trim().toLowerCase() ?? '';
   if (action.startsWith('ui.')) {
     const fromUi = resolveUiFeatureLabel(log.uiRoute ?? log.uiPage);
@@ -443,6 +451,11 @@ function normalizeUiErrorText(log: ParsedLog): string {
 }
 
 function classifyUiErrorKind(log: ParsedLog): 'network' | 'server_unavailable' | 'ui_bug' | 'other' {
+  const semanticKind = asString(log.metadata?.kind)?.toLowerCase();
+  if (semanticKind === 'network') return 'network';
+  if (semanticKind === 'api_server') return 'server_unavailable';
+  if (semanticKind === 'ui_bug') return 'ui_bug';
+
   const outcome = asString(log.metadata?.outcome)?.toLowerCase();
   if (outcome === 'network_error' || outcome === 'timeout' || outcome === 'aborted') {
     return 'network';
@@ -490,15 +503,23 @@ export function buildUiErrorCenario(log: ParsedLog, payload: KibanaAlertPayload)
   const usuario = formatUsuario(log) ?? 'usuario nao identificado';
   const funcionalidade = resolveOperacao(log);
   const kind = classifyUiErrorKind(log);
+  const scenario = asString(log.metadata?.scenario);
+  const operation = asString(log.metadata?.operation);
   const rawDetail =
     extractResponseErrorMessage(log.metadata) ??
     log.message.trim() ??
     payload.reason?.trim() ??
     'falha sem detalhe';
 
+  const contextBits = [
+    operation ? `operacao=${operation}` : undefined,
+    scenario ? `cenario=${scenario}` : undefined,
+  ].filter(Boolean);
+  const contextSuffix = contextBits.length > 0 ? ` (${contextBits.join(', ')})` : '';
+
   if (kind === 'network') {
     return (
-      `${usuario} em ${empresa} ao usar "${funcionalidade}": o navegador nao conseguiu falar com o servidor ` +
+      `${usuario} em ${empresa} ao usar "${funcionalidade}"${contextSuffix}: o navegador nao conseguiu falar com o servidor ` +
       `(falha de rede no dispositivo ou no caminho ate a API). Nao prova que a API caiu; ` +
       `se so este alerta disparou, trate como problema pontual do usuario/rede.`
     );
@@ -506,19 +527,19 @@ export function buildUiErrorCenario(log: ParsedLog, payload: KibanaAlertPayload)
 
   if (kind === 'server_unavailable') {
     return (
-      `${usuario} em ${empresa} ao usar "${funcionalidade}": o servidor respondeu indisponivel ` +
+      `${usuario} em ${empresa} ao usar "${funcionalidade}"${contextSuffix}: o servidor respondeu indisponivel ` +
       `(502/503 ou equivalente). Verifique saude da API/site publico e deploys recentes.`
     );
   }
 
   if (kind === 'ui_bug') {
     return (
-      `${usuario} em ${empresa} encontrou quebra de interface em "${funcionalidade}": ${rawDetail}. ` +
+      `${usuario} em ${empresa} encontrou quebra de interface em "${funcionalidade}"${contextSuffix}: ${rawDetail}. ` +
       `Provavel bug de tela/JS; confira console e release do frontend.`
     );
   }
 
-  return `${usuario} em ${empresa} ao usar "${funcionalidade}": ${rawDetail}.`;
+  return `${usuario} em ${empresa} ao usar "${funcionalidade}"${contextSuffix}: ${rawDetail}.`;
 }
 
 function appendMetadataDetails(lines: string[], metadata?: Record<string, unknown>): void {
@@ -547,6 +568,15 @@ function appendMetadataDetails(lines: string[], metadata?: Record<string, unknow
     'source',
     'line',
     'filename',
+    'handled',
+    'kind',
+    'feature',
+    'operation',
+    'scenario',
+    'httpStatus',
+    'apiCode',
+    'entityType',
+    'entityId',
   ] as const;
 
   for (const key of businessKeys) {

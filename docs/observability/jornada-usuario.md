@@ -21,6 +21,7 @@ Todo evento de auditoria (`event.category: audit`) vai para o data stream `logs-
 | Onde (tela) | `ui.route` (template, ids viram `:id`), `ui.page`, `ui.viewport` (`LxA`), `http.route` |
 | Desempenho | `ui.vital.name` (LCP, CLS, INP, TTFB, FCP), `ui.vital.value` (double; CLS sem unidade, demais em ms), `ui.vital.rating` |
 | Erros | `error.message`, `error.type`, `error.stack_trace` |
+| Erros semânticos (TAP-177) | `metadata.handled`, `metadata.kind` (`network`\|`api_client`\|`api_server`\|`validation`\|`ui_bug`\|`unknown`), `metadata.feature`, `metadata.operation`, `metadata.scenario`, `metadata.httpStatus`, `metadata.apiCode`, `metadata.entityType`/`entityId`; correlacionar com `correlationId` / `interactionId` |
 | Rede e dispositivo | `client.address`, `client.ip_source` (`cloudflare`, `nginx`, `socket`), `user_agent.original` |
 | Enriquecido no ES | `client.geo.city_name`, `client.geo.region_name`, `client.geo.country_iso_code`, `client.geo.country_name`, `client.geo.location` (geo_point), `user_agent.name`, `user_agent.version`, `user_agent.os.name`, `user_agent.device.name`, `enrich.error` |
 
@@ -37,8 +38,31 @@ Todo evento de auditoria (`event.category: audit`) vai para o data stream `logs-
 - buscas: só campos com `data-audit-search`, `type="search"` ou placeholder de busca, nunca senha/cartão; debounce de 800 ms ou Enter;
 - `page_view` com viewport e tempo desde a tela anterior;
 - web vitals via `PerformanceObserver`, enviados ao ocultar/fechar a página (`sendBeacon`);
-- erros de React (`AuditErrorBoundary`) e erros globais com mensagem, tipo e stack;
+- erros de React (`AuditErrorBoundary`) e erros globais com mensagem, tipo e stack (`handled=false`);
+- erros tratados exibidos ao usuário via `reportUserFacingError` / React Query `MutationCache` (e queries com `meta.reportError` ou falha de rede/5xx), com `handled=true` e campos semânticos;
 - `session.id` por aba (`sessionStorage`), renovado após login.
+
+#### Padrão semântico de `ui.error` (TAP-177)
+
+Todo erro que o usuário vê deve chegar ao Kibana como `event.action=ui.error` com:
+
+| Campo | Uso |
+| --- | --- |
+| `metadata.handled` | `true` se tratado na UI; `false` para crash/boundary/unhandled |
+| `metadata.kind` | classifica a falha (rede, API, validação, bug de UI…) |
+| `metadata.feature` / `metadata.operation` | chaves estáveis da tela/ação (`comanda.detail`, `comanda.close`) |
+| `metadata.scenario` | código curto filtrável (`network_unreachable`, `validation_…`) |
+| `metadata.httpStatus` / `metadata.apiCode` | quando veio de `ApiError` |
+| `correlationId` | liga ao `http.request.completed` da mesma tentativa |
+
+No Discover (data view `quiver-tap-audit-<env>`), filtre por exemplo:
+
+```text
+attributes.event.action : "ui.error" and attributes.metadata.feature : "comanda.detail"
+attributes.event.action : "ui.error" and attributes.metadata.scenario : "network_unreachable"
+```
+
+Alertas Telegram (`quiver-tap-ui-error-*`) **não** disparam para `handled=true` + `kind` de negócio esperado (`validation` / `api_client`); só para `handled=false`, legado sem flag, ou `kind` in `network|api_server|ui_bug`.
 
 Campos de busca marcados com `data-audit-search`: busca de comandas (Comandas e Operação), seleção de cliente na operação, contas pendentes, unir cliente, clientes, estoque da operação e QR do portal no PDV.
 

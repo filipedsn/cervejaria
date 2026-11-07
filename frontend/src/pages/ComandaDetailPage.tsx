@@ -24,7 +24,6 @@ import {
   type PaymentFormRow,
 } from '../components/PaymentFormModal';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
-import { trackUiError } from '../lib/audit-tracker';
 import { createCorrelationId } from '../lib/correlation-id';
 
 export function ComandaDetailPage() {
@@ -176,6 +175,12 @@ export function ComandaDetailPage() {
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
       if (evento) queryClient.invalidateQueries({ queryKey: ['evento-contas-pendentes', evento.id] });
     },
+    meta: {
+      feature: 'comanda.detail',
+      operation: 'comanda.close',
+      entityType: 'comanda',
+      entityId: id,
+    },
     onError: (err) => {
       const isApiError = err instanceof ApiError;
       const correlationId = isApiError ? err.correlationId : undefined;
@@ -192,12 +197,17 @@ export function ComandaDetailPage() {
         status,
         errorName: err instanceof Error ? err.name : 'UnknownError',
       });
-      trackUiError('Falha ao encerrar comanda');
     },
   });
 
   const cancelMutation = useMutation({
     mutationFn: () => api.post<Comanda>(`/api/comandas/${id}/cancelar`),
+    meta: {
+      feature: 'comanda.detail',
+      operation: 'comanda.cancel',
+      entityType: 'comanda',
+      entityId: id,
+    },
     onSuccess: () => {
       if (evento) {
         queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });

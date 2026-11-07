@@ -8,7 +8,7 @@
   "params": {
     "index": ["logs-audit*.otel-prd"],
     "timeField": "@timestamp",
-    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"attributes.event.action\":\"ui.error\"}},{\"term\":{\"attributes.event.outcome\":\"failure\"}}]}}}",
+    "esQuery": "{\"query\":{\"bool\":{\"must\":[{\"term\":{\"attributes.event.action\":\"ui.error\"}},{\"term\":{\"attributes.event.outcome\":\"failure\"}},{\"bool\":{\"should\":[{\"term\":{\"attributes.metadata.handled\":false}},{\"bool\":{\"must_not\":[{\"exists\":{\"field\":\"attributes.metadata.handled\"}}]}},{\"terms\":{\"attributes.metadata.kind\":[\"network\",\"api_server\",\"ui_bug\"]}}],\"minimum_should_match\":1}}]}}}",
     "size": 20,
     "timeWindowSize": 15,
     "timeWindowUnit": "m",

@@ -294,6 +294,48 @@ test('web vital e erro de interface geram campos e mensagens legíveis', async (
   assert.equal(emitted[3]?.input.metadata?.sinceLastMs, 1500);
 });
 
+test('ui.error semantico preserva handled/kind/feature/operation/scenario e correlationId', async () => {
+  const correlationId = 'f4311c18-422d-4b47-bc63-be144dcf7167';
+  const { statusCode, emitted } = await postStaffEvents([
+    {
+      type: 'error',
+      page: '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+      label: 'comanda.close',
+      error: {
+        message: 'Não foi possível falar com o servidor. Tente de novo.',
+        name: 'Error',
+      },
+      meta: {
+        handled: true,
+        kind: 'network',
+        feature: 'comanda.detail',
+        operation: 'comanda.close',
+        scenario: 'network_unreachable',
+        httpStatus: 0,
+        entityType: 'comanda',
+        entityId: 'cmw5mmn8b08cjl601ul30q44d',
+        correlationId,
+        boundary: true,
+        componentStack: 'in ComandaDetail',
+      },
+    },
+  ]);
+  assert.equal(statusCode, 204);
+  const input = emitted[0]?.input;
+  assert.equal(input?.action, 'ui.error');
+  assert.equal(input?.correlationId, correlationId);
+  assert.equal(input?.entityType, 'comanda');
+  assert.equal(input?.entityId, 'cmw5mmn8b08cjl601ul30q44d');
+  assert.equal(input?.metadata?.handled, true);
+  assert.equal(input?.metadata?.kind, 'network');
+  assert.equal(input?.metadata?.feature, 'comanda.detail');
+  assert.equal(input?.metadata?.operation, 'comanda.close');
+  assert.equal(input?.metadata?.scenario, 'network_unreachable');
+  assert.equal(input?.metadata?.httpStatus, 0);
+  assert.equal(input?.metadata?.boundary, true);
+  assert.equal(input?.metadata?.componentStack, 'in ComandaDetail');
+});
+
 test('seleção em lista vira ação legível com a opção escolhida', async () => {
   const { emitted } = await postStaffEvents([
     { type: 'click', page: '/operacao/estoque', element: 'select', label: 'select:Categoria', meta: { option: 'Chopes' } },
