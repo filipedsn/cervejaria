@@ -1,5 +1,5 @@
 import { join, resolve } from 'node:path';
-import { readAnalystConfig, readCashNoticeConfig, readTelegramConfig, readWatchConfig, requireRuntimeElasticsearchConfig, type WatchConfig } from '../config.js';
+import { readAnalystConfig, readCashNoticeConfig, readReleaseInfoConfig, readTelegramConfig, readWatchConfig, requireRuntimeElasticsearchConfig, type WatchConfig } from '../config.js';
 import { NotificationService } from '../notify/service.js';
 import { ElasticsearchSources } from '../sources/index.js';
 import { CashNotices } from './cash.js';
@@ -25,6 +25,8 @@ export function buildWatch(env: Env): BuiltWatch | { ok: false; reason: string }
   if (!telegram.ok) return telegram;
   const cash = readCashNoticeConfig(env);
   if (!cash.ok) return cash;
+  const releaseInfo = readReleaseInfoConfig(env);
+  if (!releaseInfo.ok) return releaseInfo;
   const environment = runtime.config.environment;
   const beat = readHeartbeatConfig(env, environment);
   if (!beat.ok) return beat;
@@ -41,6 +43,6 @@ export function buildWatch(env: Env): BuiltWatch | { ok: false; reason: string }
       sender: new NotificationService({ config: { ...telegram.config, maxPerHour: cash.config.maxPerHour }, runtimeDir: join(runtimeDir, 'cash') }),
     })
     : undefined;
-  const runner = new WatchRunner({ config: watch.config, elastic, notifications, store, environment, bootTime, heartbeat, cash: cashNotices });
+  const runner = new WatchRunner({ config: watch.config, elastic, notifications, store, environment, bootTime, heartbeat, cash: cashNotices, releaseInfo: releaseInfo.config });
   return { ok: true, runner, notifications, watch: watch.config, runtimeDir, store, ping: elasticPing(elastic), bootTime, environment, heartbeat: heartbeat ? 'on' : 'off', cashNotices: cashNotices ? 'on' : 'off' };
 }

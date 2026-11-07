@@ -5,5 +5,6 @@ export * from './lock.js';
 export * from './startup.js';
 export * from './heartbeat.js';
 export * from './cash.js';
+export * from './release-info.js';
 export * from './runner.js';
 export * from './build.js';
