@@ -212,6 +212,24 @@ export function readWatchConfig(env: Env, environment: AnalystEnvironment): { ok
   return { ok: true, config: { enabled: enabled === 'true', publicUrl, networkCheckUrl, freshnessMaxMinutes, errorLogThreshold, reminderMinutes, digestHour, intervalMs, bootQuietMinutes, kibanaUrl } };
 }
 
+/** Release notice enrichment: public GitHub API for PRs and the local Plane for work items. */
+export type ReleaseInfoConfig = { githubRepo: string; planeUrl: string; planeWorkspace: string; planeApiKey?: string };
+
+export function readReleaseInfoConfig(env: Env): { ok: true; config: ReleaseInfoConfig } | { ok: false; reason: string } {
+  const githubRepo = env.SUPPORT_ANALYST_GITHUB_REPO?.trim() || 'filipedsn/cervejaria';
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(githubRepo)) return { ok: false, reason: 'SUPPORT_ANALYST_GITHUB_REPO must be owner/repo' };
+  const planeUrl = (env.SUPPORT_ANALYST_PLANE_URL?.trim() || 'http://127.0.0.1:8090').replace(/\/+$/, '');
+  let parsed: URL;
+  try { parsed = new URL(planeUrl); } catch { return { ok: false, reason: 'SUPPORT_ANALYST_PLANE_URL must be a valid HTTP(S) URL' }; }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    return { ok: false, reason: 'SUPPORT_ANALYST_PLANE_URL must be an HTTP(S) URL without credentials' };
+  }
+  const planeWorkspace = env.SUPPORT_ANALYST_PLANE_WORKSPACE?.trim() || 'quiver';
+  if (!/^[a-z0-9-]{1,48}$/.test(planeWorkspace)) return { ok: false, reason: 'SUPPORT_ANALYST_PLANE_WORKSPACE must be a workspace slug' };
+  const planeApiKey = env.SUPPORT_ANALYST_PLANE_API_KEY?.trim() || undefined;
+  return { ok: true, config: { githubRepo, planeUrl, planeWorkspace, planeApiKey } };
+}
+
 export type CashNoticeConfig = { enabled: boolean; maxPerHour: number };
 
 /** [CAIXA] notices on cash open/close: on by default, with their own hourly budget apart from the alerts. */

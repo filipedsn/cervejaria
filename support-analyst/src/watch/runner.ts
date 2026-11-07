@@ -1,10 +1,11 @@
-import type { WatchConfig } from '../config.js';
+import type { ReleaseInfoConfig, WatchConfig } from '../config.js';
 import { formatDigest, formatFiring, formatInfo, formatReminder, formatResolved } from '../notify/format.js';
 import type { AnalystIndices } from '../sources/constants.js';
 import { ElasticSourceError } from '../sources/elastic.js';
 import type { CashNotices } from './cash.js';
 import type { HeartbeatResult, HeartbeatSender } from './heartbeat.js';
 import { probeUrl, readReleaseSha, type FetchLike } from './probes.js';
+import { describeRelease, formatReleaseNotice } from './release-info.js';
 import { inBootQuietWindow } from './startup.js';
 import type { WatchStateStore } from './state.js';
 import { DETECTOR_RULES, type ContainerState, type DetectorId, type DetectorRule, type DetectorStateEntry, type ErrorContext, type Observation, type WatchState } from './types.js';
@@ -33,6 +34,8 @@ export type WatchRunnerDependencies = {
   heartbeat?: HeartbeatSender;
   /** [CAIXA] business notices; a failure keeps the watermark and never breaks the cycle. */
   cash?: Pick<CashNotices, 'run'>;
+  /** PR and work item lookup for the "new release" notice; without it only the SHA is sent. */
+  releaseInfo?: ReleaseInfoConfig;
   fetchImpl?: FetchLike;
   now?: () => Date;
 };
@@ -143,7 +146,13 @@ export class WatchRunner {
     // 5. New release in production.
     const release = await readReleaseSha(fetchImpl, this.deps.config.publicUrl);
     if (release && state.lastReleaseSha && release !== state.lastReleaseSha) {
-      await this.deps.notifications.send('INFO', formatInfo(`Nova versão no ar: ${release.slice(0, 7)}`));
+      let notice = `Nova versão no ar: ${release.slice(0, 7)}`;
+      if (this.deps.releaseInfo) {
+        try {
+          notice = formatReleaseNotice(await describeRelease(fetchImpl, this.deps.releaseInfo, release, state.lastReleaseSha));
+        } catch { /* the bare SHA notice still goes out */ }
+      }
+      await this.deps.notifications.send('INFO', formatInfo(notice));
       notified.push('INFO:release');
     }
     if (release) state.lastReleaseSha = release;
