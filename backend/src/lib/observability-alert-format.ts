@@ -75,6 +75,9 @@ function formatOperationalTelegram(payload: KibanaAlertPayload): string {
       `<b>Empresa:</b> ${escapeHtml(fieldOrMissing(ctx.empresa))}`,
       `<b>Usuario:</b> ${escapeHtml(fieldOrMissing(ctx.usuario))}`,
       `<b>Operacao:</b> ${escapeHtml(fieldOrMissing(ctx.operacao))}`,
+      `<b>Cenario:</b> ${escapeHtml(
+        fieldOrMissing(ctx.cenario ?? ctx.errorDescription ?? payload.reason),
+      )}`,
       `<b>Descricao do erro:</b> ${escapeHtml(
         fieldOrMissing(ctx.errorDescription ?? payload.reason),
       )}`,
@@ -205,6 +208,9 @@ function formatOperationalEmailHtml(payload: KibanaAlertPayload): string {
       <p><strong>Empresa:</strong> ${escapeHtml(fieldOrMissing(ctx.empresa))}<br>
       <strong>Usuario:</strong> ${escapeHtml(fieldOrMissing(ctx.usuario))}<br>
       <strong>Operacao:</strong> ${escapeHtml(fieldOrMissing(ctx.operacao))}</p>
+      <p><strong>Cenario:</strong> ${escapeHtml(
+        fieldOrMissing(ctx.cenario ?? ctx.errorDescription ?? payload.reason),
+      )}</p>
       <p><strong>Descricao do erro:</strong> ${escapeHtml(
         fieldOrMissing(ctx.errorDescription ?? payload.reason),
       )}</p>

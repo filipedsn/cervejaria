@@ -45,7 +45,38 @@ function humanizeActionToken(token: string): string {
     .join(' ');
 }
 
-export function resolveOperationLabel(action?: string, fallbackMessage?: string): string {
+/** Rotulo de negocio a partir da rota HTTP (ex.: portal PDV). */
+export function resolveRouteOperationLabel(route?: string, method?: string): string | undefined {
+  if (!route?.trim()) return undefined;
+  const r = route.trim().toLowerCase();
+  const m = (method ?? '').toUpperCase();
+
+  if (r.includes('/api/public/') && r.includes('/pontos-venda/') && /\/comanda\/?$/.test(r)) {
+    return m === 'GET' || !m
+      ? 'Consultar comanda/cardapio do cliente (portal PDV)'
+      : 'Atualizar comanda do cliente (portal PDV)';
+  }
+  if (r.includes('/api/public/') && r.includes('/cardapio')) {
+    return 'Consultar cardapio publico';
+  }
+  if (r === '/api/auth/login' || r.endsWith('/api/auth/login')) {
+    return 'Login';
+  }
+  if (r === '/api/auth/me' || r.endsWith('/api/auth/me')) {
+    return 'Verificar sessao';
+  }
+  return undefined;
+}
+
+export function resolveOperationLabel(
+  action?: string,
+  fallbackMessage?: string,
+  route?: string,
+  method?: string,
+): string {
+  const fromRoute = resolveRouteOperationLabel(route, method);
+  if (fromRoute) return fromRoute;
+
   const key = action?.trim().toLowerCase();
   if (key && OPERATION_LABELS[key]) return OPERATION_LABELS[key];
 
