@@ -1,6 +1,7 @@
 import { CORRELATION_ID_HEADER, createCorrelationId } from './correlation-id';
 import { frontendReleaseSha } from './release-context';
 import { beginInteraction, currentInteractionId } from './interaction-context';
+import { compactIntent, currentAuditContext, type AuditIntent, type AuditPrimitive } from './audit-context';
 import {
   CLICK_TARGET_SELECTOR,
   accessibleName,
@@ -47,6 +48,14 @@ type UiEvent = {
   interactionId?: string;
   meta?: Record<string, unknown>;
   http?: HttpRequestTelemetry;
+  context?: Record<string, AuditPrimitive>;
+  intent?: AuditIntent;
+};
+
+export type AuditFunctionalExtras = {
+  /** Snapshot taken when the action started; defaults to the live screen context. */
+  context?: Record<string, AuditPrimitive>;
+  intent?: AuditIntent;
 };
 
 const queue: UiEvent[] = [];
@@ -193,11 +202,16 @@ function scheduleFlush(): void {
 
 function enqueue(event: UiEvent): void {
   if (queue.length >= MAX_QUEUE) queue.shift();
+  const { context: explicitContext, intent: rawIntent, ...rest } = event;
+  const context = explicitContext ?? currentAuditContext();
+  const intent = compactIntent(rawIntent);
   queue.push({
-    ...event,
+    ...rest,
     route: event.route ?? routeTemplate(event.page),
     sessionId: auditSessionId(),
     meta: { frontendReleaseSha, ...event.meta },
+    ...(context ? { context } : {}),
+    ...(intent ? { intent } : {}),
     timestamp: event.timestamp ?? new Date().toISOString(),
   });
   if (queue.length >= 20) {
@@ -281,6 +295,7 @@ export function trackUiError(
   meta?: Record<string, unknown>,
   errorName?: string,
   label = 'frontend_error',
+  extras: AuditFunctionalExtras = {},
 ): void {
   if (!shouldEmitError(message, stack)) return;
   enqueue({
@@ -295,6 +310,35 @@ export function trackUiError(
     meta: {
       ...meta,
     },
+    context: extras.context,
+    intent: extras.intent,
+  });
+}
+
+/** Terminal record of a business action (success or failure) with what the operator intended. */
+export function trackAction(input: {
+  operation: string;
+  feature?: string;
+  outcome: 'success' | 'failure';
+  entityType?: string;
+  entityId?: string;
+  durationMs?: number;
+} & AuditFunctionalExtras): void {
+  enqueue({
+    interactionId: currentInteractionId(),
+    type: 'submit',
+    page: currentPage(),
+    label: collapseText(input.operation, 300) || 'action',
+    meta: {
+      operation: input.operation,
+      ...(input.feature ? { feature: input.feature } : {}),
+      actionOutcome: input.outcome,
+      ...(input.entityType ? { entityType: input.entityType } : {}),
+      ...(input.entityId ? { entityId: input.entityId } : {}),
+      ...(input.durationMs !== undefined ? { durationMs: Math.round(input.durationMs) } : {}),
+    },
+    context: input.context,
+    intent: input.intent,
   });
 }
 

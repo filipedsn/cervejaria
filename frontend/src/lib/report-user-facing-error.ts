@@ -1,5 +1,6 @@
 import { ApiError } from './api';
 import { trackUiError } from './audit-tracker';
+import type { AuditIntent, AuditPrimitive } from './audit-context';
 
 export type UserFacingErrorKind =
   | 'network'
@@ -28,6 +29,10 @@ export type ReportUserFacingErrorInput = {
   handled?: boolean;
   /** ui.label override; defaults to operation or feature or frontend_error */
   label?: string;
+  /** What the operator was trying to do (summary, items, payments). */
+  intent?: AuditIntent;
+  /** Screen context snapshot; defaults to the live one. */
+  context?: Record<string, AuditPrimitive>;
 };
 
 export type ClassifiedUserFacingError = {
@@ -194,7 +199,7 @@ export function reportUserFacingError(input: ReportUserFacingErrorInput): Classi
     ...(classified.correlationId ? { correlationId: classified.correlationId } : {}),
     ...(classified.requestId ? { requestId: classified.requestId } : {}),
     ...input.meta,
-  }, classified.errorName, label);
+  }, classified.errorName, label, { context: input.context, intent: input.intent });
 
   return { ...classified, scenario };
 }

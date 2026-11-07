@@ -25,6 +25,12 @@ import {
 } from '../components/PaymentFormModal';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
 import { createCorrelationId } from '../lib/correlation-id';
+import { useAuditContext } from '../hooks/useAuditContext';
+import { comandaAuditContext } from '../lib/audit-context';
+import { intentFecharComanda, intentLancarItens, intentRemoverItem } from '../lib/audit-intents-comanda';
+import { auditMutationMeta } from '../lib/query-client';
+
+type LancamentoLegado = { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] };
 
 export function ComandaDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -90,6 +96,38 @@ export function ComandaDetailPage() {
     enabled: !!eventoIdForTaps,
   });
 
+  useAuditContext({
+    tela: 'comanda.detail',
+    ...comandaAuditContext(
+      comanda
+        ? {
+          id: comanda.id,
+          numero: comanda.numero,
+          tipo: comanda.tipo ?? 'COMANDA',
+          status: comanda.status,
+          total: parseFloat(comanda.total),
+          desconto: descontoComandaCervejaria(comanda),
+          cliente: comanda.cliente ? { id: comanda.cliente.id, nome: comanda.cliente.nome } : null,
+          itensQtd: comanda.itens
+            .filter((item) => !item.canceladoEm && !item.cancelamentoPendenteEm)
+            .reduce((total, item) => total + item.quantidade, 0),
+        }
+        : null,
+      id,
+    ),
+    eventoId: comanda?.eventoId,
+    eventoNome: eventoForTaps?.nome,
+  });
+  const auditBase = { feature: 'comanda.detail', entityType: 'comanda', entityId: id };
+  const nomeProduto = (produtoId: string): string =>
+    cardapio?.produtos.find((p) => p.id === produtoId)?.nome
+    ?? cardapio?.catalogo.find((p) => p.id === produtoId)?.nome
+    ?? taps?.find((t) => t.chopeAtual?.id === produtoId)?.chopeAtual?.nome
+    ?? produtoId;
+  const itensParaAuditoria = () => (comanda
+    ? { pedidos: [{ itens: comanda.itens.map((item) => ({ id: item.id, produtoId: item.produtoId, nome: item.produto.nome, quantidade: item.quantidade, volumeMl: item.volumeMl })) }] }
+    : null);
+
   useEffect(() => {
     if (!id || !eventoIdForTaps) return;
     const socket = getSocket();
@@ -123,8 +161,20 @@ export function ComandaDetailPage() {
   }, [descontoInput, showPayment, comanda?.itens, kitchenItemsChargeAtLaunch]);
 
   const addItemsMutation = useMutation({
-    mutationFn: (itens: { produtoId: string; volumeMl: number; quantidade: number; tapId?: string; paraViagem?: boolean; observacao?: string; opcionais?: { opcionalId: string; quantidade: number }[] }[]) =>
+    mutationFn: (itens: LancamentoLegado[]) =>
       api.post<Comanda>(`/api/comandas/${id}/itens/lancar`, { itens }),
+    meta: auditMutationMeta<LancamentoLegado[]>({
+      ...auditBase,
+      operation: 'comanda.itens.incluir',
+      intent: (itens) => intentLancarItens(itens.map((item) => ({
+        produto: { id: item.produtoId, nome: nomeProduto(item.produtoId) },
+        quantidade: item.quantidade,
+        volumeMl: item.volumeMl || undefined,
+        tapId: item.tapId,
+        paraViagem: item.paraViagem,
+        observacao: item.observacao,
+      }))),
+    }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['comanda', id], updated);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
@@ -139,6 +189,11 @@ export function ComandaDetailPage() {
 
   const removeItemMutation = useMutation({
     mutationFn: (itemId: string) => api.delete<Comanda>(`/api/comandas/${id}/itens/${itemId}`),
+    meta: auditMutationMeta<string>({
+      ...auditBase,
+      operation: 'comanda.item.remover',
+      intent: (itemId) => intentRemoverItem(itensParaAuditoria(), { itemId }),
+    }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['comanda', id], updated);
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
@@ -175,12 +230,11 @@ export function ComandaDetailPage() {
       if (evento) queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
       if (evento) queryClient.invalidateQueries({ queryKey: ['evento-contas-pendentes', evento.id] });
     },
-    meta: {
-      feature: 'comanda.detail',
+    meta: auditMutationMeta<Parameters<typeof intentFecharComanda>[0]>({
+      ...auditBase,
       operation: 'comanda.close',
-      entityType: 'comanda',
-      entityId: id,
-    },
+      intent: (params) => intentFecharComanda(params),
+    }),
     onError: (err) => {
       const isApiError = err instanceof ApiError;
       const correlationId = isApiError ? err.correlationId : undefined;
@@ -202,12 +256,11 @@ export function ComandaDetailPage() {
 
   const cancelMutation = useMutation({
     mutationFn: () => api.post<Comanda>(`/api/comandas/${id}/cancelar`),
-    meta: {
-      feature: 'comanda.detail',
+    meta: auditMutationMeta({
+      ...auditBase,
       operation: 'comanda.cancel',
-      entityType: 'comanda',
-      entityId: id,
-    },
+      intent: () => ({ summary: `Encerrar a comanda sem cobrança${comanda ? ` (total ${formatCurrency(parseFloat(comanda.total))})` : ''}` }),
+    }),
     onSuccess: () => {
       if (evento) {
         queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });
@@ -227,6 +280,11 @@ export function ComandaDetailPage() {
         clienteTelefone: comanda.cliente.telefone,
       });
     },
+    meta: auditMutationMeta({
+      ...auditBase,
+      operation: 'comanda.abrir_nova',
+      intent: () => ({ summary: `Abrir nova comanda para o cliente ${comanda?.cliente.nome ?? 'atual'}` }),
+    }),
     onSuccess: (nova) => {
       if (evento) {
         queryClient.invalidateQueries({ queryKey: ['comandas', evento.id] });

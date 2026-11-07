@@ -51,6 +51,30 @@ test('jornada: web vital e erro de interface viram campos próprios', () => {
   assert.equal(payload['error.type'], 'TypeError');
 });
 
+test('metadata semântico e funcional vira atributos pesquisáveis além do JSON', () => {
+  const payload = runWithTelemetryContext(staffContext, () => buildAuditPayload({
+    action: 'ui.error',
+    message: 'Erro',
+    outcome: 'failure',
+    metadata: {
+      handled: true,
+      kind: 'validation',
+      operation: 'comanda.itens.incluir',
+      livre: 'nao promovido',
+      context: { comandaNumero: 42, resumo: 'Comanda #42 · Mesa 3' },
+      intent: { summary: 'Incluir 2x Chopp', itens: [{ produtoNome: 'Chopp' }] },
+    },
+  }));
+  assert.equal(payload['metadata.handled'], true);
+  assert.equal(payload['metadata.kind'], 'validation');
+  assert.equal(payload['metadata.operation'], 'comanda.itens.incluir');
+  assert.equal(payload['metadata.context.comandaNumero'], 42);
+  assert.equal(payload['metadata.intent.summary'], 'Incluir 2x Chopp');
+  assert.equal(Object.hasOwn(payload, 'metadata.livre'), false);
+  assert.equal(Object.hasOwn(payload, 'metadata.intent.itens'), false);
+  assert.equal((payload.metadata as Record<string, unknown>).livre, 'nao promovido');
+});
+
 test('cada evento de audit vira um único registro OTLP (sem cópia via Pino)', () => {
   const emitted: Array<{ attributes?: Record<string, unknown> }> = [];
   const getLogger = mock.method(logs, 'getLogger', () => ({ emit: (record: { attributes?: Record<string, unknown> }) => emitted.push(record) }));
