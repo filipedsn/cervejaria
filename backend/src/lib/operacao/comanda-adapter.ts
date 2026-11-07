@@ -6,13 +6,14 @@ import {
 import { calcularFinanceiroComanda } from './venda.js';
 import { toNumber } from '../utils.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
+import { cobrancaAoLancarDasConfiguracoes, type CobrancaAoLancar } from './estacao-preparo.js';
 
 export const INCLUDE_COMANDA_OPERACAO = {
   // Keep this shared include compatible with databases from before the
   // additive canonical-PDV schema. Canonical settings are resolved separately
   // behind the QA activation guard and passed as the effective request context.
-  pontoVenda: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
-  evento: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+  pontoVenda: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true } } } } } },
+  evento: { select: { cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true } } } } } },
   pedidosOperacao: {
     include: { itensComanda: { include: { opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } } } },
     orderBy: { numero: 'asc' as const },
@@ -44,7 +45,7 @@ export function whereComandaOperacao(
 export async function recalcComandaTotalOperacao(
   tx: Prisma.TransactionClient,
   comandaId: string,
-  options: { kitchenItemsChargeAtLaunch?: boolean } = {},
+  options: { cobrancaAoLancar?: CobrancaAoLancar } = {},
 ) {
   const comanda = await tx.comanda.findUnique({
     where: { id: comandaId },
@@ -66,25 +67,25 @@ export async function recalcComandaTotalOperacao(
       select: {
         status: true,
         itensComanda: {
-          select: { precoUnit: true, quantidade: true, exigePreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
+          select: { precoUnit: true, quantidade: true, exigePreparo: true, estacaoPreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
         },
       },
     }),
     tx.itemComanda.findMany({
       where: { comandaId, pedidoCozinhaId: null },
-      select: { precoUnit: true, quantidade: true, exigePreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
+      select: { precoUnit: true, quantidade: true, exigePreparo: true, estacaoPreparo: true, cancelamentoPendenteEm: true, canceladoEm: true },
     }),
     canonicalSettings
       ? Promise.resolve(null)
       : cervejariaId
-      ? tx.configuracaoOperacional.findUnique({ where: { cervejariaId }, select: { kitchenItemsChargeAtLaunch: true } })
+      ? tx.configuracaoOperacional.findUnique({ where: { cervejariaId }, select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true } })
       : Promise.resolve(null),
   ]);
   const financeiro = calcularFinanceiroComanda({
     status: comanda?.status ?? 'ABERTA',
     totalPersistido: comanda?.total,
     desconto: comanda?.desconto,
-    kitchenItemsChargeAtLaunch: options.kitchenItemsChargeAtLaunch ?? canonicalSettings?.kitchenItemsChargeAtLaunch ?? configuration?.kitchenItemsChargeAtLaunch ?? false,
+    cobrancaAoLancar: options.cobrancaAoLancar ?? cobrancaAoLancarDasConfiguracoes(canonicalSettings ?? configuration),
     itensSemPedido,
     pedidos: pedidos.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   });
@@ -113,13 +114,13 @@ export async function fecharComandaOperacaoInTx(
     comandaIdsGrupo?: string[];
     sessaoCaixaId?: string;
     deixarPendente?: boolean;
-    kitchenItemsChargeAtLaunch?: boolean;
+    cobrancaAoLancar?: CobrancaAoLancar;
   },
 ) {
   // O total pode estar desatualizado em comandas cujos pedidos foram entregues
   // antes do recálculo ser executado no fluxo da cozinha.
   await recalcComandaTotalOperacao(tx, params.comanda.id, {
-    kitchenItemsChargeAtLaunch: params.kitchenItemsChargeAtLaunch,
+    cobrancaAoLancar: params.cobrancaAoLancar,
   });
 
   return fecharComandaComPagamentos(tx, {

@@ -23,21 +23,24 @@ function clampSimPedidos(value: number) {
   return Math.min(SIM_PEDIDOS_MAX, Math.max(SIM_PEDIDOS_MIN, Math.round(value)));
 }
 
-export function CozinhaVisualSettingsPanel() {
-  const { settings, update } = useCozinhaDisplaySettings();
+/** Mesma preferência visual para a TV da Cozinha ou do Bar, gravadas separadamente. */
+export function CozinhaVisualSettingsPanel({ estacao = 'cozinha' }: { estacao?: 'cozinha' | 'bar' }) {
+  const { settings, update } = useCozinhaDisplaySettings(estacao);
+  const titulo = estacao === 'bar' ? 'Bar' : 'Cozinha';
+  const tituloId = `${estacao}-visual-title`;
   // Só para a URL de teste — não grava em localStorage/banco.
   const [simColunas, setSimColunas] = useState(SIM_COLUNAS_PADRAO);
   const [simPedidos, setSimPedidos] = useState(SIM_PEDIDOS_PADRAO);
 
   const simulacaoPath = useMemo(
-    () => `/operacao/cozinha/tv?demo=1&maxColunas=${clampMaxColunasPorLinha(simColunas)}&pedidos=${clampSimPedidos(simPedidos)}`,
-    [simColunas, simPedidos],
+    () => `/operacao/${estacao}/tv?demo=1&maxColunas=${clampMaxColunasPorLinha(simColunas)}&pedidos=${clampSimPedidos(simPedidos)}`,
+    [estacao, simColunas, simPedidos],
   );
 
   return (
-    <section className="space-y-3 rounded-xl border border-line bg-surface-lighter p-3" aria-labelledby="cozinha-visual-title">
+    <section className="space-y-3 rounded-xl border border-line bg-surface-lighter p-3" aria-labelledby={tituloId}>
       <div>
-        <h3 id="cozinha-visual-title" className="font-semibold text-ink">Cozinha</h3>
+        <h3 id={tituloId} className="font-semibold text-ink">{titulo}</h3>
         <p className="text-sm text-ink-muted">Preferência visual salva neste dispositivo e isolada por empresa e usuário. Não altera permissões nem dados dos pedidos.</p>
       </div>
       <label className="block space-y-1 text-sm font-medium text-ink">

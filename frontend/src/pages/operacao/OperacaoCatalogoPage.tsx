@@ -19,6 +19,8 @@ import { FOOD_UNIT_ML, VOLUMES, type FormatoBebida } from '../../types';
 import { CardapiosOperacaoPage } from './CardapiosOperacaoPage';
 import { ProdutoOpcionaisModal } from '../../components/ProdutoOpcionaisModal';
 import { CategoriasGestaoPanel } from '../../components/operacao/CategoriasGestaoPanel';
+import { DestinoPreparoSelector, camposDoDestino, destinoDoProduto } from '../../components/operacao/DestinoPreparoSelector';
+import type { EstacaoPreparo } from '../../lib/estacao';
 
 const TABS = [
   { id: 'catalogo', label: 'Catálogo' },
@@ -41,6 +43,7 @@ interface ProdutoOperacao {
   estilo?: string | null;
   precos?: Array<{ volumeMl: number; preco: number | string }>;
   exigePreparo: boolean;
+  estacaoPreparo?: EstacaoPreparo;
   prepararEmPedidoSeparado: boolean;
   controlaEstoque: boolean;
   ativo: boolean;
@@ -65,6 +68,7 @@ const FORM_VAZIO = {
   precos: VOLUMES.map((volumeMl) => ({ volumeMl, preco: '' })) as PrecoVolumeForm[],
   formato: 'OUTRO' as FormatoBebida,
   exigePreparo: false,
+  estacaoPreparo: 'COZINHA' as EstacaoPreparo,
   prepararEmPedidoSeparado: false,
   controlaEstoque: true,
 };
@@ -88,6 +92,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
 
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const temCozinha = contexto.ativo && contexto.temCozinha;
+  const temBar = contexto.ativo && contexto.temBar;
 
   const { data: produtos, isLoading } = useQuery({
     queryKey: ['operacao-produtos'],
@@ -146,6 +151,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
       }),
       formato: produtoChope ? 'CHOPE' : produto.formato ?? 'OUTRO',
       exigePreparo: produto.exigePreparo,
+      estacaoPreparo: produto.estacaoPreparo ?? 'COZINHA',
       prepararEmPedidoSeparado: produto.prepararEmPedidoSeparado ?? false,
       controlaEstoque: produto.controlaEstoque,
     });
@@ -182,6 +188,8 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
           ? { precos: form.precos.filter((preco) => parseCurrencyInput(preco.preco) > 0).map((preco) => ({ volumeMl: preco.volumeMl, preco: parseCurrencyInput(preco.preco) })) }
           : { precoUnit: parseCurrencyInput(form.precoUnit), precos: [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.precoUnit) }] }),
         exigePreparo: categoriaEhChope ? false : form.exigePreparo,
+        // Chope fica sempre no balcão; demais produtos vão para uma única estação.
+        estacaoPreparo: categoriaEhChope ? 'COZINHA' : form.estacaoPreparo,
         prepararEmPedidoSeparado: categoriaEhChope || !form.exigePreparo ? false : form.prepararEmPedidoSeparado,
         controlaEstoque: form.controlaEstoque,
       };
@@ -289,9 +297,14 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                   {produto.categoria && (
                     <span>· {categoriasCanonicas.find((categoria) => categoria.id === produto.categoriaPdvId)?.nome ?? normalizeCategoriaProduto(produto.categoria)}</span>
                   )}
-                  {temCozinha && produto.exigePreparo && (
+                  {temCozinha && produto.exigePreparo && produto.estacaoPreparo !== 'BAR' && (
                     <span className="rounded-full bg-orange/10 px-2 py-0.5 font-semibold text-orange">
                       cozinha
+                    </span>
+                  )}
+                  {temBar && produto.exigePreparo && produto.estacaoPreparo === 'BAR' && (
+                    <span className="rounded-full bg-violet-500/10 px-2 py-0.5 font-semibold text-violet-400">
+                      bar
                     </span>
                   )}
                   {controlaEstoque && !produto.controlaEstoque && (
@@ -418,29 +431,24 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </div>
           )}
 
-          {temCozinha && !categoriaSelecionadaEhChope && (
-            <label className="card flex cursor-pointer items-start gap-3 py-3">
-              <input
-                type="checkbox"
-                className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
-                checked={form.exigePreparo}
-                onChange={(e) => setForm({ ...form, exigePreparo: e.target.checked })}
-              />
-              <span className="min-w-0">
-                <span className="block font-semibold">Vai para a cozinha</span>
-                <span className="block text-xs text-ink-faint">
-                  Gera pedido de preparo na fila, por ordem de chegada.
-                </span>
-              </span>
-            </label>
+          {!categoriaSelecionadaEhChope && (
+            <DestinoPreparoSelector
+              value={destinoDoProduto(form)}
+              temCozinha={temCozinha}
+              temBar={temBar}
+              onChange={(destino) => {
+                const campos = camposDoDestino(destino);
+                setForm({ ...form, ...campos, prepararEmPedidoSeparado: campos.exigePreparo ? form.prepararEmPedidoSeparado : false });
+              }}
+            />
           )}
 
-          {temCozinha && form.exigePreparo && !categoriaSelecionadaEhChope && (
+          {(temCozinha || temBar) && form.exigePreparo && !categoriaSelecionadaEhChope && (
             <label className="card flex cursor-pointer items-start gap-3 py-3">
               <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-brand-400" checked={form.prepararEmPedidoSeparado} onChange={(e) => setForm({ ...form, prepararEmPedidoSeparado: e.target.checked })} />
               <span className="min-w-0">
                 <span className="block font-semibold">Preparar em pedido separado</span>
-                <span className="block text-xs text-ink-faint">Cria um pedido próprio quando outros itens de cozinha forem lançados juntos.</span>
+                <span className="block text-xs text-ink-faint">Cria um pedido próprio quando outros itens {form.estacaoPreparo === 'BAR' ? 'do bar' : 'de cozinha'} forem lançados juntos.</span>
               </span>
             </label>
           )}

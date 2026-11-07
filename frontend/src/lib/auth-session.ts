@@ -11,7 +11,7 @@ const LOGIN_NOTICE_KEY = 'authLoginNotice';
 
 /** Routes that deliberately work without an employee session. */
 export function isPublicPath(pathname: string): boolean {
-  return publicAuthPaths.has(pathname) || pathname.startsWith('/c/') || pathname.startsWith('/ranking/tv') || pathname === '/operacao/cozinha/tv';
+  return publicAuthPaths.has(pathname) || pathname.startsWith('/c/') || pathname.startsWith('/ranking/tv') || pathname === '/operacao/cozinha/tv' || pathname === '/operacao/bar/tv';
 }
 
 /** Public auth pages must remain reachable when the session bootstrap returns 401. */

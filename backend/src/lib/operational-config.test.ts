@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  BarComPedidosAtivosError,
   CozinhaComPedidosAtivosError,
   ConfirmacaoEstoqueObrigatoriaError,
 } from './operacao/capacidades.js';
@@ -8,6 +9,7 @@ import {
   CanonicalPdvModeChangeUnsupportedError,
   OperationalModeTransitionBlockedError,
   OperationalSetupModeRequiredError,
+  PendingBarCloseDependencyError,
   PendingKitchenCloseDependencyError,
   readOperationalConfig,
   updateOperationalConfigSchema,
@@ -67,6 +69,33 @@ test('does not turn off kitchen with active preparation orders', async () => {
     CozinhaComPedidosAtivosError,
   );
   assert.equal(db.updates.length, 0);
+});
+
+test('does not turn off the bar with active bar orders and only checks bar items', async () => {
+  const queries: any[] = [];
+  const db: any = database({ barEnabled: true }, true);
+  db.pedidoOperacao.findFirst = async (query: any) => { queries.push(query); return { id: 'pedido-bar' }; };
+  await assert.rejects(
+    updateOperationalConfig(db as any, 'tenant-a', { barEnabled: false }),
+    BarComPedidosAtivosError,
+  );
+  assert.equal(queries[0].where.itensComanda.some.estacaoPreparo, 'BAR');
+  assert.equal(db.updates.length, 0);
+});
+
+test('bar close-with-pending requires charging bar items at launch, independently of the kitchen', async () => {
+  const db = database({ kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: false });
+  await assert.rejects(
+    updateOperationalConfig(db as any, 'tenant-a', { allowCloseComandaWithPendingBarOrders: true }),
+    PendingBarCloseDependencyError,
+  );
+
+  const enabled = database({ barItemsChargeAtLaunch: true });
+  await updateOperationalConfig(enabled as any, 'tenant-a', { barEnabled: true, allowCloseComandaWithPendingBarOrders: true, whatsappPedidoProntoNoBar: true });
+  assert.deepEqual(enabled.updates, [{
+    create: { cervejariaId: 'tenant-a', barEnabled: true, allowCloseComandaWithPendingBarOrders: true, whatsappPedidoProntoNoBar: true },
+    update: { barEnabled: true, allowCloseComandaWithPendingBarOrders: true, whatsappPedidoProntoNoBar: true },
+  }]);
 });
 
 test('blocks CAIXA to EVENTO while a cash session is open', async () => {

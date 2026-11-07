@@ -7,8 +7,13 @@ import {
   itemBloqueadoPorCancelamentoIntegral,
   notificarComandaOperacaoAtualizada,
   notificarCozinha,
-  pedidoVaiParaCozinha,
+  pedidoTemPreparo,
 } from './cozinha.js';
+import {
+  cobrancaAoLancarDasConfiguracoes,
+  estacaoDoItem,
+  type EstacaoPreparo,
+} from './estacao-preparo.js';
 import { EstoqueInvalidoError, baixarEstoqueItemPedido, estornarEstoqueItemPedido } from './estoque.js';
 import { centavos, reais, resumoComanda, subtotalComandaEmCentavos } from './venda.js';
 import {
@@ -36,9 +41,9 @@ async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda
   const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, tx);
   const configuracao = canonical ? null : await tx.configuracaoOperacional.findUnique({
     where: { cervejariaId },
-    select: { kitchenItemsChargeAtLaunch: true },
+    select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true },
   });
-  const subtotalEmCents = subtotalComandaEmCentavos(comanda, canonical?.kitchenItemsChargeAtLaunch ?? configuracao?.kitchenItemsChargeAtLaunch ?? false);
+  const subtotalEmCents = subtotalComandaEmCentavos(comanda, cobrancaAoLancarDasConfiguracoes(canonical ?? configuracao));
   const descontoEmCents = centavos(toNumber(comanda.desconto ?? 0));
   if (descontoEmCents <= subtotalEmCents) return;
 
@@ -48,14 +53,14 @@ async function ajustarDescontoSeNecessario(tx: Prisma.TransactionClient, comanda
   });
 }
 
-async function kitchenItemsChargeAtLaunch(tx: typeof prisma | Prisma.TransactionClient, cervejariaId: string) {
+async function cobrancaAoLancarEmpresa(tx: typeof prisma | Prisma.TransactionClient, cervejariaId: string) {
   const canonical = await readCanonicalPdvOperationalSettingsIfEnabled(cervejariaId, tx);
-  if (canonical) return canonical.kitchenItemsChargeAtLaunch;
+  if (canonical) return cobrancaAoLancarDasConfiguracoes(canonical);
   const configuracao = await tx.configuracaoOperacional.findUnique({
     where: { cervejariaId },
-    select: { kitchenItemsChargeAtLaunch: true },
+    select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true },
   });
-  return configuracao?.kitchenItemsChargeAtLaunch ?? false;
+  return cobrancaAoLancarDasConfiguracoes(configuracao);
 }
 
 async function cancelarPedidoSeVazio(tx: Prisma.TransactionClient, pedidoId: string) {
@@ -103,10 +108,10 @@ function itemFoiEntregueAoLancar(item: NonNullable<Awaited<ReturnType<typeof car
 async function notificarMudancaCozinha(
   app: FastifyInstance,
   cervejariaId: string,
-  temCozinha: boolean,
+  temEstacao: boolean,
   pedidoId: string,
 ) {
-  if (!temCozinha) return;
+  if (!temEstacao) return;
 
   const pedido = await prisma.pedidoOperacao.findUnique({
     where: { id: pedidoId },
@@ -115,7 +120,7 @@ async function notificarMudancaCozinha(
       comanda: { select: { id: true, tipo: true, identificador: true, numero: true } },
     },
   });
-  if (pedido && pedidoVaiParaCozinha(pedido.itensComanda)) {
+  if (pedido && pedidoTemPreparo(pedido.itensComanda)) {
     notificarCozinha(app, cervejariaId, pedido, false);
   }
 }
@@ -231,6 +236,7 @@ export async function removeItemFromComandaOperacao(params: {
             nome: itemAtual.nome,
             observacao: itemAtual.observacao,
             exigePreparo: itemAtual.exigePreparo,
+            estacaoPreparo: itemAtual.estacaoPreparo,
             paraViagem: itemAtual.paraViagem,
             cancelamentoPendenteEm,
             pedidoCozinhaId: itemAtual.pedidoCozinhaId,
@@ -269,8 +275,8 @@ export async function removeItemFromComandaOperacao(params: {
       include: INCLUDE_COMANDA_OPERACAO,
     });
     await ajustarDescontoSeNecessario(tx, comandaFresh, params.cervejariaId);
-    const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(tx, params.cervejariaId);
-    await recalcComandaTotalOperacao(tx, params.comandaId, { kitchenItemsChargeAtLaunch: chargeKitchenAtLaunch });
+    const chargeKitchenAtLaunch = await cobrancaAoLancarEmpresa(tx, params.cervejariaId);
+    await recalcComandaTotalOperacao(tx, params.comandaId, { cobrancaAoLancar: chargeKitchenAtLaunch });
 
     return { comanda: await tx.comanda.findUniqueOrThrow({
       where: { id: params.comandaId },
@@ -387,14 +393,14 @@ async function cancelarItemEntregueOperacao(
       ? { canceladoEm } : { quantidade: item.quantidade - quantidade } });
     const comandaAtual = await tx.comanda.findUniqueOrThrow({ where: { id: params.comandaId }, include: INCLUDE_COMANDA_OPERACAO });
     await ajustarDescontoSeNecessario(tx, comandaAtual, params.cervejariaId);
-    const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(tx, params.cervejariaId);
-    await recalcComandaTotalOperacao(tx, params.comandaId, { kitchenItemsChargeAtLaunch: chargeKitchenAtLaunch });
+    const chargeKitchenAtLaunch = await cobrancaAoLancarEmpresa(tx, params.cervejariaId);
+    await recalcComandaTotalOperacao(tx, params.comandaId, { cobrancaAoLancar: chargeKitchenAtLaunch });
     const comanda = await tx.comanda.findUniqueOrThrow({ where: { id: params.comandaId }, include: INCLUDE_COMANDA_OPERACAO });
     return { comanda, quantidade, valor: toNumber(valorRetirado), repetido: false };
   });
 
   if (!resultado.repetido) notificarComandaOperacaoAtualizada(params.app, params.cervejariaId, params.comandaId);
-  const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(prisma, params.cervejariaId);
+  const chargeKitchenAtLaunch = await cobrancaAoLancarEmpresa(prisma, params.cervejariaId);
   return {
     ok: true as const,
     comanda: resumoComanda(resultado.comanda, chargeKitchenAtLaunch),
@@ -408,12 +414,15 @@ export async function confirmarCancelamentoItemComandaOperacao(params: {
   cervejariaId: string;
   pedidoId: string;
   itemId: string;
+  /** Estação que confirma; ausente = qualquer uma (contrato anterior ao Bar). */
+  estacao?: EstacaoPreparo;
 }) {
   const item = await prisma.itemComanda.findFirst({
     where: {
       id: params.itemId,
       pedidoCozinhaId: params.pedidoId,
       exigePreparo: true,
+      ...(params.estacao ? { estacaoPreparo: params.estacao } : {}),
       pedidoCozinha: { cervejariaId: params.cervejariaId },
     },
     include: { pedidoCozinha: true, comanda: { select: { eventoId: true } } },
@@ -489,7 +498,7 @@ export async function updateItemQuantidadeComandaOperacao(params: {
 
   const delta = params.quantidade - item.quantidade;
   if (delta === 0) {
-    const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(prisma, params.cervejariaId);
+    const chargeKitchenAtLaunch = await cobrancaAoLancarEmpresa(prisma, params.cervejariaId);
     return { ok: true as const, comanda: resumoComanda(comanda, chargeKitchenAtLaunch), item };
   }
 
@@ -532,7 +541,8 @@ export async function updateItemQuantidadeComandaOperacao(params: {
       }
 
       if (itemAtual.exigePreparo) {
-        throw Object.assign(new Error('A quantidade não pode ser alterada depois que o pedido foi enviado à cozinha'), { statusCode: 409 });
+        const destino = estacaoDoItem(itemAtual) === 'BAR' ? 'ao bar' : 'à cozinha';
+        throw Object.assign(new Error(`A quantidade não pode ser alterada depois que o pedido foi enviado ${destino}`), { statusCode: 409 });
       }
 
       const deltaAtual = params.quantidade - itemAtual.quantidade;
@@ -611,8 +621,8 @@ export async function updateItemQuantidadeComandaOperacao(params: {
         include: INCLUDE_COMANDA_OPERACAO,
       });
       await ajustarDescontoSeNecessario(tx, comandaFresh, params.cervejariaId);
-      const chargeKitchenAtLaunch = await kitchenItemsChargeAtLaunch(tx, params.cervejariaId);
-      await recalcComandaTotalOperacao(tx, params.comandaId, { kitchenItemsChargeAtLaunch: chargeKitchenAtLaunch });
+      const chargeKitchenAtLaunch = await cobrancaAoLancarEmpresa(tx, params.cervejariaId);
+      await recalcComandaTotalOperacao(tx, params.comandaId, { cobrancaAoLancar: chargeKitchenAtLaunch });
 
       return { comanda: await tx.comanda.findUniqueOrThrow({
         where: { id: params.comandaId },

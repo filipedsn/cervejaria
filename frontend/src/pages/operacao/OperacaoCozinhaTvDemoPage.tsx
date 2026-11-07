@@ -21,6 +21,19 @@ const PRODUTOS = [
   'Picanha na chapa',
 ];
 
+const PRODUTOS_BAR = [
+  'Caipirinha de limão',
+  'Gin tônica',
+  'Moscow mule',
+  'Aperol spritz',
+  'Mojito',
+  'Negroni',
+  'Taça de vinho tinto',
+  'Dose de cachaça',
+  'Soda italiana',
+  'Margarita',
+];
+
 const OBSERVACOES = [
   'Sem cebola, por favor.',
   'Molho à parte.',
@@ -37,7 +50,7 @@ const TIPOS: TipoComanda[] = ['MESA', 'FICHA', 'APELIDO', 'MESA'];
 
 const TABLET_ITEM_COUNTS = [1, 2, 4, 3] as const;
 
-function buildDemoPedidos(count: number, tabletFixture = false): PedidoCozinha[] {
+function buildDemoPedidos(count: number, tabletFixture = false, produtos: string[] = PRODUTOS): PedidoCozinha[] {
   return Array.from({ length: count }, (_, index) => {
     const numero = 100 + index;
     const status = tabletFixture ? (index === 1 ? 'EM_PREPARO' : 'RECEBIDO') : STATUS_CICLO[index % STATUS_CICLO.length]!;
@@ -67,7 +80,7 @@ function buildDemoPedidos(count: number, tabletFixture = false): PedidoCozinha[]
       },
       itens: Array.from({ length: itemCount }, (_, itemIndex) => ({
         id: `item-demo-${index + 1}-${itemIndex + 1}`,
-        nome: PRODUTOS[(index + itemIndex) % PRODUTOS.length]!,
+        nome: produtos[(index + itemIndex) % produtos.length]!,
         quantidade: (itemIndex % 3) + 1,
         precoUnit: 12 + ((index + itemIndex) % 8) * 3,
         observacao: itemIndex === 0 && index % 5 === 0 ? 'Observação do item: sem molho.' : null,
@@ -84,7 +97,9 @@ export function OperacaoCozinhaTvDemoPage({
   tabletFixture = false,
   pedidoCount,
   maxColunas,
+  estacao = 'cozinha',
 }: {
+  estacao?: 'cozinha' | 'bar';
   tabletFixture?: boolean;
   /** Override da quantidade de pedidos fictícios (ex.: ?pedidos=1 para validar slot no PC). */
   pedidoCount?: number;
@@ -92,7 +107,11 @@ export function OperacaoCozinhaTvDemoPage({
   maxColunas?: number;
 }) {
   const count = Math.max(1, Math.min(DEMO_COUNT, pedidoCount ?? (tabletFixture ? 4 : DEMO_COUNT)));
-  const pedidos = useMemo(() => buildDemoPedidos(count, tabletFixture), [count, tabletFixture]);
+  const pedidos = useMemo(
+    () => buildDemoPedidos(count, tabletFixture, estacao === 'bar' ? PRODUTOS_BAR : PRODUTOS),
+    [count, tabletFixture, estacao],
+  );
+  const titulo = estacao === 'bar' ? 'Bar' : 'Cozinha';
   const naFila = pedidos.filter((p) => p.status === 'RECEBIDO');
   const emPreparo = pedidos.filter((p) => p.status === 'EM_PREPARO');
   const prontos = pedidos.filter((p) => p.status === 'PRONTO');
@@ -105,10 +124,10 @@ export function OperacaoCozinhaTvDemoPage({
   ].filter(Boolean);
 
   return (
-    <div className="cozinha-tv-shell" aria-label="Simulação da tela de cozinha">
+    <div className="cozinha-tv-shell" aria-label={`Simulação da tela ${estacao === 'bar' ? 'do bar' : 'de cozinha'}`}>
       <header className="cozinha-tv-header">
         <div>
-          <p className="cozinha-tv-eyebrow">Cozinha · Simulação</p>
+          <p className="cozinha-tv-eyebrow">{titulo} · Simulação</p>
           <h1 className="cozinha-tv-title">Tap Quiver Eventos</h1>
         </div>
         <div className="cozinha-tv-header-meta">

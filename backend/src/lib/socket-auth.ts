@@ -17,8 +17,8 @@ import {
 import { validCorrelationId } from './correlation-context.js';
 import { permissoesIndividuaisAtivas, usuarioPode } from './operacao/permissoes.js';
 import {
-  realtimeRoomEvent, realtimeRoomEventFinance, realtimeRoomEventOperations, realtimeRoomEventCommands, realtimeRoomEventKitchen,
-  realtimeRoomTenant, realtimeRoomTenantFinance, realtimeRoomTenantOperations, realtimeRoomTenantCommands, realtimeRoomTenantKitchen,
+  realtimeRoomEvent, realtimeRoomEventFinance, realtimeRoomEventOperations, realtimeRoomEventCommands, realtimeRoomEventKitchen, realtimeRoomEventBar,
+  realtimeRoomTenant, realtimeRoomTenantFinance, realtimeRoomTenantOperations, realtimeRoomTenantCommands, realtimeRoomTenantKitchen, realtimeRoomTenantBar,
 } from './realtime.js';
 
 type StaffRealtimeSocket = Socket & { data: { user?: JwtPayload; authType?: string; eventoSubscriptions?: Set<string>; tenantSubscriptions?: Set<string> } };
@@ -26,8 +26,8 @@ type StaffRealtimeSocket = Socket & { data: { user?: JwtPayload; authType?: stri
 async function joinScopedStaffRoom(socket: StaffRealtimeSocket, kind: 'evento' | 'cervejaria', id: string, user: JwtPayload) {
   const permissionsEnabled = permissoesIndividuaisAtivas();
   const rooms = kind === 'evento'
-    ? { legacy: realtimeRoomEvent(id), finance: realtimeRoomEventFinance(id), invalidations: realtimeRoomEventOperations(id), commands: realtimeRoomEventCommands(id), kitchen: realtimeRoomEventKitchen(id) }
-    : { legacy: realtimeRoomTenant(id), finance: realtimeRoomTenantFinance(id), invalidations: realtimeRoomTenantOperations(id), commands: realtimeRoomTenantCommands(id), kitchen: realtimeRoomTenantKitchen(id) };
+    ? { legacy: realtimeRoomEvent(id), finance: realtimeRoomEventFinance(id), invalidations: realtimeRoomEventOperations(id), commands: realtimeRoomEventCommands(id), kitchen: realtimeRoomEventKitchen(id), bar: realtimeRoomEventBar(id) }
+    : { legacy: realtimeRoomTenant(id), finance: realtimeRoomTenantFinance(id), invalidations: realtimeRoomTenantOperations(id), commands: realtimeRoomTenantCommands(id), kitchen: realtimeRoomTenantKitchen(id), bar: realtimeRoomTenantBar(id) };
   if (!permissionsEnabled) {
     await socket.join(rooms.legacy);
   } else {
@@ -35,6 +35,7 @@ async function joinScopedStaffRoom(socket: StaffRealtimeSocket, kind: 'evento' |
     if (await usuarioPode(user, 'cash.values.read')) await socket.join(rooms.finance);
     if (await usuarioPode(user, 'command.read')) await socket.join(rooms.commands);
     if (await usuarioPode(user, 'kitchen.read')) await socket.join(rooms.kitchen);
+    if (await usuarioPode(user, 'bar.read')) await socket.join(rooms.bar);
   }
   const subscriptions = kind === 'evento' ? socket.data.eventoSubscriptions : socket.data.tenantSubscriptions;
   if (subscriptions) subscriptions.add(id);
@@ -52,28 +53,31 @@ export async function reconcileRealtimePermissionsForUser(app: FastifyInstance, 
       finance: await usuarioPode(user, 'cash.values.read'),
       commands: await usuarioPode(user, 'command.read'),
       kitchen: await usuarioPode(user, 'kitchen.read'),
+      bar: await usuarioPode(user, 'bar.read'),
     };
     const roomsFor = (kind: 'evento' | 'cervejaria', id: string) => kind === 'evento'
-      ? { legacy: realtimeRoomEvent(id), finance: realtimeRoomEventFinance(id), invalidations: realtimeRoomEventOperations(id), commands: realtimeRoomEventCommands(id), kitchen: realtimeRoomEventKitchen(id) }
-      : { legacy: realtimeRoomTenant(id), finance: realtimeRoomTenantFinance(id), invalidations: realtimeRoomTenantOperations(id), commands: realtimeRoomTenantCommands(id), kitchen: realtimeRoomTenantKitchen(id) };
+      ? { legacy: realtimeRoomEvent(id), finance: realtimeRoomEventFinance(id), invalidations: realtimeRoomEventOperations(id), commands: realtimeRoomEventCommands(id), kitchen: realtimeRoomEventKitchen(id), bar: realtimeRoomEventBar(id) }
+      : { legacy: realtimeRoomTenant(id), finance: realtimeRoomTenantFinance(id), invalidations: realtimeRoomTenantOperations(id), commands: realtimeRoomTenantCommands(id), kitchen: realtimeRoomTenantKitchen(id), bar: realtimeRoomTenantBar(id) };
     for (const eventId of socket.data.eventoSubscriptions ?? []) {
       const rooms = roomsFor('evento', eventId);
-      for (const room of [rooms.finance, rooms.invalidations, rooms.commands, rooms.kitchen]) await socket.leave(room);
+      for (const room of [rooms.finance, rooms.invalidations, rooms.commands, rooms.kitchen, rooms.bar]) await socket.leave(room);
       if (user.cervejariaId === cervejariaId) {
         await socket.join(rooms.invalidations);
         if (permissions.finance) await socket.join(rooms.finance);
         if (permissions.commands) await socket.join(rooms.commands);
         if (permissions.kitchen) await socket.join(rooms.kitchen);
+        if (permissions.bar) await socket.join(rooms.bar);
       }
     }
     for (const tenantId of socket.data.tenantSubscriptions ?? []) {
       const rooms = roomsFor('cervejaria', tenantId);
-      for (const room of [rooms.finance, rooms.invalidations, rooms.commands, rooms.kitchen]) await socket.leave(room);
+      for (const room of [rooms.finance, rooms.invalidations, rooms.commands, rooms.kitchen, rooms.bar]) await socket.leave(room);
       if (tenantId === cervejariaId && user.cervejariaId === cervejariaId) {
         await socket.join(rooms.invalidations);
         if (permissions.finance) await socket.join(rooms.finance);
         if (permissions.commands) await socket.join(rooms.commands);
         if (permissions.kitchen) await socket.join(rooms.kitchen);
+        if (permissions.bar) await socket.join(rooms.bar);
       }
     }
   }
@@ -225,6 +229,7 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
           socket.join(realtimeRoomTenantOperations(cervejariaId)),
           socket.join(realtimeRoomTenantCommands(cervejariaId)),
           socket.join(realtimeRoomTenantKitchen(cervejariaId)),
+          socket.join(realtimeRoomTenantBar(cervejariaId)),
         ]);
         staffSocket.data.tenantSubscriptions?.add(cervejariaId);
         realtimeEvent(app, socket, 'realtime.room.joined', { actorType: 'staff', userId: user.sub, role: user.papel, roomType: 'cervejaria', entityId: cervejariaId });
@@ -265,6 +270,7 @@ export function setupSocketAuth(io: SocketIOServer, app: FastifyInstance) {
           socket.leave(realtimeRoomEventOperations(eventoId));
           socket.leave(realtimeRoomEventCommands(eventoId));
           socket.leave(realtimeRoomEventKitchen(eventoId));
+          socket.leave(realtimeRoomEventBar(eventoId));
         } else {
           socket.leave(realtimeRoomEvent(eventoId));
         }

@@ -25,6 +25,9 @@ Atualizado em 2026-10-07. Inventario das operacoes atuais de Cervejaria, Evento 
 | command.operate | Abrir comandas, incluir itens, aumentar quantidade, aceitar/recusar pedido de cliente e efetuar venda com as permissoes de pagamento requeridas | Backend + rota/navegacao; nao concede consulta, fechamento, pagamento ou cancelamento |
 | kitchen.read | Consultar fila e TV da cozinha | Backend + rota/navegacao |
 | kitchen.operate | Transicionar preparo, pronto e entrega | Backend + botoes; nao concede cancelamento/estorno |
+| bar.read | Consultar fila e TV do bar (TAP-181) | Backend + rota/navegacao + sala realtime `:bar`; nao herda de `kitchen.read` |
+| bar.operate | Transicionar preparo, pronto e entrega dos pedidos do bar | Backend + botoes; so altera pedidos do bar |
+| bar.cancel + sale.refund | Solicitar/confirmar cancelamento de pedido do bar; as duas chaves sao exigidas juntas | Backend + UI; sem backfill: o dono concede manualmente |
 | inventory.read | Consultar saldos de estoque por PDV | Backend + rota/navegacao |
 | inventory.adjust | Entrada, saida, ajuste e inventario manual | Backend + botoes; nao e exigida para efeitos de venda autorizada |
 | catalog.shift.manage | Selecionar cardapio do turno e manter precos apenas no turno | Backend + botoes do caixa; nao concede alteracao do catalogo/modelo global |
@@ -57,6 +60,7 @@ O papel persistido DONO recebe todas as chaves em tenants com RBAC individual at
 | Receber divida/conta | GET/POST /api/operacao/contas-pendentes/* e /api/eventos/:id/contas-pendentes/* | Contas pendentes | Leitura e recebimento precisam da mesma autoridade | debt.receive / IMPLEMENTADO |
 | Estornar venda/pagamento | PATCH cozinha/pedidos/:id/status e confirmar-cancelamento | Cozinha e detalhe do pedido | Sem estorno generico independente; cancelamento de pedido pago pode estornar estoque/venda | kitchen.cancel + sale.refund juntas nesse fluxo; estorno generico nao existe / PARCIAL |
 | Consultar fila/TV e avancar preparo/entrega | GET cozinha; PATCH status ordinaries | Fila e TV | Leitura e transicao estavam abertas no modulo autenticado | `kitchen.read` e `kitchen.operate` separados; cancelamento/estorno especificos / PROTEGIDA; migration preserva atendentes |
+| Fila/TV do bar (TAP-181) | GET/PATCH `/api/operacao/bar/*` | Bar e TV do bar | Estacao nova, desligada por padrao | `bar.read`, `bar.operate`, `bar.cancel` + `sale.refund`; cada estacao so altera pedidos dos proprios itens (404 cruzado) / PROTEGIDA; sem backfill |
 | Consultar estoque e movimentacao manual | GET e POST entrada/saida/ajuste `/api/operacao/estoque/*` | Estoque | Regras de tenant/PDV | `inventory.read` e `inventory.adjust` separados; efeito automatico de venda fora do ajuste manual / PROTEGIDA; migration preserva atendentes |
 | Minimo/alerta de estoque | PUT `/api/operacao/estoque/minimo` | Cadastro de estoque | Owner-only | Continua EXCLUSIVA DO DONO |
 | Produto, preco, disponibilidade, opcionais e modelo global | `/api/operacao/produtos/*`, `/api/produtos/*`, `/api/cardapios/*`, `/api/operacao/cardapios/*` | Catalogo e cardapios | Produto/template eram owner-only | `catalog.manage`; sem backfill global; somente acoes listadas e exercitadas estao comprovadas |

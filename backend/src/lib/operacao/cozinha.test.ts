@@ -4,10 +4,15 @@ import {
   StatusPedidoCozinhaDesatualizadoError,
   TRANSICOES,
   aplicarStatusPedidoCozinha,
+  estacaoBloqueiaFechamento,
   filtrarItensAtendimentoBalcao,
   filtroListaPedidosCozinha,
+  mensagemFechamentoBloqueado,
+  pedidoTemPreparo,
   pedidoVaiParaCozinha,
+  pedidoVaiParaEstacao,
   resumoPedidoCozinha,
+  temPedidoCozinhaPendente,
 } from './cozinha.js';
 
 type Status = 'RECEBIDO' | 'EM_PREPARO' | 'PRONTO' | 'ENTREGUE' | 'CANCELAMENTO_PENDENTE' | 'CANCELADO';
@@ -120,6 +125,60 @@ describe('pedidoVaiParaCozinha / balcão portal', () => {
 
   it('qualquer item com preparo manda o pedido à cozinha', () => {
     assert.equal(pedidoVaiParaCozinha([{ exigePreparo: false }, { exigePreparo: true }]), true);
+  });
+});
+
+describe('estações de preparo (TAP-181)', () => {
+  const pedido = (status: Status, estacaoPreparo: 'COZINHA' | 'BAR') => ({
+    status,
+    itensComanda: [{ exigePreparo: true, estacaoPreparo, cancelamentoPendenteEm: null, canceladoEm: null }],
+  });
+  const regras = {
+    kitchenItemsChargeAtLaunch: false,
+    allowCloseComandaWithPendingKitchenOrders: false,
+    barItemsChargeAtLaunch: false,
+    allowCloseComandaWithPendingBarOrders: false,
+  };
+
+  it('pedido do bar não pertence à fila da cozinha e vice-versa', () => {
+    const itensBar = [{ exigePreparo: true, estacaoPreparo: 'BAR' as const }];
+    assert.equal(pedidoVaiParaCozinha(itensBar), false);
+    assert.equal(pedidoVaiParaEstacao(itensBar, 'BAR'), true);
+    assert.equal(pedidoVaiParaEstacao([{ exigePreparo: true }], 'BAR'), false);
+    assert.equal(pedidoTemPreparo(itensBar), true);
+  });
+
+  it('pendência é filtrada por estação; sem estação considera qualquer fila', () => {
+    const pedidos = [pedido('EM_PREPARO', 'BAR')];
+    assert.equal(temPedidoCozinhaPendente(pedidos, 'BAR'), true);
+    assert.equal(temPedidoCozinhaPendente(pedidos, 'COZINHA'), false);
+    assert.equal(temPedidoCozinhaPendente(pedidos), true);
+  });
+
+  it('cada estação aplica a própria regra de fechamento com pedidos pendentes', () => {
+    const pedidos = [pedido('RECEBIDO', 'COZINHA'), pedido('PRONTO', 'BAR')];
+    assert.equal(estacaoBloqueiaFechamento(pedidos, regras), 'COZINHA');
+    assert.equal(estacaoBloqueiaFechamento(pedidos, { ...regras, kitchenItemsChargeAtLaunch: true, allowCloseComandaWithPendingKitchenOrders: true }), 'BAR');
+    assert.equal(estacaoBloqueiaFechamento(pedidos, {
+      kitchenItemsChargeAtLaunch: true,
+      allowCloseComandaWithPendingKitchenOrders: true,
+      barItemsChargeAtLaunch: true,
+      allowCloseComandaWithPendingBarOrders: true,
+    }), null);
+    // A liberação sem cobrança ao lançar não vale.
+    assert.equal(estacaoBloqueiaFechamento([pedido('RECEBIDO', 'BAR')], { ...regras, allowCloseComandaWithPendingBarOrders: true }), 'BAR');
+    assert.equal(mensagemFechamentoBloqueado('BAR'), 'Aguarde a entrega dos itens do bar antes de fechar a comanda');
+    assert.equal(mensagemFechamentoBloqueado('COZINHA', true), 'Aguarde a entrega dos itens da cozinha antes de fechar as comandas');
+  });
+
+  it('resumo da fila informa a estação do pedido', () => {
+    const resumo = resumoPedidoCozinha({
+      id: 'p-bar', numero: 7, status: 'RECEBIDO', paraViagem: false, observacao: null,
+      createdAt: new Date(), statusDesde: new Date(), entregueEm: null,
+      comanda: { id: 'c', tipo: 'MESA', identificador: '1', numero: 1 },
+      itensComanda: [{ id: 'i', nome: 'Gin', quantidade: 1, exigePreparo: true, estacaoPreparo: 'BAR', canceladoEm: null, cancelamentoPendenteEm: null, precoUnit: 30, paraViagem: false, observacao: null, opcionais: [] }],
+    } as unknown as Parameters<typeof resumoPedidoCozinha>[0]);
+    assert.equal(resumo.estacao, 'BAR');
   });
 });
 

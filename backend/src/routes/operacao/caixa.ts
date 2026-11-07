@@ -287,7 +287,7 @@ export async function caixaOperacaoRoutes(app: FastifyInstance) {
 
     return {
       dados: rows.map((comanda) => ({
-        ...resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch),
+        ...resumoComanda(comanda, request.operacao.cobrancaAoLancar),
         vinculoSessao: comanda.sessaoCaixaRealizacaoId === sessao.id ? 'CONFIRMADO' as const : 'NAO_COMPROVADO' as const,
       })),
       filtroAtivo: query.tipo,

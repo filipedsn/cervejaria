@@ -25,10 +25,11 @@ test('TAP-42: confirma reativação orientando revisão sem reconstrução impl�
   assert.match(mensagem, /revise as quantidades/i);
 });
 
-test('TAP-42: invalida contexto, cozinha e estoque após salvar', () => {
+test('TAP-42: invalida contexto, cozinha, bar e estoque após salvar', () => {
   assert.deepEqual(CAIXA_CAPACIDADES_INVALIDATION_KEYS, [
     ['operacao-contexto'],
     ['operacao-cozinha'],
+    ['operacao-bar'],
     ['operacao-estoque'],
   ]);
 });

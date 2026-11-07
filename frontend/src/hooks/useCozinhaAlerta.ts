@@ -10,19 +10,21 @@ import { useScreenWakeLock } from './useScreenWakeLock';
  * Chave propria: a cozinha e outro aparelho e outra pessoa, entao ligar o som
  * do tablet da cozinha nao deve mexer no alerta do celular do balcao.
  */
-const STORAGE_KEY = 'quiver:cozinha-alerta';
+const STORAGE_KEY_COZINHA = 'quiver:cozinha-alerta';
+const STORAGE_KEY_BAR = 'quiver:bar-alerta';
 
-function lerPreferencia(): boolean {
+function lerPreferencia(storageKey: string): boolean {
   if (typeof localStorage === 'undefined') return false;
-  return localStorage.getItem(STORAGE_KEY) === '1';
+  return localStorage.getItem(storageKey) === '1';
 }
 
 /**
  * Som e tela ligada da fila da cozinha. `aguardando` e a quantidade de pedidos
  * ainda nao iniciados: enquanto houver algum, o alerta volta a tocar.
  */
-export function useCozinhaAlerta(_aguardando: number) {
-  const [ativo, setAtivo] = useState(lerPreferencia);
+export function useCozinhaAlerta(_aguardando: number, estacao: 'cozinha' | 'bar' = 'cozinha') {
+  const STORAGE_KEY = estacao === 'bar' ? STORAGE_KEY_BAR : STORAGE_KEY_COZINHA;
+  const [ativo, setAtivo] = useState(() => lerPreferencia(STORAGE_KEY));
   const [audioBloqueado, setAudioBloqueado] = useState(() => isPedidoAlertAudioLocked());
   const jaAvisados = useRef(new Set<string>());
 
@@ -59,7 +61,7 @@ export function useCozinhaAlerta(_aguardando: number) {
     setAtivo(true);
     const ok = await ensurePedidoAlertAudioRunning();
     setAudioBloqueado(!ok);
-  }, [ativo, audioBloqueado]);
+  }, [ativo, audioBloqueado, STORAGE_KEY]);
 
   /** Toca uma vez por pedido, mesmo que ele chegue pelo socket e pelo refetch. */
   const avisar = useCallback(

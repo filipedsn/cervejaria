@@ -4,8 +4,13 @@ export type SinglePdvOperationalSettings = {
   kitchenEnabled: boolean;
   kitchenItemsChargeAtLaunch: boolean;
   allowCloseComandaWithPendingKitchenOrders: boolean;
+  /** Bar fields default to disabled in the database when omitted. */
+  barEnabled?: boolean;
+  barItemsChargeAtLaunch?: boolean;
+  allowCloseComandaWithPendingBarOrders?: boolean;
   whatsappPedidoProntoEnabled: boolean;
   whatsappPedidoProntoNaCozinha: boolean;
+  whatsappPedidoProntoNoBar?: boolean;
   quantidadeMesas: number | null;
 };
 

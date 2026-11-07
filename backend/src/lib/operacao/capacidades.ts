@@ -50,6 +50,15 @@ export class CozinhaComPedidosAtivosError extends Error {
   }
 }
 
+export class BarComPedidosAtivosError extends Error {
+  statusCode = 409;
+
+  constructor() {
+    super('O bar não pode ser desativado enquanto houver pedidos em andamento');
+    this.name = 'BarComPedidosAtivosError';
+  }
+}
+
 export class ConfirmacaoEstoqueObrigatoriaError extends Error {
   statusCode = 400;
 

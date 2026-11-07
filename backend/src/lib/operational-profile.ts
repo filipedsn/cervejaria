@@ -6,6 +6,7 @@ export interface OperationalCapabilities {
   cashRegister: boolean;
   inventory: boolean;
   kitchen: boolean;
+  bar: boolean;
   taps: boolean;
   cashMode: boolean;
   plannedOperations: boolean;
@@ -32,8 +33,12 @@ export interface OperationalProfileFacts {
     kitchenEnabled: boolean | null;
     kitchenItemsChargeAtLaunch?: boolean | null;
     allowCloseComandaWithPendingKitchenOrders?: boolean | null;
+    barEnabled?: boolean | null;
+    barItemsChargeAtLaunch?: boolean | null;
+    allowCloseComandaWithPendingBarOrders?: boolean | null;
     whatsappPedidoProntoEnabled?: boolean | null;
     whatsappPedidoProntoNaCozinha?: boolean | null;
+    whatsappPedidoProntoNoBar?: boolean | null;
   } | null;
   canonicalPdvSettings?: CanonicalPdvOperationalSettings | null;
   activeTaps: number;
@@ -73,8 +78,12 @@ export interface OperationalProfile {
     kitchenEnabled: boolean;
     kitchenItemsChargeAtLaunch: boolean;
     allowCloseComandaWithPendingKitchenOrders: boolean;
+    barEnabled: boolean;
+    barItemsChargeAtLaunch: boolean;
+    allowCloseComandaWithPendingBarOrders: boolean;
     whatsappPedidoProntoEnabled: boolean;
     whatsappPedidoProntoNaCozinha: boolean;
+    whatsappPedidoProntoNoBar: boolean;
     quantidadeMesas: number;
   };
 }
@@ -84,9 +93,9 @@ export interface OperationalProfile {
  * capabilities. Legacy ConfiguracaoOperacao presence is not a capability.
  */
 export function shouldExposeEstablishmentSurface(
-  capabilities: Pick<OperationalCapabilities, 'cashMode' | 'cashRegister' | 'inventory' | 'kitchen'>,
+  capabilities: Pick<OperationalCapabilities, 'cashMode' | 'cashRegister' | 'inventory' | 'kitchen'> & { bar?: boolean },
 ): boolean {
-  return capabilities.cashMode || capabilities.cashRegister || capabilities.inventory || capabilities.kitchen;
+  return capabilities.cashMode || capabilities.cashRegister || capabilities.inventory || capabilities.kitchen || capabilities.bar === true;
 }
 
 export type OperationalProfileFactsReader = (
@@ -110,6 +119,8 @@ export function deriveOperationalProfile(
     ?? (operacaoEnabled && facts.legacyOperacao!.controlaEstoque);
   const kitchenEnabled = canonical?.kitchenEnabled ?? facts.operationalEnablement?.kitchenEnabled
     ?? (operacaoEnabled && facts.legacyOperacao!.temCozinha);
+  // O Bar nasceu depois do modelo legado: sem escolha persistida, fica desligado.
+  const barEnabled = canonical?.barEnabled ?? facts.operationalEnablement?.barEnabled ?? false;
   // Every active point of sale is cash-capable in CAIXA. Per-unit legacy
   // toggles are intentionally excluded from this decision.
   const hasCashRegisterUnit = canonical ? true : operationMode === 'CAIXA' && facts.activePointsOfSale > 0;
@@ -124,6 +135,7 @@ export function deriveOperationalProfile(
       cashRegister: hasCashRegisterUnit,
       inventory: inventoryEnabled,
       kitchen: kitchenEnabled,
+      bar: barEnabled,
       // Taps are evidenced by active physical resources, never tenant naming.
       taps: tapsEnabled,
       // Today, direct sales are the POS flow and require an active POS unit.
@@ -154,8 +166,12 @@ export function deriveOperationalProfile(
       kitchenEnabled,
       kitchenItemsChargeAtLaunch: canonical?.kitchenItemsChargeAtLaunch ?? facts.operationalEnablement?.kitchenItemsChargeAtLaunch ?? false,
       allowCloseComandaWithPendingKitchenOrders: canonical?.allowCloseComandaWithPendingKitchenOrders ?? facts.operationalEnablement?.allowCloseComandaWithPendingKitchenOrders ?? false,
+      barEnabled,
+      barItemsChargeAtLaunch: canonical?.barItemsChargeAtLaunch ?? facts.operationalEnablement?.barItemsChargeAtLaunch ?? false,
+      allowCloseComandaWithPendingBarOrders: canonical?.allowCloseComandaWithPendingBarOrders ?? facts.operationalEnablement?.allowCloseComandaWithPendingBarOrders ?? false,
       whatsappPedidoProntoEnabled: canonical?.whatsappPedidoProntoEnabled ?? facts.operationalEnablement?.whatsappPedidoProntoEnabled ?? false,
       whatsappPedidoProntoNaCozinha: canonical?.whatsappPedidoProntoNaCozinha ?? facts.operationalEnablement?.whatsappPedidoProntoNaCozinha ?? false,
+      whatsappPedidoProntoNoBar: canonical?.whatsappPedidoProntoNoBar ?? facts.operationalEnablement?.whatsappPedidoProntoNoBar ?? false,
       quantidadeMesas: canonical
         ? canonical.quantidadeMesas ?? 0
         : facts.legacyOperacao?.enabled
@@ -220,8 +236,12 @@ export const readOperationalProfileFacts: OperationalProfileFactsReader = async 
           kitchenEnabled: true,
           kitchenItemsChargeAtLaunch: true,
           allowCloseComandaWithPendingKitchenOrders: true,
+          barEnabled: true,
+          barItemsChargeAtLaunch: true,
+          allowCloseComandaWithPendingBarOrders: true,
           whatsappPedidoProntoEnabled: true,
           whatsappPedidoProntoNaCozinha: true,
+          whatsappPedidoProntoNoBar: true,
         },
       },
       trailers: { where: { ativo: true }, select: { id: true } },

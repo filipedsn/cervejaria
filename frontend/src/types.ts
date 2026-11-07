@@ -1,3 +1,5 @@
+import { itemCobradoAoLancar, type CobrancaAoLancar } from './lib/estacao';
+
 export interface Usuario {
   id: string;
   nome: string;
@@ -110,6 +112,7 @@ export interface Produto {
   ativo: boolean;
   controlaEstoque?: boolean;
   exigePreparo?: boolean;
+  estacaoPreparo?: 'COZINHA' | 'BAR';
   prepararEmPedidoSeparado?: boolean;
   precos: Preco[];
   /** Preço do template quando evento/cardápio vinculado; senão igual ao catálogo. */
@@ -416,6 +419,7 @@ export interface ItemComanda {
   quantidade: number;
   paraViagem?: boolean;
   exigePreparo?: boolean;
+  estacaoPreparo?: 'COZINHA' | 'BAR';
   cancelamentoPendenteEm?: string | null;
   canceladoEm?: string | null;
   precoUnit: string;
@@ -454,9 +458,12 @@ export function descontoComandaCervejaria(comanda: Pick<Comanda, 'desconto'>): n
   return typeof comanda.desconto === 'number' ? comanda.desconto : parseFloat(comanda.desconto);
 }
 
-export function subtotalComandaCervejaria(comanda: Pick<Comanda, 'itens'>, kitchenItemsChargeAtLaunch = false): number {
+export function subtotalComandaCervejaria(
+  comanda: Pick<Comanda, 'itens'>,
+  cobrancaAoLancar: boolean | CobrancaAoLancar = false,
+): number {
   return comanda.itens
-    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (!item.exigePreparo || kitchenItemsChargeAtLaunch || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
+    .filter((item) => !item.cancelamentoPendenteEm && !item.canceladoEm && (itemCobradoAoLancar(item, cobrancaAoLancar) || item.pedidoCozinha?.status === 'ENTREGUE' || !item.pedidoCozinha))
     .reduce((soma, item) => soma + parseFloat(item.precoUnit) * item.quantidade, 0);
 }
 

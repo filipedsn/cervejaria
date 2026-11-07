@@ -15,6 +15,14 @@ import { operacaoUsaCardapio } from '../cardapio-toggle.js';
 import { assertProdutoNoCardapioTurno } from './sessao-cardapio.js';
 import { resolverOpcionais, type OpcionalSelecionadoInput, type OpcionalResolvido } from '../produto-opcionais.js';
 import { canonicalPdvQaActivationEnabled, CanonicalPdvConfigurationError } from '../canonical-pdv-operational-config.js';
+import {
+  cobrancaAoLancarDasConfiguracoes,
+  estacaoDoItem,
+  itemCobradoAoLancar,
+  itemVaiParaEstacao,
+  type CobrancaAoLancar,
+  type EstacaoPreparo,
+} from './estacao-preparo.js';
 
 export class VendaInvalidaError extends Error {
   statusCode = 400;
@@ -59,6 +67,8 @@ export interface ItemResolvido {
   precoUnit: number;
   quantidade: number;
   exigePreparo: boolean;
+  /** Ausente em chamadas antigas/testes: vale como Cozinha. */
+  estacaoPreparo?: EstacaoPreparo;
   prepararEmPedidoSeparado: boolean;
   controlaEstoque: boolean;
   paraViagem: boolean;
@@ -66,8 +76,22 @@ export interface ItemResolvido {
   opcionais: OpcionalResolvido[];
 }
 
+export type EstacoesAtivas = { temCozinha: boolean; temBar: boolean };
+
+/** `boolean` mantém o contrato anterior, em que só a Cozinha existia. */
+function normalizarEstacoes(estacoes: boolean | EstacoesAtivas): EstacoesAtivas {
+  return typeof estacoes === 'boolean' ? { temCozinha: estacoes, temBar: false } : estacoes;
+}
+
 export function itemVaiParaCozinha(temCozinha: boolean, exigePreparo: boolean): boolean {
   return temCozinha && kitchenService.participates({ exigePreparo }, 'CAIXA');
+}
+
+export function itemVaiParaPreparo(
+  item: { exigePreparo: boolean; estacaoPreparo?: EstacaoPreparo | null },
+  estacoes: boolean | EstacoesAtivas,
+): boolean {
+  return kitchenService.participates(item, 'CAIXA') && itemVaiParaEstacao(item, normalizarEstacoes(estacoes));
 }
 
 type TxClient = Prisma.TransactionClient;
@@ -163,7 +187,7 @@ export async function resolverItens(
     where: { id: { in: ids }, cervejariaId, ativo: true },
     select: {
       id: true, nome: true, tipo: true, formato: true, categoria: true, pontoVendaId: true,
-      exigePreparo: true, controlaEstoque: true,
+      exigePreparo: true, estacaoPreparo: true, controlaEstoque: true,
       ...(canonicalPdvQaActivationEnabled() ? { prepararEmPedidoSeparado: true } : {}),
       precos: { orderBy: { volumeMl: 'asc' } },
     },
@@ -231,6 +255,7 @@ export async function resolverItens(
           precoUnit: precoBase + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
           quantidade: linha.quantidade,
           exigePreparo: chope ? false : produto.exigePreparo,
+          estacaoPreparo: produto.estacaoPreparo,
           prepararEmPedidoSeparado: !chope && produto.exigePreparo && Boolean((produto as typeof produto & { prepararEmPedidoSeparado?: boolean }).prepararEmPedidoSeparado),
           controlaEstoque: produto.controlaEstoque,
           paraViagem: linha.paraViagem ?? false,
@@ -268,6 +293,7 @@ export async function resolverItens(
       precoUnit: precoBase + opcionais.reduce((sum, opcional) => sum + opcional.precoAdicional * opcional.quantidade, 0),
       quantidade: linha.quantidade,
       exigePreparo: chope ? false : produto.exigePreparo,
+          estacaoPreparo: produto.estacaoPreparo,
       prepararEmPedidoSeparado: !chope && produto.exigePreparo && Boolean((produto as typeof produto & { prepararEmPedidoSeparado?: boolean }).prepararEmPedidoSeparado),
       controlaEstoque: produto.controlaEstoque,
       paraViagem: linha.paraViagem ?? false,
@@ -324,40 +350,46 @@ export async function criarPedidos(
     observacao?: string;
     itens: ItemResolvido[];
     temCozinha: boolean;
+    /** Ausente = Bar desligado (chamadas anteriores ao TAP-181). */
+    temBar?: boolean;
   },
 ) {
-  const grupos = particionarItensParaPedidos(params.itens, params.temCozinha);
+  const estacoes = { temCozinha: params.temCozinha, temBar: params.temBar === true };
+  const grupos = particionarItensParaPedidos(params.itens, estacoes);
   const pedidos: Array<{ pedido: Awaited<ReturnType<typeof criarPedidoUnico>>; itens: ItemResolvido[] }> = [];
   for (const itens of grupos) {
-    pedidos.push({ pedido: await criarPedidoUnico(tx, { ...params, itens }), itens });
+    pedidos.push({ pedido: await criarPedidoUnico(tx, { ...params, estacoes, itens }), itens });
   }
   return pedidos;
 }
 
 /**
- * Balcão (sem preparo) nunca compartilha pedido com cozinha — senão o status
- * da fila mascara itens já servidos. Dentro da cozinha, linhas independentes
- * continuam em pedidos próprios.
+ * Balcão (sem preparo) nunca compartilha pedido com uma estação — senão o
+ * status da fila mascara itens já servidos — e Cozinha e Bar nunca dividem o
+ * mesmo pedido, pois cada fila controla o próprio status. Dentro de cada
+ * estação, linhas independentes continuam em pedidos próprios.
  */
-export function particionarItensParaPedidos(itens: ItemResolvido[], temCozinha: boolean): ItemResolvido[][] {
+export function particionarItensParaPedidos(
+  itens: ItemResolvido[],
+  estacoesAtivas: boolean | EstacoesAtivas,
+): ItemResolvido[][] {
+  const estacoes = normalizarEstacoes(estacoesAtivas);
   if (itens.length === 0) return [];
-  if (!temCozinha || itens.length <= 1) return [itens];
+  if ((!estacoes.temCozinha && !estacoes.temBar) || itens.length <= 1) return [itens];
 
-  const balcao = itens.filter((item) => !item.exigePreparo);
-  const cozinha = itens.filter((item) => item.exigePreparo);
+  const balcao = itens.filter((item) => !itemVaiParaPreparo(item, estacoes));
   const grupos: ItemResolvido[][] = [];
   if (balcao.length > 0) grupos.push(balcao);
-  if (cozinha.length === 0) return grupos;
 
-  const independentes = cozinha.filter((item) => item.prepararEmPedidoSeparado);
-  if (independentes.length === 0) {
-    grupos.push(cozinha);
-    return grupos;
+  for (const estacao of ['COZINHA', 'BAR'] as const) {
+    const daEstacao = itens.filter((item) => itemVaiParaPreparo(item, estacoes) && estacaoDoItem(item) === estacao);
+    if (daEstacao.length === 0) continue;
+    const independentes = daEstacao.filter((item) => item.prepararEmPedidoSeparado);
+    const independentesSet = new Set(independentes);
+    const comuns = daEstacao.filter((item) => !independentesSet.has(item));
+    if (comuns.length > 0) grupos.push(comuns);
+    for (const item of independentes) grupos.push([item]);
   }
-  const independentesSet = new Set(independentes);
-  const comuns = cozinha.filter((item) => !independentesSet.has(item));
-  if (comuns.length > 0) grupos.push(comuns);
-  for (const item of independentes) grupos.push([item]);
   return grupos;
 }
 
@@ -372,7 +404,7 @@ async function criarPedidoUnico(
     paraViagem?: boolean;
     observacao?: string;
     itens: ItemResolvido[];
-    temCozinha: boolean;
+    estacoes: EstacoesAtivas;
   },
 ) {
   const numero = await proximoNumeroPedidoOperacao(tx, params.cervejariaId, params.dia);
@@ -402,7 +434,8 @@ async function criarPedidoUnico(
       nome: item.nome,
       observacao: item.observacao,
       paraViagem: item.paraViagem,
-      exigePreparo: itemVaiParaCozinha(params.temCozinha, item.exigePreparo),
+      exigePreparo: itemVaiParaPreparo(item, params.estacoes),
+      estacaoPreparo: estacaoDoItem(item),
       pedidoCozinhaId: pedido.id,
     } });
     itensCriados.push(criado);
@@ -439,7 +472,7 @@ type ComandaCompleta = Prisma.ComandaGetPayload<{
       select: {
         cervejaria: {
           select: {
-            configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } };
+            configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true; barItemsChargeAtLaunch: true } };
           };
         };
       };
@@ -448,7 +481,7 @@ type ComandaCompleta = Prisma.ComandaGetPayload<{
       select: {
         cervejaria: {
           select: {
-            configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } };
+            configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true; barItemsChargeAtLaunch: true } };
           };
         };
       };
@@ -465,6 +498,7 @@ type LinhaFinanceiraComanda = {
   precoUnit: unknown;
   quantidade: number;
   exigePreparo?: boolean;
+  estacaoPreparo?: EstacaoPreparo | null;
   cancelamentoPendenteEm?: unknown;
   canceladoEm?: unknown;
   pedidoCozinhaId?: string | null;
@@ -475,11 +509,13 @@ export function calcularFinanceiroComanda(params: {
   status: string;
   totalPersistido?: unknown;
   desconto?: unknown;
-  kitchenItemsChargeAtLaunch?: boolean;
+  cobrancaAoLancar?: CobrancaAoLancar;
   itensSemPedido: LinhaFinanceiraComanda[];
   pedidos: Array<{ status: string; itens: LinhaFinanceiraComanda[] }>;
 }) {
   const ativos = (item: LinhaFinanceiraComanda) => !item.cancelamentoPendenteEm && !item.canceladoEm;
+  const cobradoAoLancar = (item: LinhaFinanceiraComanda) =>
+    itemCobradoAoLancar({ exigePreparo: item.exigePreparo === true, estacaoPreparo: item.estacaoPreparo }, params.cobrancaAoLancar);
   const itensConsumidos = [
     ...params.itensSemPedido.filter((item) => !item.pedidoCozinhaId && ativos(item)),
     ...params.pedidos
@@ -496,17 +532,17 @@ export function calcularFinanceiroComanda(params: {
         return cancelouPreparoIndividualmente && aindaHaItemAtivo;
       })
       .flatMap((pedido) => pedido.itens.filter((item) =>
-        ativos(item) && (!item.exigePreparo || params.kitchenItemsChargeAtLaunch === true || pedido.status === 'ENTREGUE'),
+        ativos(item) && (cobradoAoLancar(item) || pedido.status === 'ENTREGUE'),
       )),
   ];
   const subtotal = totalEmCentavos(itensConsumidos);
-  const valorEmAberto = params.status === 'ABERTA' && params.kitchenItemsChargeAtLaunch !== true
+  const valorEmAberto = params.status === 'ABERTA'
     ? params.pedidos
       .filter((pedido) =>
         !['ENTREGUE', 'CANCELADO', 'CANCELAMENTO_PENDENTE'].includes(pedido.status) &&
         pedido.itens.some((item) => item.exigePreparo),
       )
-      .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens.filter((item) => item.exigePreparo && ativos(item))), 0)
+      .reduce((soma, pedido) => soma + totalEmCentavos(pedido.itens.filter((item) => item.exigePreparo && ativos(item) && !cobradoAoLancar(item))), 0)
     : 0;
   const desconto = centavos(params.desconto ?? 0);
   const total = params.status === 'ABERTA'
@@ -518,13 +554,13 @@ export function calcularFinanceiroComanda(params: {
 
 export function subtotalComandaEmCentavos(
   comanda: Pick<ComandaCompleta, 'status' | 'total' | 'desconto' | 'itens' | 'pedidosOperacao'>,
-  kitchenItemsChargeAtLaunch = false,
+  cobrancaAoLancar: CobrancaAoLancar = false,
 ): number {
   return calcularFinanceiroComanda({
     status: comanda.status,
     desconto: comanda.desconto,
     totalPersistido: comanda.total,
-    kitchenItemsChargeAtLaunch,
+    cobrancaAoLancar,
     itensSemPedido: comanda.itens.filter((item) => !item.pedidoCozinhaId),
     pedidos: comanda.pedidosOperacao.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   }).subtotal;
@@ -533,18 +569,18 @@ export function subtotalComandaEmCentavos(
 /**
  * Monta a conta como o operador ve. Total vem persistido na comanda (padrão cervejaria).
  */
-export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsChargeAtLaunch?: boolean) {
+export function resumoComanda(comanda: ComandaCompleta, effectiveCobrancaAoLancar?: CobrancaAoLancar) {
   const canonicalEnabled = canonicalPdvQaActivationEnabled();
-  if (canonicalEnabled && effectiveKitchenItemsChargeAtLaunch === undefined) {
+  if (canonicalEnabled && effectiveCobrancaAoLancar === undefined) {
     throw new CanonicalPdvConfigurationError(
       'CANONICAL_PDV_SETTINGS_CONTEXT_REQUIRED',
       'A configuração canônica validada deve acompanhar o resumo da comanda.',
     );
   }
-  const kitchenItemsChargeAtLaunch = effectiveKitchenItemsChargeAtLaunch
-    ?? comanda.pontoVenda?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
-    ?? comanda.evento?.cervejaria.configuracaoOperacional?.kitchenItemsChargeAtLaunch
-    ?? false;
+  const cobrancaAoLancar = effectiveCobrancaAoLancar ?? cobrancaAoLancarDasConfiguracoes(
+    comanda.pontoVenda?.cervejaria.configuracaoOperacional
+      ?? comanda.evento?.cervejaria.configuracaoOperacional,
+  );
   const pedidos = comanda.pedidosOperacao.map((pedido) => ({
     id: pedido.id,
     numero: pedido.numero,
@@ -581,6 +617,7 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsCha
       })),
       subtotal: reais(centavos(item.precoUnit) * item.quantidade),
       exigePreparo: item.exigePreparo,
+      estacaoPreparo: estacaoDoItem(item),
       balcaoAtendidoEm: item.balcaoAtendidoEm ?? null,
     })),
   }));
@@ -589,7 +626,7 @@ export function resumoComanda(comanda: ComandaCompleta, effectiveKitchenItemsCha
     status: comanda.status,
     totalPersistido: comanda.total,
     desconto: comanda.desconto,
-    kitchenItemsChargeAtLaunch,
+    cobrancaAoLancar,
     itensSemPedido: comanda.itens.filter((item) => !item.pedidoCozinhaId),
     pedidos: comanda.pedidosOperacao.map((pedido) => ({ status: pedido.status, itens: pedido.itensComanda })),
   });

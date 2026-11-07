@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularFinanceiroComanda, diaOperacional, itemVaiParaCozinha, particionarItensParaPedidos, resolverItens, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, validarChopeDoTurno, VendaInvalidaError, type ItemResolvido } from './venda.js';
+import { calcularFinanceiroComanda, diaOperacional, itemVaiParaCozinha, itemVaiParaPreparo, particionarItensParaPedidos, resolverItens, resolverPagamentos, resumoComanda, subtotalComandaEmCentavos, validarChopeDoTurno, VendaInvalidaError, type ItemResolvido } from './venda.js';
 
 describe('diaOperacional', () => {
   it('uses the backend America/Sao_Paulo day on both sides of the UTC/Brasilia midnight boundary', () => {
@@ -53,6 +53,56 @@ describe('particionarItensParaPedidos', () => {
     const semPreparo = linha('refrigerante', false);
     assert.deepEqual(particionarItensParaPedidos([marcado], true), [[marcado]]);
     assert.deepEqual(particionarItensParaPedidos([marcado, semPreparo], false), [[marcado, semPreparo]]);
+  });
+});
+
+const linhaBar = (nome: string, prepararEmPedidoSeparado = false) => ({
+  ...linha(nome, true, prepararEmPedidoSeparado),
+  estacaoPreparo: 'BAR' as const,
+}) satisfies ItemResolvido;
+
+describe('particionarItensParaPedidos com Bar (TAP-181)', () => {
+  const estacoes = { temCozinha: true, temBar: true };
+
+  it('nunca mistura Cozinha e Bar no mesmo pedido e mantém o balcão separado', () => {
+    const porcao = linha('batata', true);
+    const drink = linhaBar('caipirinha');
+    const lata = linha('lata', false);
+    assert.deepEqual(particionarItensParaPedidos([drink, porcao, lata], estacoes), [[lata], [porcao], [drink]]);
+  });
+
+  it('agrupa itens comuns do bar e isola os marcados como pedido separado', () => {
+    const gin = linhaBar('gin');
+    const mojito = linhaBar('mojito');
+    const negroni = linhaBar('negroni', true);
+    assert.deepEqual(particionarItensParaPedidos([gin, negroni, mojito], estacoes), [[gin, mojito], [negroni]]);
+  });
+
+  it('item do bar vira balcão quando o bar está desligado', () => {
+    const porcao = linha('batata', true);
+    const drink = linhaBar('caipirinha');
+    assert.deepEqual(particionarItensParaPedidos([porcao, drink], { temCozinha: true, temBar: false }), [[drink], [porcao]]);
+  });
+
+  it('cria pedido do bar mesmo com a cozinha desligada', () => {
+    const porcao = linha('batata', true);
+    const drink = linhaBar('caipirinha');
+    assert.deepEqual(particionarItensParaPedidos([porcao, drink], { temCozinha: false, temBar: true }), [[porcao], [drink]]);
+  });
+
+  it('contrato booleano antigo trata itens do bar como balcão', () => {
+    const porcao = linha('batata', true);
+    const drink = linhaBar('caipirinha');
+    assert.deepEqual(particionarItensParaPedidos([porcao, drink], true), [[drink], [porcao]]);
+  });
+});
+
+describe('itemVaiParaPreparo', () => {
+  it('respeita a estação do item e o estado de cada estação', () => {
+    assert.equal(itemVaiParaPreparo({ exigePreparo: true, estacaoPreparo: 'BAR' }, { temCozinha: true, temBar: false }), false);
+    assert.equal(itemVaiParaPreparo({ exigePreparo: true, estacaoPreparo: 'BAR' }, { temCozinha: false, temBar: true }), true);
+    assert.equal(itemVaiParaPreparo({ exigePreparo: true }, { temCozinha: true, temBar: false }), true);
+    assert.equal(itemVaiParaPreparo({ exigePreparo: false, estacaoPreparo: 'BAR' }, { temCozinha: true, temBar: true }), false);
   });
 });
 
@@ -174,7 +224,7 @@ describe('calcularFinanceiroComanda', () => {
   it('charges kitchen items at launch when configured and removes them from pending value', () => {
     const financeiro = calcularFinanceiroComanda({
       status: 'ABERTA',
-      kitchenItemsChargeAtLaunch: true,
+      cobrancaAoLancar: true,
       itensSemPedido: [],
       pedidos: [{
         status: 'RECEBIDO',
@@ -265,6 +315,35 @@ describe('calcularFinanceiroComanda', () => {
     });
 
     assert.deepEqual(financeiro, { subtotal: 3800, valorEmAberto: 4000, desconto: 500, total: 3300 });
+  });
+
+  it('cobra cada estação conforme a própria regra de lançamento', () => {
+    const financeiro = calcularFinanceiroComanda({
+      status: 'ABERTA',
+      cobrancaAoLancar: { cozinha: false, bar: true },
+      itensSemPedido: [],
+      pedidos: [
+        { status: 'RECEBIDO', itens: [{ precoUnit: 30, quantidade: 1, exigePreparo: true, estacaoPreparo: 'COZINHA' }] },
+        { status: 'RECEBIDO', itens: [{ precoUnit: 20, quantidade: 2, exigePreparo: true, estacaoPreparo: 'BAR' }] },
+      ],
+    });
+
+    assert.deepEqual(financeiro, { subtotal: 4000, valorEmAberto: 3000, desconto: 0, total: 4000 });
+  });
+
+  it('mantém o bar pendente quando só a cozinha cobra ao lançar', () => {
+    const financeiro = calcularFinanceiroComanda({
+      status: 'ABERTA',
+      cobrancaAoLancar: { cozinha: true, bar: false },
+      itensSemPedido: [],
+      pedidos: [
+        { status: 'RECEBIDO', itens: [{ precoUnit: 30, quantidade: 1, exigePreparo: true, estacaoPreparo: 'COZINHA' }] },
+        { status: 'EM_PREPARO', itens: [{ precoUnit: 20, quantidade: 2, exigePreparo: true, estacaoPreparo: 'BAR' }] },
+        { status: 'ENTREGUE', itens: [{ precoUnit: 15, quantidade: 1, exigePreparo: true, estacaoPreparo: 'BAR' }] },
+      ],
+    });
+
+    assert.deepEqual(financeiro, { subtotal: 4500, valorEmAberto: 4000, desconto: 0, total: 4500 });
   });
 
   it('preserva o valor final persistido e zera valor em aberto após fechamento', () => {

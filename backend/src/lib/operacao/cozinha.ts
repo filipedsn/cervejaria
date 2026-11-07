@@ -7,8 +7,14 @@ import { categoriasElegiveisAlertaBalcao } from '../portal-categorias-policy.js'
 import { categoriaParaAlertaBalcao } from '../produto-utils.js';
 import { normalizeCategoriaProduto } from './categorias.js';
 import { toNumber } from '../utils.js';
+import {
+  estacaoDoPedido,
+  itemDaEstacao,
+  type EstacaoPreparo,
+} from './estacao-preparo.js';
 
 type TxClient = Prisma.TransactionClient;
+type ItemPreparo = { exigePreparo: boolean; estacaoPreparo?: EstacaoPreparo | null };
 
 /** Pedidos que ainda ocupam a fila da cozinha. */
 export const STATUS_NA_FILA: StatusPedidoOperacao[] = ['RECEBIDO', 'EM_PREPARO', 'PRONTO'];
@@ -87,6 +93,8 @@ export function resumoPedidoCozinha(pedido: PedidoCozinha | PedidoCozinhaComClie
     id: pedido.id,
     numero: pedido.numero,
     status: pedido.status,
+    // Pedido cancelado mantém a estação pelos itens gravados, mesmo sem itens ativos.
+    estacao: estacaoDoPedido(pedido.itensComanda),
     // Itens de comandas/eventos anteriores podem ter sido marcados para
     // viagem antes de o campo do pedido operacional ser preenchido.
     paraViagem: pedido.paraViagem || itens.some((item) => item.paraViagem),
@@ -188,7 +196,17 @@ export async function aplicarStatusPedidoCozinha(
   });
 }
 
-export function pedidoVaiParaCozinha(itens: Array<{ exigePreparo: boolean }>): boolean {
+/** Pedido da fila da Cozinha (não inclui os do Bar). */
+export function pedidoVaiParaCozinha(itens: ItemPreparo[]): boolean {
+  return pedidoVaiParaEstacao(itens, 'COZINHA');
+}
+
+export function pedidoVaiParaEstacao(itens: ItemPreparo[], estacao: EstacaoPreparo): boolean {
+  return itens.some((item) => itemDaEstacao(item, estacao));
+}
+
+/** Pedido que ocupa alguma fila de preparo (Cozinha ou Bar). */
+export function pedidoTemPreparo(itens: Array<{ exigePreparo: boolean }>): boolean {
   return itens.some((item) => item.exigePreparo);
 }
 
@@ -285,14 +303,51 @@ export function pedidoContaNaComanda(
   return pedido.itens.some((item) => !item.cancelamentoPendenteEm && !item.canceladoEm);
 }
 
+type PedidoPendenciaPreparo = {
+  status: StatusPedidoOperacao;
+  itens?: Array<ItemPreparo & { cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>;
+  itensComanda?: Array<ItemPreparo & { cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>;
+};
+
+/** Sem `estacao`, considera qualquer fila de preparo (contrato anterior ao Bar). */
 export function temPedidoCozinhaPendente(
-  pedidos: Array<{ status: StatusPedidoOperacao; itens?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }>; itensComanda?: Array<{ exigePreparo: boolean; cancelamentoPendenteEm?: Date | null; canceladoEm?: Date | null }> }>,
+  pedidos: PedidoPendenciaPreparo[],
+  estacao?: EstacaoPreparo,
 ): boolean {
   return pedidos.some((pedido) => {
     const itens = pedido.itensComanda ?? pedido.itens ?? [];
-    return itens.some((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
+    return itens.some((item) =>
+      item.exigePreparo && (!estacao || itemDaEstacao(item, estacao)) && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
       STATUS_NA_FILA.includes(pedido.status);
   });
+}
+
+export type RegrasFechamentoPreparo = {
+  kitchenItemsChargeAtLaunch: boolean;
+  allowCloseComandaWithPendingKitchenOrders: boolean;
+  barItemsChargeAtLaunch: boolean;
+  allowCloseComandaWithPendingBarOrders: boolean;
+};
+
+/**
+ * Cada estação decide se a comanda fecha com pedidos dela ainda na fila; a
+ * permissão só vale quando os itens dela já entram no total ao serem lançados.
+ * Devolve a estação que bloqueia o fechamento, ou null.
+ */
+export function estacaoBloqueiaFechamento(
+  pedidos: PedidoPendenciaPreparo[],
+  regras: RegrasFechamentoPreparo | null | undefined,
+): EstacaoPreparo | null {
+  const liberaCozinha = Boolean(regras?.allowCloseComandaWithPendingKitchenOrders && regras.kitchenItemsChargeAtLaunch);
+  const liberaBar = Boolean(regras?.allowCloseComandaWithPendingBarOrders && regras.barItemsChargeAtLaunch);
+  if (!liberaCozinha && temPedidoCozinhaPendente(pedidos, 'COZINHA')) return 'COZINHA';
+  if (!liberaBar && temPedidoCozinhaPendente(pedidos, 'BAR')) return 'BAR';
+  return null;
+}
+
+export function mensagemFechamentoBloqueado(estacao: EstacaoPreparo, plural = false): string {
+  const origem = estacao === 'BAR' ? 'do bar' : 'da cozinha';
+  return `Aguarde a entrega dos itens ${origem} antes de fechar ${plural ? 'as comandas' : 'a comanda'}`;
 }
 
 export function notificarComandaOperacaoAtualizada(
@@ -452,7 +507,7 @@ export function notificarCozinha(
   pedido: PedidoCozinha,
   novo: boolean,
 ) {
-  if (pedido.status !== 'CANCELADO' && !pedidoVaiParaCozinha(pedido.itensComanda)) return;
+  if (pedido.status !== 'CANCELADO' && !pedidoTemPreparo(pedido.itensComanda)) return;
 
   emitToCervejaria(app.io, cervejariaId, {
     type: novo ? 'operacao:pedido-novo' : 'operacao:pedido-atualizado',
@@ -469,7 +524,7 @@ export async function notificarPedidoNovo(
   cervejariaId: string,
   pedido: { id: string; itensComanda: Array<{ exigePreparo: boolean }> },
 ) {
-  if (!pedidoVaiParaCozinha(pedido.itensComanda)) return;
+  if (!pedidoTemPreparo(pedido.itensComanda)) return;
 
   const completo = await prisma.pedidoOperacao.findUnique({
     where: { id: pedido.id },

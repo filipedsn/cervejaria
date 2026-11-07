@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from './prisma.js';
 import { STATUS_CANCELAMENTO_PENDENTE, STATUS_NA_FILA } from './operacao/cozinha.js';
 import {
+  BarComPedidosAtivosError,
   CozinhaComPedidosAtivosError,
   ConfirmacaoEstoqueObrigatoriaError,
 } from './operacao/capacidades.js';
@@ -26,8 +27,12 @@ export const updateOperationalConfigSchema = z
     kitchenEnabled: z.boolean().optional(),
     kitchenItemsChargeAtLaunch: z.boolean().optional(),
     allowCloseComandaWithPendingKitchenOrders: z.boolean().optional(),
+    barEnabled: z.boolean().optional(),
+    barItemsChargeAtLaunch: z.boolean().optional(),
+    allowCloseComandaWithPendingBarOrders: z.boolean().optional(),
     whatsappPedidoProntoEnabled: z.boolean().optional(),
     whatsappPedidoProntoNaCozinha: z.boolean().optional(),
+    whatsappPedidoProntoNoBar: z.boolean().optional(),
     quantidadeMesas: z.number().int().min(0).max(500).optional(),
     completeInitialSetup: z.boolean().optional(),
     confirmacaoEstoque: z.literal(true).optional(),
@@ -42,8 +47,12 @@ export const updateOperationalConfigSchema = z
       body.kitchenEnabled !== undefined ||
       body.kitchenItemsChargeAtLaunch !== undefined ||
       body.allowCloseComandaWithPendingKitchenOrders !== undefined ||
+      body.barEnabled !== undefined ||
+      body.barItemsChargeAtLaunch !== undefined ||
+      body.allowCloseComandaWithPendingBarOrders !== undefined ||
       body.whatsappPedidoProntoEnabled !== undefined ||
       body.whatsappPedidoProntoNaCozinha !== undefined ||
+      body.whatsappPedidoProntoNoBar !== undefined ||
       body.quantidadeMesas !== undefined ||
       body.completeInitialSetup === true,
     'Informe ao menos uma capacidade para alterar',
@@ -115,6 +124,62 @@ export class PendingKitchenCloseDependencyError extends Error {
   }
 }
 
+export class PendingBarCloseDependencyError extends Error {
+  statusCode = 400;
+
+  constructor() {
+    super('Ative "Pedidos pendentes no bar compõem o valor da comanda" antes de permitir fechar comandas com pedidos pendentes no bar.');
+    this.name = 'PendingBarCloseDependencyError';
+  }
+}
+
+type ActiveStationOrderClient = Pick<Prisma.TransactionClient, 'pedidoOperacao'>;
+
+async function assertStationCanTurnOff(db: ActiveStationOrderClient, cervejariaId: string, estacao: 'COZINHA' | 'BAR') {
+  const activeOrder = await db.pedidoOperacao.findFirst({
+    where: {
+      cervejariaId,
+      status: { in: [...STATUS_NA_FILA, STATUS_CANCELAMENTO_PENDENTE] },
+      itensComanda: { some: { exigePreparo: true, estacaoPreparo: estacao } },
+    },
+    select: { id: true },
+  });
+  if (activeOrder) throw estacao === 'BAR' ? new BarComPedidosAtivosError() : new CozinhaComPedidosAtivosError();
+}
+
+/** Same rule as the kitchen: closing with pending bar orders requires charging them at launch. */
+function barCloseSettings(
+  input: UpdateOperationalConfigInput,
+  current: { barItemsChargeAtLaunch?: boolean | null; allowCloseComandaWithPendingBarOrders?: boolean | null } | null | undefined,
+) {
+  const chargeAtLaunch = input.barItemsChargeAtLaunch ?? current?.barItemsChargeAtLaunch ?? false;
+  const clearPendingClose = input.barItemsChargeAtLaunch === false || (
+    input.barItemsChargeAtLaunch === true &&
+    current?.barItemsChargeAtLaunch !== true &&
+    current?.allowCloseComandaWithPendingBarOrders === true
+  );
+  if (input.allowCloseComandaWithPendingBarOrders === true && !chargeAtLaunch) {
+    throw new PendingBarCloseDependencyError();
+  }
+  return {
+    ...(input.barEnabled !== undefined ? { barEnabled: input.barEnabled } : {}),
+    ...(input.barItemsChargeAtLaunch !== undefined ? { barItemsChargeAtLaunch: input.barItemsChargeAtLaunch } : {}),
+    ...(input.allowCloseComandaWithPendingBarOrders !== undefined
+      ? { allowCloseComandaWithPendingBarOrders: input.allowCloseComandaWithPendingBarOrders }
+      : {}),
+    ...(clearPendingClose ? { allowCloseComandaWithPendingBarOrders: false } : {}),
+    ...(input.whatsappPedidoProntoNoBar !== undefined ? { whatsappPedidoProntoNoBar: input.whatsappPedidoProntoNoBar } : {}),
+  };
+}
+
+function chargeAtLaunchChanged(
+  input: UpdateOperationalConfigInput,
+  current: { kitchenItemsChargeAtLaunch?: boolean | null; barItemsChargeAtLaunch?: boolean | null } | null | undefined,
+) {
+  return (input.kitchenItemsChargeAtLaunch !== undefined && input.kitchenItemsChargeAtLaunch !== (current?.kitchenItemsChargeAtLaunch ?? false))
+    || (input.barItemsChargeAtLaunch !== undefined && input.barItemsChargeAtLaunch !== (current?.barItemsChargeAtLaunch ?? false));
+}
+
 export class OperationalSetupModeRequiredError extends Error {
   statusCode = 400;
 
@@ -148,8 +213,12 @@ function canonicalConfigurationView(canonical: CanonicalPdvOperationalSettings, 
     kitchenEnabled: canonical.kitchenEnabled,
     kitchenItemsChargeAtLaunch: canonical.kitchenItemsChargeAtLaunch,
     allowCloseComandaWithPendingKitchenOrders: canonical.allowCloseComandaWithPendingKitchenOrders,
+    barEnabled: canonical.barEnabled,
+    barItemsChargeAtLaunch: canonical.barItemsChargeAtLaunch,
+    allowCloseComandaWithPendingBarOrders: canonical.allowCloseComandaWithPendingBarOrders,
     whatsappPedidoProntoEnabled: canonical.whatsappPedidoProntoEnabled,
     whatsappPedidoProntoNaCozinha: canonical.whatsappPedidoProntoNaCozinha,
+    whatsappPedidoProntoNoBar: canonical.whatsappPedidoProntoNoBar,
     quantidadeMesas: canonical.quantidadeMesas ?? 0,
     configurationSource: canonical.source,
     pontoVendaId: canonical.pointId,
@@ -254,22 +323,15 @@ export async function updateOperationalConfig(
   // default disabled state so saving the default does not trigger a warning.
   const inventoryChanges = input.inventoryEnabled !== undefined && input.inventoryEnabled !== (current?.inventoryEnabled ?? false);
   const kitchenTurnsOff = input.kitchenEnabled === false && current?.kitchenEnabled !== false;
+  const barTurnsOff = input.barEnabled === false && current?.barEnabled === true;
 
   if (inventoryChanges && input.confirmacaoEstoque !== true) {
     throw new ConfirmacaoEstoqueObrigatoriaError();
   }
 
-  if (kitchenTurnsOff) {
-    const activeOrder = await db.pedidoOperacao.findFirst({
-      where: {
-        cervejariaId,
-        status: { in: [...STATUS_NA_FILA, STATUS_CANCELAMENTO_PENDENTE] },
-        itensComanda: { some: { exigePreparo: true } },
-      },
-      select: { id: true },
-    });
-    if (activeOrder) throw new CozinhaComPedidosAtivosError();
-  }
+  if (kitchenTurnsOff) await assertStationCanTurnOff(db, cervejariaId, 'COZINHA');
+  if (barTurnsOff) await assertStationCanTurnOff(db, cervejariaId, 'BAR');
+  const barData = barCloseSettings(input, current);
 
   const data = {
     ...(operationMode !== undefined
@@ -293,6 +355,7 @@ export async function updateOperationalConfig(
     ...(input.whatsappPedidoProntoNaCozinha !== undefined
       ? { whatsappPedidoProntoNaCozinha: input.whatsappPedidoProntoNaCozinha }
       : {}),
+    ...barData,
     ...(input.completeInitialSetup === true ? { setupCompletedAt: new Date() } : {}),
   };
 
@@ -301,10 +364,7 @@ export async function updateOperationalConfig(
     create: { cervejariaId, ...data },
     update: data,
   });
-  if (
-    input.kitchenItemsChargeAtLaunch !== undefined &&
-    input.kitchenItemsChargeAtLaunch !== (current?.kitchenItemsChargeAtLaunch ?? false)
-  ) {
+  if (chargeAtLaunchChanged(input, current)) {
     await recalculateOpenComandasAfterKitchenPricingChange(db, cervejariaId);
   }
   return updated;
@@ -338,17 +398,10 @@ async function updateCanonicalOperationalConfig(
   if (inventoryChanges && input.confirmacaoEstoque !== true) throw new ConfirmacaoEstoqueObrigatoriaError();
 
   const kitchenTurnsOff = input.kitchenEnabled === false && current.kitchenEnabled !== false;
-  if (kitchenTurnsOff) {
-    const activeOrder = await db.pedidoOperacao.findFirst({
-      where: {
-        cervejariaId,
-        status: { in: [...STATUS_NA_FILA, STATUS_CANCELAMENTO_PENDENTE] },
-        itensComanda: { some: { exigePreparo: true } },
-      },
-      select: { id: true },
-    });
-    if (activeOrder) throw new CozinhaComPedidosAtivosError();
-  }
+  if (kitchenTurnsOff) await assertStationCanTurnOff(db, cervejariaId, 'COZINHA');
+  const barTurnsOff = input.barEnabled === false && current.barEnabled === true;
+  if (barTurnsOff) await assertStationCanTurnOff(db, cervejariaId, 'BAR');
+  const barData = barCloseSettings(input, current);
 
   const patch: Prisma.ConfiguracaoPontoVendaUpdateInput = {
     ...(input.tapsEnabled !== undefined ? { tapsEnabled: input.tapsEnabled } : {}),
@@ -365,6 +418,7 @@ async function updateCanonicalOperationalConfig(
     ...(input.whatsappPedidoProntoNaCozinha !== undefined
       ? { whatsappPedidoProntoNaCozinha: input.whatsappPedidoProntoNaCozinha }
       : {}),
+    ...barData,
     ...(input.quantidadeMesas !== undefined ? { quantidadeMesas: input.quantidadeMesas } : {}),
   };
   const fieldNames = Object.keys(patch) as Array<keyof typeof patch>;
@@ -415,10 +469,7 @@ async function updateCanonicalOperationalConfig(
     });
   }
 
-  if (
-    input.kitchenItemsChargeAtLaunch !== undefined &&
-    input.kitchenItemsChargeAtLaunch !== current.kitchenItemsChargeAtLaunch
-  ) {
+  if (chargeAtLaunchChanged(input, current)) {
     await recalculateOpenComandasAfterKitchenPricingChange(db, cervejariaId);
   }
 

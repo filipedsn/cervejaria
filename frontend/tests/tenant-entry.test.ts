@@ -46,3 +46,12 @@ test('priority follows the daily flow: commands, kitchen, cash, stock', () => {
   assert.equal(getOperacaoEntryPath({ can: grants('inventory.read', 'cash.open', 'kitchen.read'), ...enabled }), '/operacao/cozinha');
   assert.equal(getOperacaoEntryPath({ can: grants('inventory.read', 'cash.open'), ...enabled }), '/operacao/caixa');
 });
+
+test('bar staff enters the bar queue only when the bar is enabled', () => {
+  const can = grants('bar.read', 'bar.operate');
+  assert.equal(getOperacaoEntryPath({ can, ...enabled, barEnabled: true }), '/operacao/bar');
+  assert.equal(getOperacaoEntryPath({ can, ...enabled, barEnabled: false }), OPERACAO_NO_ACCESS_PATH);
+  assert.equal(getOperacaoEntryPath({ can, ...enabled }), OPERACAO_NO_ACCESS_PATH);
+  // kitchen permission does not grant the bar queue and vice versa
+  assert.equal(getOperacaoEntryPath({ can: grants('kitchen.read'), kitchenEnabled: false, barEnabled: true, inventoryEnabled: false }), OPERACAO_NO_ACCESS_PATH);
+});

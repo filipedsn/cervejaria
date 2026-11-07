@@ -999,6 +999,15 @@ html:has(.qt-tv) {
   color: var(--ranking-orange);
 }
 
+/* Bar — mesmo telão da cozinha com destaque próprio para não confundir as telas. */
+.qt-bar-tv .cozinha-tv-eyebrow {
+  color: #a78bfa;
+}
+
+.qt-bar-tv .cozinha-tv-header {
+  border-bottom-color: rgba(167, 139, 250, 0.45);
+}
+
 .cozinha-tv-title {
   font-size: clamp(1.25rem, 2.2vw, 1.875rem);
   font-weight: 700;

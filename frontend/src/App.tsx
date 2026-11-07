@@ -68,6 +68,7 @@ function RootLayout() {
   const hideInstallBanner =
     pathname.startsWith('/ranking/tv') ||
     pathname.startsWith('/operacao/cozinha/tv') ||
+    pathname.startsWith('/operacao/bar/tv') ||
     pathname.startsWith('/c/');
 
   return (
@@ -103,6 +104,7 @@ function useOperacaoEntry() {
   const access: OperacaoEntryAccess = {
     can: canPermission,
     kitchenEnabled: contexto.ativo && contexto.temCozinha,
+    barEnabled: contexto.ativo && contexto.temBar,
     inventoryEnabled: contexto.ativo && contexto.controlaEstoque,
   };
   return {
@@ -189,6 +191,15 @@ function RequireCozinhaOperacao() {
   const { entryPath, isLoading: entryLoading } = useOperacaoEntry();
   if (isLoading || entryLoading) return <Loading fullScreen />;
   if (!contexto.ativo || !contexto.temCozinha) return <Navigate to={entryPath} replace />;
+  return <Outlet />;
+}
+
+/** Bar desligado: a fila do bar nao existe nem por URL direta. */
+function RequireBarOperacao() {
+  const { contexto, isLoading } = useOperacaoContexto();
+  const { entryPath, isLoading: entryLoading } = useOperacaoEntry();
+  if (isLoading || entryLoading) return <Loading fullScreen />;
+  if (!contexto.ativo || !contexto.temBar) return <Navigate to={entryPath} replace />;
   return <Outlet />;
 }
 
@@ -322,20 +333,21 @@ function RankingPdvTvEntry() {
   return <div className="qt-tv"><RankingPdvPage tv /></div>;
 }
 
-function CozinhaTvShell({ children }: { children: ReactNode }) {
+function CozinhaTvShell({ children, estacao = 'cozinha' }: { children: ReactNode; estacao?: 'cozinha' | 'bar' }) {
   const { isAuthenticated, isLoading, isAdmin, canPermission } = useAuth();
   const { contexto, isLoading: qLoading } = useOperacaoContexto();
+  const ativa = estacao === 'bar' ? contexto.temBar : contexto.temCozinha;
 
   if (isLoading || qLoading) return <Loading fullScreen />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/admin/cervejarias" replace />;
-  if (!contexto.ativo || !contexto.temCozinha) return <Navigate to="/operacao/comandas" replace />;
-  if (!canPermission('kitchen.read')) return <Navigate to="/operacao/caixa" replace />;
+  if (!contexto.ativo || !ativa) return <Navigate to="/operacao/comandas" replace />;
+  if (!canPermission(estacao === 'bar' ? 'bar.read' : 'kitchen.read')) return <Navigate to="/operacao/caixa" replace />;
 
-  return <div className="qt-tv qt-cozinha-tv">{children}</div>;
+  return <div className={`qt-tv qt-cozinha-tv${estacao === 'bar' ? ' qt-bar-tv' : ''}`}>{children}</div>;
 }
 
-function CozinhaTvEntry() {
+function CozinhaTvEntry({ estacao = 'cozinha' }: { estacao?: 'cozinha' | 'bar' }) {
   const [searchParams] = useSearchParams();
   const maxColunasParam = Number.parseInt(searchParams.get('maxColunas') ?? '', 10);
   const maxColunas = Number.isFinite(maxColunasParam) && maxColunasParam > 0 ? maxColunasParam : undefined;
@@ -346,8 +358,9 @@ function CozinhaTvEntry() {
 
   if (searchParams.get('demo') === '1') {
     return (
-      <div className="qt-tv qt-cozinha-tv">
+      <div className={`qt-tv qt-cozinha-tv${estacao === 'bar' ? ' qt-bar-tv' : ''}`}>
         <OperacaoCozinhaTvDemoPage
+          estacao={estacao}
           tabletFixture={forceTabletLayout}
           pedidoCount={pedidoCount}
           maxColunas={maxColunas}
@@ -357,8 +370,8 @@ function CozinhaTvEntry() {
   }
 
   return (
-    <CozinhaTvShell>
-      <OperacaoCozinhaTvPage forceTabletLayout={forceTabletLayout} />
+    <CozinhaTvShell estacao={estacao}>
+      <OperacaoCozinhaTvPage forceTabletLayout={forceTabletLayout} estacao={estacao} />
     </CozinhaTvShell>
   );
 }
@@ -371,6 +384,7 @@ const router = createBrowserRouter([
       { path: '/ranking/tv/periodo/:eventoId', element: <RankingPeriodoTvEntry /> },
       { path: '/ranking/tv/:eventoId', element: <RankingTvEntry /> },
       { path: '/operacao/cozinha/tv', element: <CozinhaTvEntry /> },
+      { path: '/operacao/bar/tv', element: <CozinhaTvEntry estacao="bar" /> },
       { path: '/c/:slug/cadastro', element: <CadastroLinkDescontinuadoPage /> },
       { path: '/c/:slug/t/:trailerId', element: <PortalEventoRedirectPage /> },
       { path: '/c/:slug/p/:pontoVendaId', element: <PortalPdvPage /> },
@@ -453,6 +467,10 @@ const router = createBrowserRouter([
                           {
                             element: <RequireCozinhaOperacao />,
                             children: [{ path: 'cozinha', element: <RequirePermissionRoute permission="kitchen.read" />, children: [{ index: true, element: <OperacaoCozinhaPage /> }] }],
+                          },
+                          {
+                            element: <RequireBarOperacao />,
+                            children: [{ path: 'bar', element: <RequirePermissionRoute permission="bar.read" />, children: [{ index: true, element: <OperacaoCozinhaPage estacao="bar" /> }] }],
                           },
                           { path: 'catalogo', element: <RequirePermissionRoute permission="catalog.manage" />, children: [{ index: true, element: <OperacaoCatalogoPage /> }] },
                           { path: 'agenda', element: <RequirePermissionRoute permission="agenda.manage" />, children: [{ index: true, element: <OperacaoAgendaPage /> }] },

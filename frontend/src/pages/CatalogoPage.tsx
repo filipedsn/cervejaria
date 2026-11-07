@@ -18,6 +18,9 @@ import { CurrencyInput } from '../components/CurrencyInput';
 import { parseCurrencyInput, formatCurrencyInputFromNumber } from '../lib/currency';
 import { invalidateOnboardingReadiness } from '../lib/onboarding';
 import { ProdutoOpcionaisModal } from '../components/ProdutoOpcionaisModal';
+import { DestinoPreparoSelector, camposDoDestino, destinoDoProduto } from '../components/operacao/DestinoPreparoSelector';
+import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
+import type { EstacaoPreparo } from '../lib/estacao';
 
 
 
@@ -359,6 +362,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
     precos: VOLUMES.map((v) => ({ volumeMl: v, preco: '' })),
     controlaEstoque: true,
     exigePreparo: false,
+    estacaoPreparo: 'COZINHA' as EstacaoPreparo,
     prepararEmPedidoSeparado: false,
   });
 
@@ -383,6 +387,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         }),
         controlaEstoque: produto.controlaEstoque ?? true,
         exigePreparo: produto.exigePreparo ?? false,
+        estacaoPreparo: produto.estacaoPreparo ?? 'COZINHA',
         prepararEmPedidoSeparado: produto.prepararEmPedidoSeparado ?? false,
       });
     } else {
@@ -397,6 +402,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         precos: VOLUMES.map((v) => ({ volumeMl: v, preco: '' })),
         controlaEstoque: true,
         exigePreparo: false,
+        estacaoPreparo: 'COZINHA',
         prepararEmPedidoSeparado: false,
       });
     }
@@ -420,6 +426,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         precos,
         controlaEstoque: form.controlaEstoque,
         exigePreparo: form.exigePreparo,
+        estacaoPreparo: form.estacaoPreparo,
         prepararEmPedidoSeparado: form.prepararEmPedidoSeparado,
       };
       return produto
@@ -515,6 +522,7 @@ function BebidaModal({ open, onClose, produto, onError }: {
         <ProdutoOperacionalFields
           controlaEstoque={form.controlaEstoque}
           exigePreparo={form.exigePreparo}
+          estacaoPreparo={form.estacaoPreparo}
           prepararEmPedidoSeparado={form.prepararEmPedidoSeparado}
           onChange={(fields) => setForm({ ...form, ...fields })}
         />
@@ -534,7 +542,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false, prepararEmPedidoSeparado: false });
+  const [form, setForm] = useState({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false, estacaoPreparo: 'COZINHA' as EstacaoPreparo, prepararEmPedidoSeparado: false });
 
 
 
@@ -553,13 +561,14 @@ function ComidaModal({ open, onClose, produto, onError }: {
           preco: produto.precos[0] ? formatCurrencyInputFromNumber(produto.precos[0].preco) : '',
           controlaEstoque: produto.controlaEstoque ?? true,
           exigePreparo: produto.exigePreparo ?? false,
+          estacaoPreparo: produto.estacaoPreparo ?? 'COZINHA',
           prepararEmPedidoSeparado: produto.prepararEmPedidoSeparado ?? false,
 
       });
 
     } else {
 
-      setForm({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false, prepararEmPedidoSeparado: false });
+      setForm({ nome: '', descricao: '', preco: '', controlaEstoque: true, exigePreparo: false, estacaoPreparo: 'COZINHA', prepararEmPedidoSeparado: false });
 
     }
 
@@ -582,6 +591,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
         precos: [{ volumeMl: FOOD_UNIT_ML, preco: parseCurrencyInput(form.preco) }],
         controlaEstoque: form.controlaEstoque,
         exigePreparo: form.exigePreparo,
+        estacaoPreparo: form.estacaoPreparo,
         prepararEmPedidoSeparado: form.prepararEmPedidoSeparado,
 
       };
@@ -646,6 +656,7 @@ function ComidaModal({ open, onClose, produto, onError }: {
         <ProdutoOperacionalFields
           controlaEstoque={form.controlaEstoque}
           exigePreparo={form.exigePreparo}
+          estacaoPreparo={form.estacaoPreparo}
           prepararEmPedidoSeparado={form.prepararEmPedidoSeparado}
           onChange={(fields) => setForm({ ...form, ...fields })}
         />
@@ -660,42 +671,42 @@ function ComidaModal({ open, onClose, produto, onError }: {
 
 }
 
+type CamposOperacionais = { controlaEstoque: boolean; exigePreparo: boolean; estacaoPreparo: EstacaoPreparo; prepararEmPedidoSeparado: boolean };
+
 function ProdutoOperacionalFields({
   controlaEstoque,
   exigePreparo,
+  estacaoPreparo,
   prepararEmPedidoSeparado,
   onChange,
-}: {
-  controlaEstoque: boolean;
-  exigePreparo: boolean;
-  prepararEmPedidoSeparado: boolean;
-  onChange: (fields: { controlaEstoque: boolean; exigePreparo: boolean; prepararEmPedidoSeparado: boolean }) => void;
+}: CamposOperacionais & {
+  onChange: (fields: CamposOperacionais) => void;
 }) {
+  const { contexto } = useOperacaoContexto();
+  const atuais = { controlaEstoque, exigePreparo, estacaoPreparo, prepararEmPedidoSeparado };
   return (
     <div className="space-y-2 border-t border-line pt-3">
       <p className="label">Comportamento operacional</p>
-      <label className="card flex cursor-pointer items-start gap-3 py-3">
-        <input
-          type="checkbox"
-          className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
-          checked={exigePreparo}
-          onChange={(event) => onChange({ controlaEstoque, exigePreparo: event.target.checked, prepararEmPedidoSeparado: event.target.checked ? prepararEmPedidoSeparado : false })}
-        />
-        <span className="min-w-0">
-          <span className="block font-semibold">Vai para a cozinha</span>
-          <span className="block text-xs text-ink-faint">Gera pedido de preparo na fila da cozinha.</span>
-        </span>
-      </label>
+      <DestinoPreparoSelector
+        value={destinoDoProduto({ exigePreparo, estacaoPreparo })}
+        // Esta tela sempre ofereceu a cozinha; o bar aparece só quando ligado.
+        temCozinha
+        temBar={contexto.ativo && contexto.temBar}
+        onChange={(destino) => {
+          const campos = camposDoDestino(destino);
+          onChange({ ...atuais, ...campos, prepararEmPedidoSeparado: campos.exigePreparo ? prepararEmPedidoSeparado : false });
+        }}
+      />
       {exigePreparo && <label className="card flex cursor-pointer items-start gap-3 py-3">
         <input
           type="checkbox"
           className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
           checked={prepararEmPedidoSeparado}
-          onChange={(event) => onChange({ controlaEstoque, exigePreparo, prepararEmPedidoSeparado: event.target.checked })}
+          onChange={(event) => onChange({ ...atuais, prepararEmPedidoSeparado: event.target.checked })}
         />
         <span className="min-w-0">
           <span className="block font-semibold">Preparar em pedido separado</span>
-          <span className="block text-xs text-ink-faint">Cria um pedido próprio quando outros itens de cozinha forem lançados juntos.</span>
+          <span className="block text-xs text-ink-faint">Cria um pedido próprio quando outros itens {estacaoPreparo === 'BAR' ? 'do bar' : 'de cozinha'} forem lançados juntos.</span>
         </span>
       </label>}
       <label className="card flex cursor-pointer items-start gap-3 py-3">
@@ -703,7 +714,7 @@ function ProdutoOperacionalFields({
           type="checkbox"
           className="mt-1 h-5 w-5 shrink-0 accent-brand-400"
           checked={controlaEstoque}
-          onChange={(event) => onChange({ controlaEstoque: event.target.checked, exigePreparo, prepararEmPedidoSeparado })}
+          onChange={(event) => onChange({ ...atuais, controlaEstoque: event.target.checked })}
         />
         <span className="min-w-0">
           <span className="block font-semibold">Controlar estoque</span>

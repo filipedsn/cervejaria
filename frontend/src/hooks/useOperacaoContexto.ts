@@ -19,12 +19,17 @@ export type OperacaoContexto = {
   kitchenEnabled: boolean;
   kitchenItemsChargeAtLaunch: boolean;
   allowCloseComandaWithPendingKitchenOrders: boolean;
+  barEnabled: boolean;
+  barItemsChargeAtLaunch: boolean;
+  allowCloseComandaWithPendingBarOrders: boolean;
   controlaEstoque: boolean;
   temCozinha: boolean;
+  temBar: boolean;
   usaCardapio: boolean;
   quantidadeMesas: number;
   whatsappPedidoProntoEnabled: boolean;
   whatsappPedidoProntoNaCozinha: boolean;
+  whatsappPedidoProntoNoBar: boolean;
   pontosVenda: PontoVenda[];
 };
 
@@ -39,12 +44,17 @@ const CONTEXTO_INATIVO: OperacaoContexto = {
   kitchenEnabled: false,
   kitchenItemsChargeAtLaunch: false,
   allowCloseComandaWithPendingKitchenOrders: false,
+  barEnabled: false,
+  barItemsChargeAtLaunch: false,
+  allowCloseComandaWithPendingBarOrders: false,
   controlaEstoque: false,
   temCozinha: false,
+  temBar: false,
   usaCardapio: false,
   quantidadeMesas: 0,
   whatsappPedidoProntoEnabled: false,
   whatsappPedidoProntoNaCozinha: false,
+  whatsappPedidoProntoNoBar: false,
   pontosVenda: [],
 };
 

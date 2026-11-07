@@ -54,6 +54,9 @@ import {
   rotuloStatusPedidoResumo,
   resumirItensComanda,
   temPedidoCozinhaPendente,
+  cobrancaAoLancarDoContexto,
+  estacaoBloqueiaFechamentoComanda,
+  estacaoDoPedido,
   totalItensComanda,
   totalPendenteComanda,
   type CaixaResposta,
@@ -166,9 +169,9 @@ export function OperacaoComandaDetailPage() {
 
   const resumoItens = useMemo(
     () => (comanda && contextoResolvido && !contextoErro
-      ? resumirItensComanda(comanda, contexto.kitchenItemsChargeAtLaunch)
+      ? resumirItensComanda(comanda, cobrancaAoLancarDoContexto(contexto))
       : []),
-    [comanda, contexto.kitchenItemsChargeAtLaunch, contextoResolvido, contextoErro],
+    [comanda, contexto.kitchenItemsChargeAtLaunch, contexto.barItemsChargeAtLaunch, contextoResolvido, contextoErro],
   );
   const resumoConfiguracaoCarregada = contextoResolvido && !contextoErro;
 
@@ -596,10 +599,13 @@ export function OperacaoComandaDetailPage() {
   const temItens = totalItensComanda(comanda) > 0;
   const cozinhaPendente = temPedidoCozinhaPendente(comanda);
   const configuracaoFechamentoCarregada = contextoResolvido && !contextoErro;
-  const permitirFecharComCozinhaPendente =
-    configuracaoFechamentoCarregada &&
-    contexto.allowCloseComandaWithPendingKitchenOrders &&
-    contexto.kitchenItemsChargeAtLaunch;
+  // Cada estação tem a própria regra: basta uma delas bloquear para impedir o fechamento.
+  const estacaoBloqueio = estacaoBloqueiaFechamentoComanda(comanda, contexto);
+  const permitirFecharComCozinhaPendente = configuracaoFechamentoCarregada && estacaoBloqueio === null;
+  const origemBloqueio = estacaoBloqueio === 'BAR' ? 'do bar' : 'da cozinha';
+  const pendenteNaCozinha = temPedidoCozinhaPendente(comanda, 'COZINHA');
+  const pendenteNoBar = temPedidoCozinhaPendente(comanda, 'BAR');
+  const ondePendente = pendenteNaCozinha && pendenteNoBar ? 'na cozinha e no bar' : pendenteNoBar ? 'no bar' : 'na cozinha';
   const podeFechar = aberta && temItens && (!cozinhaPendente || permitirFecharComCozinhaPendente);
   const hasActionBar = aberta || !aberta;
   const podeAplicarDesconto = canPermission('discount.apply') && podeDarDescontoOperacao;
@@ -607,7 +613,8 @@ export function OperacaoComandaDetailPage() {
   const totalComDesconto = Math.max(0, comanda.subtotal - descontoValor);
   const totalAPagar = Math.max(0, totalComDesconto);
   const totalParcialComanda = comanda.total;
-  const totalPendente = totalPendenteComanda(comanda, contexto.kitchenItemsChargeAtLaunch);
+  const totalPendenteCozinha = totalPendenteComanda(comanda, cobrancaAoLancarDoContexto(contexto), 'COZINHA');
+  const totalPendenteBar = totalPendenteComanda(comanda, cobrancaAoLancarDoContexto(contexto), 'BAR');
   const clienteElegivelParaPendente = Boolean(
     comanda.cliente?.id && comanda.cliente.telefone && digitsOnly(comanda.cliente.telefone).length >= 10,
   );
@@ -681,7 +688,8 @@ export function OperacaoComandaDetailPage() {
           </div>
         )}
         {aberta && comanda.solicitacaoPagamentoEm && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950"><strong>Cliente solicitou atendimento para pagamento</strong><button type="button" className="touch-btn-secondary touch-btn-sm" disabled={resolverSolicitacao.isPending} onClick={() => resolverSolicitacao.mutate()}>{resolverSolicitacao.isPending ? 'Resolvendo...' : 'Resolver solicitação'}</button></div>}
-        {totalPendente > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(totalPendente)}</p>}
+        {totalPendenteCozinha > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente na cozinha: {formatCurrency(totalPendenteCozinha)}</p>}
+        {totalPendenteBar > 0 && <p className="mt-1 text-right text-sm font-semibold text-amber-400">Pendente no bar: {formatCurrency(totalPendenteBar)}</p>}
         {!aberta && comanda.desconto > 0 && (
           <div className="mt-3 space-y-1 text-sm border-t border-line pt-3">
             <div className="flex justify-between text-ink-muted">
@@ -757,9 +765,12 @@ export function OperacaoComandaDetailPage() {
         {ordenarPedidosPorSenhaDecrescente(comanda.pedidos).filter(pedidoVisivelNaComanda).map((pedido) => {
           const confirmado = pedidoConfirmadoNaComanda(pedido);
           const naCozinha = pedidoVaiParaCozinha(pedido.itens) && pedido.status !== 'CANCELADO';
+          const avisoNaEstacao = estacaoDoPedido(pedido) === 'BAR'
+            ? contexto.whatsappPedidoProntoNoBar
+            : contexto.whatsappPedidoProntoNaCozinha;
           const podeAvisarCliente =
             contexto.whatsappPedidoProntoEnabled &&
-            !contexto.whatsappPedidoProntoNaCozinha &&
+            !avisoNaEstacao &&
             pedido.status === 'PRONTO' &&
             pedido.itens.some((item) => item.exigePreparo && !item.cancelamentoPendenteEm && !item.canceladoEm) &&
             !pedido.clienteAvisadoEm;
@@ -983,12 +994,12 @@ export function OperacaoComandaDetailPage() {
         )}
         {aberta && temItens && cozinhaPendente && configuracaoFechamentoCarregada && !permitirFecharComCozinhaPendente && (
           <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
-            Aguarde a entrega dos itens da cozinha antes de fechar a comanda.
+            Aguarde a entrega dos itens {origemBloqueio} antes de fechar a comanda.
           </p>
         )}
         {aberta && temItens && cozinhaPendente && permitirFecharComCozinhaPendente && (
           <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
-            Há pedido ainda não entregue na cozinha. O fechamento e o pagamento estão liberados pela configuração.
+            Há pedido ainda não entregue {ondePendente}. O fechamento e o pagamento estão liberados pela configuração.
           </p>
         )}
 
@@ -1052,7 +1063,7 @@ export function OperacaoComandaDetailPage() {
       {aberta && temItens && cozinhaPendente && !permitirFecharComCozinhaPendente && (
         <MobileActionBar>
           <button type="button" className="touch-btn-primary w-full" disabled>
-            Aguardando entrega da cozinha
+            Aguardando entrega {origemBloqueio}
           </button>
           <button type="button" className="touch-btn-orange w-full" onClick={() => navigate('/operacao/comandas')}>
             Voltar às comandas

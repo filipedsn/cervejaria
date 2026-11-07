@@ -25,6 +25,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { usePollInterval } from '../../hooks/usePollInterval';
 import {
+  estacaoDoPedido,
   isChopeOperacao,
   mapSaldosEstoque,
   normalizeCategoriaProduto,
@@ -64,6 +65,7 @@ export function OperacaoVendaAvulsaPage() {
   const pontoAtivo = pontoVendaId || pontosVenda[0]?.id || '';
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const temCozinha = contexto.ativo && contexto.temCozinha;
+  const temBar = contexto.ativo && contexto.temBar;
   const pollMs = usePollInterval(30_000);
 
   const { data: produtos, isLoading } = useQuery({
@@ -438,11 +440,18 @@ export function OperacaoVendaAvulsaPage() {
               )}
             </div>
             {temCozinha &&
-            closedVenda.pedidos.some((pedido) => pedido.itens.some((item) => item.exigePreparo)) ? (
+            closedVenda.pedidos.some((pedido) => estacaoDoPedido(pedido) === 'COZINHA') ? (
               <p className="text-sm text-ink-faint">
                 Senha {closedVenda.pedidos[0]?.numero} enviada para a cozinha.
               </p>
             ) : null}
+            {temBar && closedVenda.pedidos
+              .filter((pedido) => estacaoDoPedido(pedido) === 'BAR')
+              .map((pedido) => (
+                <p key={pedido.id} className="text-sm text-ink-faint">
+                  Senha {pedido.numero} enviada para o bar.
+                </p>
+              ))}
             <button
               type="button"
               className="touch-btn-primary w-full"

@@ -6,10 +6,19 @@ import { useCozinhaAlerta } from './useCozinhaAlerta';
 import { usePollInterval } from './usePollInterval';
 import { connectSocket, getSocket } from '../lib/socket';
 import type { PedidoCozinha, StatusPedido } from '../lib/operacao';
+import { ESTACOES, type EstacaoUi } from '../lib/estacao';
 
 export const CAIXA_COZINHA_QUERY_KEY = ['operacao-cozinha'] as const;
+export const CAIXA_BAR_QUERY_KEY = ['operacao-bar'] as const;
 
-export function useOperacaoCozinha() {
+export function estacaoQueryKey(estacao: EstacaoUi) {
+  return estacao === 'bar' ? CAIXA_BAR_QUERY_KEY : CAIXA_COZINHA_QUERY_KEY;
+}
+
+/** Fila da Cozinha (padrão) ou do Bar; mesmas regras, API e alerta próprios. */
+export function useOperacaoCozinha(estacao: EstacaoUi = 'cozinha') {
+  const filaQueryKey = estacaoQueryKey(estacao);
+  const apiBase = ESTACOES[estacao].api;
   const { cervejaria } = useAuth();
   const queryClient = useQueryClient();
   const pedidosConhecidos = useRef<Set<string> | null>(null);
@@ -18,8 +27,8 @@ export function useOperacaoCozinha() {
   const pollMs = usePollInterval(20_000);
 
   const query = useQuery({
-    queryKey: CAIXA_COZINHA_QUERY_KEY,
-    queryFn: () => api.get<PedidoCozinha[]>('/api/operacao/cozinha?incluirEntregues=true'),
+    queryKey: filaQueryKey,
+    queryFn: () => api.get<PedidoCozinha[]>(`${apiBase}?incluirEntregues=true`),
     refetchInterval: pollMs,
   });
 
@@ -53,7 +62,7 @@ export function useOperacaoCozinha() {
       0,
     );
   const aguardando = pedidosNaFila.length;
-  const alerta = useCozinhaAlerta(aguardando);
+  const alerta = useCozinhaAlerta(aguardando, estacao);
 
   useEffect(() => {
     if (!query.data) return;
@@ -81,13 +90,13 @@ export function useOperacaoCozinha() {
     const socket = getSocket();
 
     const onNovo = () => {
-      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: filaQueryKey });
     };
     const onAtualizado = () => {
-      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: filaQueryKey });
     };
     const onReconnect = () => {
-      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: filaQueryKey });
     };
 
     socket.on('operacao:pedido-novo', onNovo);
@@ -99,13 +108,13 @@ export function useOperacaoCozinha() {
       socket.off('operacao:pedido-atualizado', onAtualizado);
       socket.off('connect', onReconnect);
     };
-  }, [cervejaria?.id, queryClient, alerta.avisar]);
+  }, [cervejaria?.id, queryClient, alerta.avisar, filaQueryKey]);
 
   const mudarStatus = useMutation({
     mutationFn: ({ id, status, expectedStatus }: { id: string; status: StatusPedido; expectedStatus: StatusPedido }) =>
-      api.patch<PedidoCozinha>(`/api/operacao/cozinha/${id}/status`, { status, expectedStatus }),
+      api.patch<PedidoCozinha>(`${apiBase}/${id}/status`, { status, expectedStatus }),
     onSuccess: (pedidoConfirmado) => {
-      queryClient.setQueryData<PedidoCozinha[]>(CAIXA_COZINHA_QUERY_KEY, (atual) =>
+      queryClient.setQueryData<PedidoCozinha[]>(filaQueryKey, (atual) =>
         (atual ?? []).map((pedido) => pedido.id === pedidoConfirmado.id
           ? {
               ...pedido,
@@ -120,7 +129,7 @@ export function useOperacaoCozinha() {
       );
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: filaQueryKey });
       void queryClient.invalidateQueries({ queryKey: ['operacao-caixa'] });
       void queryClient.invalidateQueries({ queryKey: ['evento-caixa'] });
       void queryClient.invalidateQueries({ queryKey: ['operacao-estoque'] });
@@ -147,13 +156,13 @@ export function useOperacaoCozinha() {
   const removerItem = useMutation({
     mutationFn: ({ comandaId, itemId, quantidade }: { comandaId: string; itemId: string; quantidade?: number }) =>
       api.delete(`/api/operacao/comandas/${comandaId}/itens/${itemId}`, quantidade ? { quantidade } : undefined),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: filaQueryKey }),
   });
 
   const confirmarCancelamentoItem = useMutation({
     mutationFn: ({ pedidoId, itemId }: { pedidoId: string; itemId: string }) =>
-      api.patch(`/api/operacao/cozinha/${pedidoId}/itens/${itemId}/confirmar-cancelamento`, {}),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: CAIXA_COZINHA_QUERY_KEY }),
+      api.patch(`${apiBase}/${pedidoId}/itens/${itemId}/confirmar-cancelamento`, {}),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: filaQueryKey }),
   });
 
   return {

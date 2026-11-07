@@ -9,8 +9,12 @@ export type CanonicalPdvOperationalSettings = {
   kitchenEnabled: boolean;
   kitchenItemsChargeAtLaunch: boolean;
   allowCloseComandaWithPendingKitchenOrders: boolean;
+  barEnabled: boolean;
+  barItemsChargeAtLaunch: boolean;
+  allowCloseComandaWithPendingBarOrders: boolean;
   whatsappPedidoProntoEnabled: boolean;
   whatsappPedidoProntoNaCozinha: boolean;
+  whatsappPedidoProntoNoBar: boolean;
   quantidadeMesas: number | null;
 };
 
@@ -114,8 +118,12 @@ export async function readCanonicalPdvOperationalSettingsIfEnabled(
           kitchenEnabled: true,
           kitchenItemsChargeAtLaunch: true,
           allowCloseComandaWithPendingKitchenOrders: true,
+          barEnabled: true,
+          barItemsChargeAtLaunch: true,
+          allowCloseComandaWithPendingBarOrders: true,
           whatsappPedidoProntoEnabled: true,
           whatsappPedidoProntoNaCozinha: true,
+          whatsappPedidoProntoNoBar: true,
           quantidadeMesas: true,
         },
       },

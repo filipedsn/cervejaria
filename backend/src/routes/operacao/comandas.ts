@@ -20,8 +20,10 @@ import {
   notificarPedidoNovo,
   notificarPedidosDaComanda,
   notificarComandaOperacaoAtualizada,
-  temPedidoCozinhaPendente,
+  estacaoBloqueiaFechamento,
+  mensagemFechamentoBloqueado,
 } from '../../lib/operacao/cozinha.js';
+import { estacaoDoPedido } from '../../lib/operacao/estacao-preparo.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
 import { proximoNumeroComandaOperacaoTurno } from '../../lib/comanda-numero.js';
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/operacao/desconto.js';
@@ -192,7 +194,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'asc' },
     });
 
-    return comandas.map((comanda) => resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+    return comandas.map((comanda) => resumoComanda(comanda, request.operacao.cobrancaAoLancar));
   });
 
   app.get('/:id/espelho-turno', { preHandler: [requirePermissao(app, 'command.read')] }, async (request, reply) => {
@@ -229,7 +231,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       }),
       include: {
         ...INCLUDE_COMANDA_OPERACAO,
-        pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+        pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true } } } } } },
         ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
         itens: {
           orderBy: { createdAt: 'asc' },
@@ -245,7 +247,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       }),
       include: {
         ...INCLUDE_COMANDA_OPERACAO,
-        pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+        pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true } } } } } },
         ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
         itens: { orderBy: { createdAt: 'asc' }, include: { produto: true, opcionais: true, cancelamentosEntregue: { orderBy: { createdAt: 'asc' } } } },
       },
@@ -261,7 +263,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         where: whereComandaOperacao(cervejariaId, { id, pontoVendaId: sessao.pontoVendaId, status: 'FECHADA' }),
         include: {
           ...INCLUDE_COMANDA_OPERACAO,
-          pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true } } } } } },
+          pontoVenda: { select: { id: true, nome: true, cervejaria: { select: { configuracaoOperacional: { select: { kitchenItemsChargeAtLaunch: true, barItemsChargeAtLaunch: true } } } } } },
           ocorrencia: { select: { id: true, nome: true, data: true, horaInicio: true, horaFim: true, agenda: { select: { id: true, nome: true } } } },
           itens: {
             orderBy: { createdAt: 'asc' },
@@ -272,7 +274,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     }
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada neste turno' });
 
-    const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const resumo = resumoComanda(comanda, request.operacao.cobrancaAoLancar);
     const recebido = comanda.pagamentos.reduce((soma, pagamento) => soma + Number(pagamento.valor), 0);
     return {
       ...resumo,
@@ -365,17 +367,17 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const dia = comandas[0]!.diaOperacional!;
     await assertCaixaAberto(cervejariaId, pontoVendaId, dia);
 
-    const allowCloseWithPendingKitchen = request.operacao.effectiveSettings;
-    if (
-      !(allowCloseWithPendingKitchen?.allowCloseComandaWithPendingKitchenOrders && allowCloseWithPendingKitchen.kitchenItemsChargeAtLaunch) &&
-      comandas.some((comanda) => temPedidoCozinhaPendente(comanda.pedidosOperacao))
-    ) {
+    const estacaoPendente = estacaoBloqueiaFechamento(
+      comandas.flatMap((comanda) => comanda.pedidosOperacao),
+      request.operacao.effectiveSettings,
+    );
+    if (estacaoPendente) {
       return reply.status(409).send({
-        error: 'Aguarde a entrega dos itens da cozinha antes de fechar as comandas',
+        error: mensagemFechamentoBloqueado(estacaoPendente, true),
       });
     }
 
-    const resumos = comandas.map((comanda) => resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+    const resumos = comandas.map((comanda) => resumoComanda(comanda, request.operacao.cobrancaAoLancar));
     const comandasComItens = resumos.filter((c) => c.total > 0);
     const comandasVazias = resumos.filter((c) => {
       const comanda = comandas.find((item) => item.id === c.id)!;
@@ -447,7 +449,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           data: { status: 'CANCELADA', fechadaEm, fechadoPorId: user.sub },
           include: INCLUDE_COMANDA_OPERACAO,
         });
-        canceladas.push(resumoComanda(cancelada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+        canceladas.push(resumoComanda(cancelada, request.operacao.cobrancaAoLancar));
       }
 
       for (const resumo of comandasComItens) {
@@ -465,13 +467,13 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           usuarioId: user.sub,
           fechadaEm,
           sessaoCaixaId: sessao.id,
-          kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
+          cobrancaAoLancar: request.operacao.cobrancaAoLancar,
         });
         const fechada = await tx.comanda.findUniqueOrThrow({
           where: { id: resumo.id },
           include: INCLUDE_COMANDA_OPERACAO,
         });
-        fechadas.push(resumoComanda(fechada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+        fechadas.push(resumoComanda(fechada, request.operacao.cobrancaAoLancar));
       }
 
       return { fechadas, canceladas };
@@ -536,7 +538,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     });
     if (!comanda) return reply.status(404).send({ error: 'Comanda não encontrada' });
 
-    return resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    return resumoComanda(comanda, request.operacao.cobrancaAoLancar);
   });
 
   /** Confirma Servir do portal: pedidos sem preparo passam RECEBIDO → ENTREGUE (rótulo Entregue no cliente). */
@@ -572,7 +574,16 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const { cervejariaId } = request.operacao;
     const { id: comandaId, pedidoId } = request.params as { id: string; pedidoId: string };
     const configuracao = request.operacao.effectiveSettings;
-    if (!configuracao?.whatsappPedidoProntoEnabled || configuracao.whatsappPedidoProntoNaCozinha) {
+    if (!configuracao?.whatsappPedidoProntoEnabled) {
+      return reply.status(409).send({ error: 'O aviso pelo WhatsApp não está configurado para a comanda.' });
+    }
+    const pedidoEstacao = await prisma.pedidoOperacao.findFirst({
+      where: { id: pedidoId, comandaId, cervejariaId },
+      select: { itensComanda: { select: { exigePreparo: true, estacaoPreparo: true } } },
+    });
+    // Quando o aviso é feito na tela da estação, a comanda não marca o envio.
+    const estacaoAviso = pedidoEstacao ? estacaoDoPedido(pedidoEstacao.itensComanda) : null;
+    if (estacaoAviso === 'BAR' ? configuracao.whatsappPedidoProntoNoBar : configuracao.whatsappPedidoProntoNaCozinha) {
       return reply.status(409).send({ error: 'O aviso pelo WhatsApp não está configurado para a comanda.' });
     }
 
@@ -641,11 +652,11 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       include: INCLUDE_COMANDA_OPERACAO,
     });
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
-    return resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    return resumoComanda(atualizada, request.operacao.cobrancaAoLancar);
   });
 
   app.post('/', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
+    const { cervejariaId, temCozinha, temBar, controlaEstoque, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const body = abrirComandaSchema.parse(request.body);
     const dia = diaOperacional();
@@ -728,13 +739,14 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
           observacao: body.observacao,
           itens,
           temCozinha,
+          temBar,
         });
 
         for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
           context: 'CAIXA', moduleEnabled: controlaEstoque, cervejariaId,
           pontoVendaId: body.pontoVendaId, pedidoId: pedido.id, registradoPorId: user.sub, items: itensPedido,
         });
-        await recalcComandaTotalOperacao(tx, criada.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
+        await recalcComandaTotalOperacao(tx, criada.id, { cobrancaAoLancar: request.operacao.cobrancaAoLancar });
       }
 
       return {
@@ -757,9 +769,9 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     const { comanda, pedidos } = resultado;
 
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
-    if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
+    if (temCozinha || temBar) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
-    const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const resumo = resumoComanda(comanda, request.operacao.cobrancaAoLancar);
     void registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_CRIADA',
@@ -785,7 +797,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/pedidos', { preHandler: [requirePermissao(app, 'command.operate')] }, async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque, tapsEnabled } = request.operacao;
+    const { cervejariaId, temCozinha, temBar, controlaEstoque, tapsEnabled } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
     const body = adicionarPedidoSchema.parse(request.body);
@@ -807,7 +819,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         include: INCLUDE_COMANDA_OPERACAO,
       });
       if (!atual) return reply.status(404).send({ error: 'Comanda não encontrada' });
-      return reply.status(200).send(resumoComanda(atual, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+      return reply.status(200).send(resumoComanda(atual, request.operacao.cobrancaAoLancar));
     }
     if (comanda.status !== 'ABERTA') {
       return reply.status(409).send({ error: 'Esta comanda já foi fechada' });
@@ -860,6 +872,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         observacao: body.observacao,
         itens,
         temCozinha,
+        temBar,
       });
 
       for (const { pedido, itens: itensPedido } of pedidosCriados) await inventoryService.consumeSale(tx, {
@@ -867,7 +880,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         pontoVendaId: comandaAtual.pontoVendaId!, pedidoId: pedido.id, registradoPorId: user.sub, items: itensPedido,
       });
 
-      await recalcComandaTotalOperacao(tx, comandaAtual.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
+      await recalcComandaTotalOperacao(tx, comandaAtual.id, { cobrancaAoLancar: request.operacao.cobrancaAoLancar });
 
       return {
         atualizada: await tx.comanda.findUniqueOrThrow({
@@ -880,13 +893,13 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     }, CAIXA_VENDA_TX);
 
     if (idempotente) {
-      return reply.status(200).send(resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch));
+      return reply.status(200).send(resumoComanda(atualizada, request.operacao.cobrancaAoLancar));
     }
 
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
-    if (temCozinha) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
+    if (temCozinha || temBar) for (const pedido of pedidos) await notificarPedidoNovo(app, cervejariaId, pedido);
 
-    const resumo = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const resumo = resumoComanda(atualizada, request.operacao.cobrancaAoLancar);
     void registrarTransacao({
       cervejariaId,
       tipo: 'KITCHEN_ORDER_CREATED',
@@ -930,7 +943,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:comandaId/itens/:itemId', { preHandler: [requirePermissaoQuantidadeItem(app)] }, async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
+    const { cervejariaId, temCozinha, temBar, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { comandaId, itemId } = request.params as { comandaId: string; itemId: string };
     const body = itemQuantidadeSchema.parse(request.body);
@@ -944,7 +957,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       user: getAuthUser(request),
       registradoPorId: user.sub,
       moduloControlaEstoque: controlaEstoque,
-      temCozinha,
+      temCozinha: temCozinha || temBar,
     });
 
     if ('error' in result) {
@@ -982,7 +995,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Venda avulsa não permite desconto' });
     }
 
-    const cozinhaAoLancar = request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch;
+    const cozinhaAoLancar = request.operacao.cobrancaAoLancar;
     const subtotalEmCents = subtotalComandaEmCentavos(comanda, cozinhaAoLancar);
     const descontoEmCents = centavos(body.desconto);
     if (descontoEmCents > subtotalEmCents) {
@@ -1009,14 +1022,14 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         where: { id: comanda.id },
         data: { desconto: body.desconto },
       });
-      await recalcComandaTotalOperacao(tx, comanda.id, { kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch });
+      await recalcComandaTotalOperacao(tx, comanda.id, { cobrancaAoLancar: request.operacao.cobrancaAoLancar });
       return tx.comanda.findUniqueOrThrow({
         where: { id: comanda.id },
         include: INCLUDE_COMANDA_OPERACAO,
       });
     }, CAIXA_VENDA_TX);
 
-    const resumoAtualizado = resumoComanda(atualizada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const resumoAtualizado = resumoComanda(atualizada, request.operacao.cobrancaAoLancar);
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
     void registrarTransacao({
       cervejariaId,
@@ -1045,18 +1058,15 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Esta comanda já foi fechada' });
     }
 
-    const resumo = resumoComanda(comanda, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const resumo = resumoComanda(comanda, request.operacao.cobrancaAoLancar);
     if (comanda.itens.length === 0) {
       return reply.status(409).send({ error: 'Lance ao menos um item antes de cobrar' });
     }
 
-    const allowCloseWithPendingKitchen = request.operacao.effectiveSettings;
-    if (
-      !(allowCloseWithPendingKitchen?.allowCloseComandaWithPendingKitchenOrders && allowCloseWithPendingKitchen.kitchenItemsChargeAtLaunch) &&
-      temPedidoCozinhaPendente(comanda.pedidosOperacao)
-    ) {
+    const estacaoPendente = estacaoBloqueiaFechamento(comanda.pedidosOperacao, request.operacao.effectiveSettings);
+    if (estacaoPendente) {
       return reply.status(409).send({
-        error: 'Aguarde a entrega dos itens da cozinha antes de fechar a comanda',
+        error: mensagemFechamentoBloqueado(estacaoPendente),
       });
     }
 
@@ -1097,7 +1107,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
         fechadaEm: new Date(),
         sessaoCaixaId: sessao.id,
         deixarPendente: body.deixarPendente,
-        kitchenItemsChargeAtLaunch: request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch,
+        cobrancaAoLancar: request.operacao.cobrancaAoLancar,
       });
 
       return tx.comanda.findUniqueOrThrow({
@@ -1106,7 +1116,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
       });
     }, CAIXA_VENDA_TX);
 
-    const resumoFechada = resumoComanda(fechada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const resumoFechada = resumoComanda(fechada, request.operacao.cobrancaAoLancar);
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
 
     if (!body.deixarPendente) {
@@ -1124,7 +1134,7 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/cancelar', { preHandler: [requirePermissaoOuDono(app, 'command.cancel')] }, async (request, reply) => {
-    const { cervejariaId, temCozinha, controlaEstoque } = request.operacao;
+    const { cervejariaId, temCozinha, temBar, controlaEstoque } = request.operacao;
     const user = getAuthUser(request);
     const { id } = request.params as { id: string };
 
@@ -1172,9 +1182,9 @@ export async function comandasOperacaoRoutes(app: FastifyInstance) {
     });
 
     notificarComandaOperacaoAtualizada(app, cervejariaId, comanda.id);
-    if (temCozinha) await notificarPedidosDaComanda(app, cervejariaId, comanda.id);
+    if (temCozinha || temBar) await notificarPedidosDaComanda(app, cervejariaId, comanda.id);
 
-    const resumoCancelada = resumoComanda(cancelada, request.operacao.effectiveSettings.kitchenItemsChargeAtLaunch);
+    const resumoCancelada = resumoComanda(cancelada, request.operacao.cobrancaAoLancar);
     void registrarTransacao({
       cervejariaId,
       tipo: 'COMANDA_CANCELADA',
