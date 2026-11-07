@@ -539,7 +539,13 @@ function prdCard(snapshot, delivery, now) {
   if (!snapshot.prd?.ok) return unavailable('Site dos clientes', snapshot.prd?.error);
   const p = snapshot.prd.data;
   const vps = p.vps?.configured && p.vps.ok ? p.vps.data : null;
-  const infra = vps ? infraView(vps, p.vpsHistory ?? [], now, { version: ver, manage: Boolean(p.backupFiles) }) : null;
+  const infra = vps
+    ? infraView(vps, p.vpsHistory ?? [], now, {
+        version: ver,
+        manage: Boolean(p.backupFiles),
+        scheduleManage: Boolean(p.scheduleManage),
+      })
+    : null;
   const issues = [];
   if (vps) {
     if (infra?.containers.length) {

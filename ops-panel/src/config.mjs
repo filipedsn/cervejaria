@@ -34,6 +34,8 @@ export const config = {
   // Alias da chave restrita a baixar/apagar backups (backup-files.sh). Vazio = só a lista.
   backupSshHost: env('OPS_BACKUP_SSH_HOST', ''),
   backupDownloadDir: env('OPS_BACKUP_DOWNLOAD_DIR', join(homedir(), 'Downloads')),
+  // Alias da chave restrita a ligar/desligar/alterar horário dos crons (cron-manage.sh). Vazio = só a lista.
+  cronSshHost: env('OPS_CRON_SSH_HOST', ''),
   auditLog: env('OPS_PANEL_AUDIT_LOG', join(ROOT, 'deploy', 'logs', 'ops-panel.log')),
   runtimeDir: join(ROOT, 'deploy', 'runtime'),
 };

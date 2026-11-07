@@ -56,7 +56,13 @@ const INFRA_REFRESH_MS = 30_000;
 app.get('/api/infra', async (_request, reply) => {
   const vps = await vpsReport(INFRA_REFRESH_MS - 2_000);
   if (!vps?.ok) return reply.code(503).send({ error: vps?.error ?? 'leitura do servidor não configurada' });
-  return { infra: infraView(vps.data, vpsHistory(), Date.now(), { version: ver, manage: Boolean(config.backupSshHost) }) };
+  return {
+    infra: infraView(vps.data, vpsHistory(), Date.now(), {
+      version: ver,
+      manage: Boolean(config.backupSshHost),
+      scheduleManage: Boolean(config.cronSshHost),
+    }),
+  };
 });
 
 app.get('/api/preview/deploy', async (request, reply) => {

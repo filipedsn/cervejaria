@@ -6,7 +6,8 @@ import { firstLine, run } from './exec.mjs';
 import { isOnMain } from './collectors/git.mjs';
 import { fetchPendingDeployments, fetchPr, reviewDeployment } from './collectors/github.mjs';
 import { collectPrd, vpsReport } from './collectors/prd.mjs';
-import { BACKUP_NAME_RE, backupsView } from './infra.mjs';
+import { BACKUP_NAME_RE, backupsView, schedulesView } from './infra.mjs';
+import { disableSchedule, enableSchedule, SCHEDULE_ID_RE, setScheduleTime, TIME_RE } from './schedules.mjs';
 import { isMergeReady, needsUpdate, ver } from './state.mjs';
 
 const SHA_RE = /^[0-9a-f]{40}$/;
@@ -135,6 +136,47 @@ async function backupDelete(params) {
   return `Backup ${backup.name} apagado do servidor. A cópia externa (OneDrive) não muda.`;
 }
 
+/** Schedule que está no relatório agora. */
+async function knownSchedule(params) {
+  const id = String(params.id ?? '');
+  if (!SCHEDULE_ID_RE.test(id)) throw new ActionError('Agendamento inválido.');
+  if (!config.cronSshHost) throw new ActionError('Ligar, desligar e alterar horário dos agendamentos não estão configurados neste PC (OPS_CRON_SSH_HOST).');
+  const vps = await vpsReport(10_000, true);
+  const view = vps?.ok ? schedulesView(vps.data, { manage: true }) : null;
+  if (!view) throw new ActionError('Não foi possível ler os agendamentos do servidor agora. Tente de novo em instantes.');
+  const schedule = view.items.find((s) => s.id === id);
+  if (!schedule?.present) throw new ActionError(`O agendamento ${id} não está no servidor. Clique em Recarregar no topo.`);
+  return schedule;
+}
+
+async function scheduleEnable(params) {
+  const schedule = await knownSchedule(params);
+  if (!schedule.canEnable) throw new ActionError(`Esse agendamento não pode ser ligado agora (${schedule.enabled ? 'já está ligado' : 'indisponível'}).`);
+  await enableSchedule({ host: config.cronSshHost, id: schedule.id });
+  await vpsReport(0, true);
+  return `Agendamento "${schedule.label}" ligado no servidor.`;
+}
+
+async function scheduleDisable(params) {
+  const schedule = await knownSchedule(params);
+  if (String(params.confirm ?? '').trim() !== schedule.id) throw new ActionError('Para confirmar, digite o identificador do agendamento exatamente como aparece.');
+  if (!schedule.canDisable) throw new ActionError('Esse agendamento não pode ser desligado agora.');
+  await disableSchedule({ host: config.cronSshHost, id: schedule.id });
+  await vpsReport(0, true);
+  return `Agendamento "${schedule.label}" desligado no servidor. O arquivo ficou pausado; ligar de novo restaura o mesmo horário.`;
+}
+
+async function scheduleSetTime(params) {
+  const schedule = await knownSchedule(params);
+  const time = String(params.time ?? '').trim();
+  if (!TIME_RE.test(time)) throw new ActionError('Horário inválido. Use HH:MM (Brasília).');
+  if (String(params.confirm ?? '').trim() !== time) throw new ActionError('Para confirmar, digite o novo horário exatamente (HH:MM).');
+  if (!schedule.canSetTime) throw new ActionError('Esse agendamento não permite trocar o horário.');
+  await setScheduleTime({ host: config.cronSshHost, id: schedule.id, time });
+  await vpsReport(0, true);
+  return `Horário de "${schedule.label}" alterado para ${time} (Brasília) no servidor.`;
+}
+
 async function devStop() {
   await must(powershellFile('stop-dev.ps1'), 'Desligar o ambiente de testes');
   return 'Ambiente de testes desligado.';
@@ -192,6 +234,9 @@ export const ACTIONS = {
   },
   'backup.download': { label: 'Baixar backup do banco', run: backupDownload },
   'backup.delete': { label: 'Apagar backup do banco', run: backupDelete },
+  'schedule.enable': { label: 'Ligar agendamento do servidor', run: scheduleEnable },
+  'schedule.disable': { label: 'Desligar agendamento do servidor', run: scheduleDisable },
+  'schedule.setTime': { label: 'Alterar horário do agendamento', run: scheduleSetTime },
   'deploy.approve': { label: 'Autorizar publicação', run: (params) => review(params, 'approved') },
   'deploy.reject': { label: 'Recusar publicação', run: (params) => review(params, 'rejected') },
   'deploy.dispatch': {
