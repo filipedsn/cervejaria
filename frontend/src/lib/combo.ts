@@ -35,6 +35,17 @@ export function precoBaseCombo(grupos: Array<{ minimo: number; opcoes: Array<{ p
   return centavos / 100;
 }
 
+/** O combo mais caro possível: em cada grupo, as `maximo` opções mais caras. */
+export function precoMaximoCombo(grupos: Array<{ maximo: number; opcoes: Array<{ precoNoCombo: number; quantidade?: number }> }>): number {
+  const centavos = grupos.reduce((total, grupo) => {
+    const valores = grupo.opcoes
+      .map((opcao) => Math.round(opcao.precoNoCombo * 100) * (opcao.quantidade ?? 1))
+      .sort((a, b) => b - a);
+    return total + valores.slice(0, grupo.maximo).reduce((soma, valor) => soma + valor, 0);
+  }, 0);
+  return centavos / 100;
+}
+
 /** Fator do preço do combo no cardápio/turno sobre o catálogo, como o backend aplica. */
 export function fatorPrecoCombo(precoEfetivo: number, precoCatalogo: number): number {
   return precoCatalogo > 0 ? precoEfetivo / precoCatalogo : 1;

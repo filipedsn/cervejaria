@@ -5,6 +5,7 @@ import {
   fatorPrecoCombo,
   precoBaseCombo,
   precoEscolhasCombo,
+  precoMaximoCombo,
   resumoEscolhasCombo,
   type GrupoCombo,
 } from '../src/lib/combo';
@@ -21,6 +22,11 @@ const grupos: GrupoCombo[] = [
 
 it('o "a partir de" soma as opções mais baratas dos grupos obrigatórios', () => {
   assert.equal(precoBaseCombo(grupos), 13);
+});
+
+it('o combo mais caro soma as opções mais caras até o máximo de cada grupo, incluindo opcionais', () => {
+  assert.equal(precoMaximoCombo(grupos), 21);
+  assert.equal(precoMaximoCombo([{ maximo: 2, opcoes: [{ precoNoCombo: 4 }, { precoNoCombo: 9 }, { precoNoCombo: 7, quantidade: 2 }] }]), 23);
 });
 
 it('o valor do combo soma as escolhas e aplica o fator do cardápio', () => {
