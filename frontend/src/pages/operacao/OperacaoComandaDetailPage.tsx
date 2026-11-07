@@ -25,6 +25,15 @@ import { usePollInterval } from '../../hooks/usePollInterval';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { connectSocket, getSocket } from '../../lib/socket';
 import { useAtendimentoBalcao } from '../../hooks/useAtendimentoBalcao';
+import { useAuditContext } from '../../hooks/useAuditContext';
+import { comandaAuditContext } from '../../lib/audit-context';
+import {
+  intentAlterarQuantidadeItem,
+  intentFecharComanda,
+  intentLancarItens,
+  intentRemoverItem,
+} from '../../lib/audit-intents-comanda';
+import { auditMutationMeta } from '../../lib/query-client';
 import { resumoItensBalcao } from '../../lib/atendimento-balcao';
 import { linkWhatsAppNumeroComanda, linkWhatsAppPedidoPronto, linkWhatsAppResumoConta, navegarParaWhatsApp } from '../../lib/whatsapp';
 import {
@@ -105,6 +114,15 @@ export function OperacaoComandaDetailPage() {
     queryKey: ['operacao-comanda', id],
     queryFn: () => api.get<ComandaOperacao>(`/api/operacao/comandas/${id}`),
   });
+
+  useAuditContext({
+    tela: 'operacao.comanda.detail',
+    ...comandaAuditContext(
+      comanda ? { ...comanda, itensQtd: totalItensComanda(comanda) } : null,
+      id,
+    ),
+  });
+  const auditBase = { feature: 'operacao.comanda.detail', entityType: 'comanda', entityId: id };
 
   const caixaQuery = useQuery({
     queryKey: ['operacao-caixa', comanda?.pontoVendaId],
@@ -192,12 +210,29 @@ export function OperacaoComandaDetailPage() {
 
   const resolverSolicitacao = useMutation({
     mutationFn: () => api.delete(`/api/operacao/comandas/${id}/solicitacao-pagamento`, {}),
+    meta: auditMutationMeta({
+      ...auditBase,
+      operation: 'comanda.pagamento.solicitacao.resolver',
+      intent: () => ({ summary: 'Dispensar o pedido de conta feito pelo cliente' }),
+    }),
     onSuccess: invalidar,
   });
 
   const confirmarAtendimentoBalcao = useMutation({
     mutationFn: (pedidoIds: string[]) =>
       api.post<{ atendidos: string[] }>(`/api/operacao/comandas/${id}/atendimento-balcao`, { pedidoIds }),
+    meta: auditMutationMeta<string[]>({
+      ...auditBase,
+      operation: 'comanda.balcao.atender',
+      intent: (pedidoIds) => {
+        const senhas = (comanda?.pedidos ?? []).filter((p) => pedidoIds.includes(p.id)).map((p) => p.numero);
+        return {
+          summary: `Confirmar que o balcão serviu ${senhas.length > 0 ? `as senhas ${senhas.join(', ')}` : `${pedidoIds.length} pedido(s)`}`,
+          pedidosQtd: pedidoIds.length,
+          senhas: senhas.join(','),
+        };
+      },
+    }),
     onSuccess: () => {
       if (id) marcarAtendido(id);
       setErro('');
@@ -307,6 +342,11 @@ export function OperacaoComandaDetailPage() {
           opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })),
         })),
       }),
+    meta: auditMutationMeta<{ itens: LinhaCarrinho[]; idempotencyKey: string; limparCarrinho: boolean }>({
+      ...auditBase,
+      operation: 'comanda.itens.incluir',
+      intent: ({ itens, idempotencyKey }) => ({ ...intentLancarItens(itens), idempotencyKey }),
+    }),
     onSuccess: (_resultado, variaveis) => {
       const fingerprint = fingerprintItensLancamento(variaveis.itens);
       launchRequestKeys.current.delete(fingerprint);
@@ -362,6 +402,14 @@ export function OperacaoComandaDetailPage() {
         `/api/operacao/comandas/${id}/pedidos/${pedidoId}/cliente-avisado`,
         {},
       ),
+    meta: auditMutationMeta<string>({
+      ...auditBase,
+      operation: 'comanda.pedido.cliente_avisado',
+      intent: (pedidoId) => {
+        const senha = comanda?.pedidos.find((p) => p.id === pedidoId)?.numero;
+        return { summary: `Marcar cliente avisado pelo WhatsApp${senha ? ` da senha ${senha}` : ''}`, pedidoId, senha };
+      },
+    }),
     onSuccess: () => {
       window.sessionStorage.removeItem(avisoWhatsAppStorageKey);
       setPedidoWhatsAppAbertoId(null);
@@ -375,6 +423,11 @@ export function OperacaoComandaDetailPage() {
       api.delete<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${params.itemId}`, params.delivered
         ? { quantidade: params.quantidade, ...params.delivered }
         : params.quantidade ? { quantidade: params.quantidade } : undefined),
+    meta: auditMutationMeta<Parameters<typeof intentRemoverItem>[1]>({
+      ...auditBase,
+      operation: 'comanda.item.remover',
+      intent: (params) => intentRemoverItem(comanda, params),
+    }),
     onSuccess: (atualizada) => {
       queryClient.setQueryData(['operacao-comanda', id], atualizada);
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
@@ -405,6 +458,11 @@ export function OperacaoComandaDetailPage() {
   const alterarQuantidadeItem = useMutation({
     mutationFn: ({ itemId, quantidade }: { itemId: string; quantidade: number }) =>
       api.patch<ComandaOperacao>(`/api/operacao/comandas/${id}/itens/${itemId}`, { quantidade }),
+    meta: auditMutationMeta<{ itemId: string; quantidade: number }>({
+      ...auditBase,
+      operation: 'comanda.item.quantidade',
+      intent: (params) => intentAlterarQuantidadeItem(comanda, params),
+    }),
     onSuccess: (atualizada) => {
       queryClient.setQueryData(['operacao-comanda', id], atualizada);
       queryClient.invalidateQueries({ queryKey: ['operacao-comandas'] });
@@ -438,6 +496,11 @@ export function OperacaoComandaDetailPage() {
       }
       return api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/pagamentos`, { pagamentos, deixarPendente });
     },
+    meta: auditMutationMeta<Parameters<typeof intentFecharComanda>[0]>({
+      ...auditBase,
+      operation: 'comanda.fechar',
+      intent: (params) => intentFecharComanda(params),
+    }),
     onSuccess: (data) => {
       setShowPayment(false);
       setClosedComanda(data);
@@ -449,6 +512,13 @@ export function OperacaoComandaDetailPage() {
 
   const cancelar = useMutation({
     mutationFn: () => api.post<ComandaOperacao>(`/api/operacao/comandas/${id}/cancelar`),
+    meta: auditMutationMeta({
+      ...auditBase,
+      operation: 'comanda.cancelar',
+      intent: () => ({
+        summary: `Encerrar a comanda sem cobrança${comanda ? ` (subtotal ${formatCurrency(comanda.subtotal)})` : ''}`,
+      }),
+    }),
     onSuccess: () => {
       invalidar();
       navigate('/operacao/comandas');
@@ -466,6 +536,15 @@ export function OperacaoComandaDetailPage() {
         itens: [],
       });
     },
+    meta: auditMutationMeta({
+      ...auditBase,
+      operation: 'comanda.abrir_nova',
+      intent: () => ({
+        summary: `Abrir nova comanda para ${comanda ? rotuloComanda(comanda) || comanda.tipo : 'o mesmo local'}`,
+        comandaTipo: comanda?.tipo,
+        identificador: comanda?.identificador,
+      }),
+    }),
     onSuccess: (nova) => {
       invalidar();
       navigate(`/operacao/comandas/${nova.id}`);

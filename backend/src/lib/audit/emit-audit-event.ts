@@ -33,6 +33,47 @@ export type AuditEventInput = {
   targetCervejariaId?: string;
 };
 
+/**
+ * OTel ships `metadata` as one JSON keyword (ignore_above 1024), so its inner keys are not
+ * searchable. These are also written as dotted attributes (`metadata.kind`, `metadata.context.comandaNumero`…)
+ * for Discover and alert rules; the allowlist keeps the mapping bounded.
+ */
+const SEARCHABLE_METADATA_KEYS = [
+  'handled', 'kind', 'feature', 'operation', 'scenario', 'httpStatus', 'apiCode', 'actionOutcome', 'durationMs',
+  'tipo', 'comandaId', 'comandaNumero', 'eventoId', 'clienteId', 'produtoId',
+] as const;
+const MAX_SEARCHABLE_NESTED_KEYS = 30;
+
+type SearchableValue = string | number | boolean;
+
+function searchableValue(value: unknown): SearchableValue | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string' && value.length > 0) return value.slice(0, 500);
+  return undefined;
+}
+
+export function searchableMetadataFields(metadata: Record<string, unknown>): Record<string, SearchableValue> {
+  const out: Record<string, SearchableValue> = {};
+  for (const key of SEARCHABLE_METADATA_KEYS) {
+    const value = searchableValue(metadata[key]);
+    if (value !== undefined) out[`metadata.${key}`] = value;
+  }
+  for (const group of ['context', 'intent'] as const) {
+    const nested = metadata[group];
+    if (!nested || typeof nested !== 'object' || Array.isArray(nested)) continue;
+    let count = 0;
+    for (const [key, raw] of Object.entries(nested as Record<string, unknown>)) {
+      if (count >= MAX_SEARCHABLE_NESTED_KEYS) break;
+      const value = searchableValue(raw);
+      if (value === undefined) continue;
+      out[`metadata.${group}.${key}`] = value;
+      count += 1;
+    }
+  }
+  return out;
+}
+
 function actorFields(actor: TelemetryActor): Record<string, string | undefined> {
   return {
     'actor.type': actor.type,
@@ -122,6 +163,7 @@ export function buildAuditPayload(input: AuditEventInput): Record<string, unknow
   const metadata = input.metadata ? (redactObject(input.metadata) as Record<string, unknown>) : undefined;
   if (metadata && Object.keys(metadata).length > 0) {
     payload.metadata = metadata;
+    Object.assign(payload, searchableMetadataFields(metadata));
     if (metadata.payload != null) {
       payload['transacao.payload'] = metadata.payload;
     }

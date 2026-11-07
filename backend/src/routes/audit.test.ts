@@ -336,6 +336,78 @@ test('ui.error semantico preserva handled/kind/feature/operation/scenario e corr
   assert.equal(input?.metadata?.componentStack, 'in ComandaDetail');
 });
 
+test('contexto funcional e intenção viajam no ui.error, saneados, e entram na mensagem', async () => {
+  const { statusCode, emitted } = await postStaffEvents([
+    {
+      type: 'error',
+      page: '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+      label: 'comanda.itens.incluir',
+      error: { message: 'Estoque insuficiente para Chopp Pilsen', name: 'ApiError' },
+      meta: { handled: true, kind: 'validation', operation: 'comanda.itens.incluir' },
+      context: {
+        tela: 'operacao.comanda.detail',
+        resumo: 'Comanda #42 · Mesa 3 · cliente Ana',
+        comandaId: 'cmw5mmn8b08cjl601ul30q44d',
+        comandaNumero: 42,
+        comandaIdentificador: '3',
+        subtotal: 87.5,
+        clienteTelefone: '11999998888',
+        observacao: 'sem gelo',
+        nested: { nao: 'aceito' },
+      },
+      intent: {
+        summary: 'Incluir 2x Chopp Pilsen 300ml; 1x Batata frita (com observação)',
+        itensQuantidade: 3,
+        itens: [
+          { produtoId: 'p1', produtoNome: 'Chopp Pilsen', quantidade: 2, volumeMl: 300, temObservacao: false },
+          { produtoId: 'p2', produtoNome: 'Batata frita', quantidade: 1, temObservacao: true, observacao: 'sem sal' },
+        ],
+        cartao: '4111 1111 1111 1111',
+      },
+    },
+  ]);
+  assert.equal(statusCode, 204);
+  const input = emitted[0]?.input;
+  const context = input?.metadata?.context as Record<string, unknown>;
+  const intent = input?.metadata?.intent as Record<string, unknown>;
+  assert.equal(context.comandaNumero, 42);
+  assert.equal(context.subtotal, 87.5);
+  assert.equal(context.clienteTelefone, undefined);
+  assert.equal(context.observacao, undefined);
+  assert.equal(context.nested, undefined);
+  assert.equal(intent.itensQuantidade, 3);
+  const itens = intent.itens as Array<Record<string, unknown>>;
+  assert.equal(itens[0]?.produtoNome, 'Chopp Pilsen');
+  assert.equal(itens[1]?.temObservacao, true);
+  assert.equal(itens[1]?.observacao, undefined);
+  assert.equal(intent.cartao, '[REDACTED]');
+  assert.equal(input?.entityType, 'comanda');
+  assert.equal(input?.entityId, 'cmw5mmn8b08cjl601ul30q44d');
+  assert.equal(
+    input?.message,
+    'Erro na interface em /operacao/comandas/cmw5mmn8b08cjl601ul30q44d ao tentar "Incluir 2x Chopp Pilsen 300ml; 1x Batata frita (com observação)": Estoque insuficiente para Chopp Pilsen [Comanda #42 · Mesa 3 · cliente Ana]',
+  );
+});
+
+test('ação concluída registra intenção e resultado legíveis', async () => {
+  const { emitted } = await postStaffEvents([
+    {
+      type: 'submit',
+      page: '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+      route: '/operacao/comandas/:id',
+      label: 'comanda.fechar',
+      meta: { operation: 'comanda.fechar', actionOutcome: 'success', durationMs: 412 },
+      context: { resumo: 'Comanda #42 · Mesa 3', comandaId: 'cmw5mmn8b08cjl601ul30q44d' },
+      intent: { summary: 'Fechar a conta recebendo Pix R$ 87,50', totalPago: 87.5 },
+    },
+  ]);
+  const input = emitted[0]?.input;
+  assert.equal(input?.action, 'ui.submit');
+  assert.equal(input?.outcome, 'success');
+  assert.equal(input?.metadata?.durationMs, 412);
+  assert.equal(input?.message, 'Concluiu "Fechar a conta recebendo Pix R$ 87,50" em /operacao/comandas/:id [Comanda #42 · Mesa 3]');
+});
+
 test('seleção em lista vira ação legível com a opção escolhida', async () => {
   const { emitted } = await postStaffEvents([
     { type: 'click', page: '/operacao/estoque', element: 'select', label: 'select:Categoria', meta: { option: 'Chopes' } },

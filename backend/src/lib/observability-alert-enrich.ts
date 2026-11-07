@@ -56,7 +56,17 @@ export type ParsedLog = {
   spanId?: string;
   serviceName?: string;
   stack?: string;
+  errorMessage?: string;
+  errorType?: string;
+  correlationId?: string;
+  requestId?: string;
+  interactionId?: string;
+  sessionId?: string;
   metadata?: Record<string, unknown>;
+  /** metadata.context — onde o operador estava (comanda, mesa, cliente…). */
+  functionalContext?: Record<string, unknown>;
+  /** metadata.intent — o que ele queria fazer (resumo, itens, pagamentos). */
+  functionalIntent?: Record<string, unknown>;
   transacaoPayload?: unknown;
 };
 
@@ -229,9 +239,39 @@ export function parseAuditLogSource(source: Record<string, unknown>): ParsedLog 
       asString(pick(attrs, 'error.stack_trace')) ??
       asString(pick(attrs, 'exception.stacktrace')) ??
       asString(pick(attrs, 'stack')),
+    errorMessage: asString(pick(attrs, 'error.message')),
+    errorType: asString(pick(attrs, 'error.type')),
+    correlationId: asString(pick(attrs, 'correlationId')),
+    requestId: asString(pick(attrs, 'requestId')),
+    interactionId: asString(pick(attrs, 'interactionId')),
+    sessionId: asString(pick(attrs, 'session.id')),
     metadata,
+    functionalContext: parseMetadataValue(metadata?.context),
+    functionalIntent: parseMetadataValue(metadata?.intent),
     transacaoPayload: pick(attrs, 'transacao.payload'),
   };
+}
+
+/** "Comanda #42 · Mesa 3 · cliente Ana" a partir do contexto funcional. */
+export function functionalScope(log: ParsedLog): string | undefined {
+  const ctx = log.functionalContext;
+  const resumo = asString(ctx?.resumo);
+  if (resumo) return resumo;
+  const numero = asString(ctx?.comandaNumero) ?? asString(log.metadata?.comandaNumero);
+  const evento = asString(ctx?.eventoNome) ?? asString(log.metadata?.eventoNome);
+  const parts = [numero ? `Comanda #${numero}` : undefined, evento ? `evento ${evento}` : undefined].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
+export function functionalIntentSummary(log: ParsedLog): string | undefined {
+  return asString(log.functionalIntent?.summary);
+}
+
+/** Trecho de narrativa: ' na Comanda #42 · Mesa 3, tentando "Incluir 2x Chopp"'. */
+function functionalNarrative(log: ParsedLog): string {
+  const scope = functionalScope(log);
+  const intent = functionalIntentSummary(log);
+  return `${scope ? ` na ${scope}` : ''}${intent ? `, tentando "${intent}"` : ''}`;
 }
 
 function isFailureLog(log: ParsedLog): boolean {
@@ -437,7 +477,7 @@ function buildGenericCenario(log: ParsedLog, payload: KibanaAlertPayload): strin
   const operacao = resolveOperacao(log);
   const apiError = extractResponseErrorMessage(log.metadata);
   const detail = apiError ?? log.message.trim() ?? payload.reason?.trim() ?? 'falha sem detalhe';
-  return `${usuario} em ${empresa} ao executar "${operacao}": ${detail}.`;
+  return `${usuario} em ${empresa} ao executar "${operacao}"${functionalNarrative(log)}: ${detail}.`;
 }
 
 function normalizeUiErrorText(log: ParsedLog): string {
@@ -516,30 +556,98 @@ export function buildUiErrorCenario(log: ParsedLog, payload: KibanaAlertPayload)
     scenario ? `cenario=${scenario}` : undefined,
   ].filter(Boolean);
   const contextSuffix = contextBits.length > 0 ? ` (${contextBits.join(', ')})` : '';
+  const narrative = functionalNarrative(log);
+  const shown = log.errorMessage ? ` Mensagem exibida ao usuario: "${log.errorMessage}".` : '';
 
   if (kind === 'network') {
     return (
-      `${usuario} em ${empresa} ao usar "${funcionalidade}"${contextSuffix}: o navegador nao conseguiu falar com o servidor ` +
+      `${usuario} em ${empresa} ao usar "${funcionalidade}"${narrative}${contextSuffix}: o navegador nao conseguiu falar com o servidor ` +
       `(falha de rede no dispositivo ou no caminho ate a API). Nao prova que a API caiu; ` +
-      `se so este alerta disparou, trate como problema pontual do usuario/rede.`
+      `se so este alerta disparou, trate como problema pontual do usuario/rede.${shown}`
     );
   }
 
   if (kind === 'server_unavailable') {
     return (
-      `${usuario} em ${empresa} ao usar "${funcionalidade}"${contextSuffix}: o servidor respondeu indisponivel ` +
-      `(502/503 ou equivalente). Verifique saude da API/site publico e deploys recentes.`
+      `${usuario} em ${empresa} ao usar "${funcionalidade}"${narrative}${contextSuffix}: o servidor respondeu indisponivel ` +
+      `(502/503 ou equivalente). Verifique saude da API/site publico e deploys recentes.${shown}`
     );
   }
 
+  const detail = log.errorMessage ?? rawDetail;
   if (kind === 'ui_bug') {
     return (
-      `${usuario} em ${empresa} encontrou quebra de interface em "${funcionalidade}"${contextSuffix}: ${rawDetail}. ` +
+      `${usuario} em ${empresa} encontrou quebra de interface em "${funcionalidade}"${narrative}${contextSuffix}: ${detail}. ` +
       `Provavel bug de tela/JS; confira console e release do frontend.`
     );
   }
 
-  return `${usuario} em ${empresa} ao usar "${funcionalidade}"${contextSuffix}: ${rawDetail}.`;
+  return `${usuario} em ${empresa} ao usar "${funcionalidade}"${narrative}${contextSuffix}: ${detail}.`;
+}
+
+const CONTEXT_LABELS: Record<string, string> = {
+  tela: 'Tela',
+  comandaId: 'Comanda ID',
+  comandaNumero: 'Comanda numero',
+  comandaTipo: 'Comanda tipo',
+  comandaIdentificador: 'Mesa/ficha',
+  comandaStatus: 'Comanda status',
+  pontoVendaId: 'Ponto de venda ID',
+  subtotal: 'Subtotal',
+  desconto: 'Desconto',
+  total: 'Total',
+  valorEmAberto: 'Valor em aberto',
+  itensQtd: 'Itens na comanda',
+  clienteId: 'Cliente ID',
+  clienteNome: 'Cliente',
+  eventoId: 'Evento ID',
+  eventoNome: 'Evento',
+};
+
+function formatItemLine(item: Record<string, unknown>): string {
+  const nome = asString(item.produtoNome) ?? asString(item.nome) ?? asString(item.forma) ?? asString(item.produtoId) ?? 'item';
+  const quantidade = asString(item.quantidade);
+  const volume = asString(item.volumeMl);
+  const head = `${quantidade ? `${quantidade}x ` : ''}${nome}${volume ? ` ${volume}ml` : ''}`;
+  const rest = Object.entries(item)
+    .filter(([key, value]) => !['produtoNome', 'nome', 'quantidade', 'volumeMl'].includes(key) && value != null && value !== '')
+    .map(([key, value]) => `${key}=${String(value)}`);
+  return rest.length > 0 ? `${head} (${rest.join(', ')})` : head;
+}
+
+/** Bloco funcional do Detalhamento: onde estava, o que queria, o que viu. */
+function buildFunctionalDetails(log: ParsedLog): string[] {
+  const lines: string[] = [];
+  pushLine(lines, 'Onde', functionalScope(log));
+  pushLine(lines, 'Queria', functionalIntentSummary(log));
+  pushLine(lines, 'Mensagem exibida', log.errorMessage);
+
+  const ctx = log.functionalContext;
+  if (ctx) {
+    for (const [key, value] of Object.entries(ctx)) {
+      if (key === 'resumo' || value == null || value === '') continue;
+      pushLine(lines, CONTEXT_LABELS[key] ?? key, String(value));
+    }
+  }
+
+  const intent = log.functionalIntent;
+  if (intent) {
+    for (const [key, value] of Object.entries(intent)) {
+      if (key === 'summary' || value == null || value === '') continue;
+      if (Array.isArray(value)) {
+        const items = value.map((row) => asRecord(row)).filter((row): row is Record<string, unknown> => Boolean(row));
+        if (items.length > 0) lines.push(`${key}:\n${items.map((row) => `- ${formatItemLine(row)}`).join('\n')}`);
+        continue;
+      }
+      pushLine(lines, key, typeof value === 'object' ? formatJsonValue(value, 300) : String(value));
+    }
+  }
+
+  pushLine(lines, 'Correlation ID', log.correlationId);
+  pushLine(lines, 'Request ID', log.requestId);
+  pushLine(lines, 'Interaction ID', log.interactionId);
+  pushLine(lines, 'Sessao', log.sessionId);
+  return lines;
 }
 
 function appendMetadataDetails(lines: string[], metadata?: Record<string, unknown>): void {
@@ -591,6 +699,8 @@ function appendMetadataDetails(lines: string[], metadata?: Record<string, unknow
     'stack',
     'payload',
     'responseError',
+    'context',
+    'intent',
     ...businessKeys,
   ]);
   const extra: Record<string, unknown> = {};
@@ -608,8 +718,9 @@ export function buildTechnicalDetailsFromLog(
   log: ParsedLog,
   payload: KibanaAlertPayload,
 ): string[] {
-  const lines: string[] = [];
+  const lines: string[] = buildFunctionalDetails(log);
 
+  pushLine(lines, 'Mensagem do log', log.message);
   pushLine(lines, 'Acao tecnica', log.eventAction);
   pushLine(lines, 'Resultado', log.eventOutcome);
   pushLine(lines, 'Categoria', log.eventCategory);
@@ -674,16 +785,17 @@ export function buildTechnicalDetailsFromLog(
   const logTimeBr = formatTimestampBr(log.timestamp);
   if (logTimeBr) pushLine(lines, 'Horario do log', `${logTimeBr} (Brasilia)`);
 
-  if (log.stack) {
-    lines.push(`Stack trace:\n${truncate(log.stack, STACK_MAX_CHARS)}`);
-  }
-
   const alertReason = payload.reason?.trim();
   if (alertReason && alertReason !== log.message.trim()) {
     pushLine(lines, 'Motivo do alerta', alertReason);
   }
 
   pushLine(lines, 'Regra', payload.ruleName);
+
+  // Last on purpose: Telegram truncates at 4000 chars and only the stack tail may be lost.
+  if (log.stack) {
+    lines.push(`Stack trace:\n${truncate(log.stack, STACK_MAX_CHARS)}`);
+  }
 
   return lines;
 }

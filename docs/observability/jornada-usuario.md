@@ -21,6 +21,7 @@ Todo evento de auditoria (`event.category: audit`) vai para o data stream `logs-
 | Onde (tela) | `ui.route` (template, ids viram `:id`), `ui.page`, `ui.viewport` (`LxA`), `http.route` |
 | Desempenho | `ui.vital.name` (LCP, CLS, INP, TTFB, FCP), `ui.vital.value` (double; CLS sem unidade, demais em ms), `ui.vital.rating` |
 | Erros | `error.message`, `error.type`, `error.stack_trace` |
+| Cenário funcional (TAP-179) | `metadata.context` (onde estava: comanda, mesa, cliente, totais) e `metadata.intent` (o que queria: `summary`, itens, pagamentos); ver seção abaixo |
 | Erros semânticos (TAP-177) | `metadata.handled`, `metadata.kind` (`network`\|`api_client`\|`api_server`\|`validation`\|`ui_bug`\|`unknown`), `metadata.feature`, `metadata.operation`, `metadata.scenario`, `metadata.httpStatus`, `metadata.apiCode`, `metadata.entityType`/`entityId`; correlacionar com `correlationId` / `interactionId` |
 | Rede e dispositivo | `client.address`, `client.ip_source` (`cloudflare`, `nginx`, `socket`), `user_agent.original` |
 | Enriquecido no ES | `client.geo.city_name`, `client.geo.region_name`, `client.geo.country_iso_code`, `client.geo.country_name`, `client.geo.location` (geo_point), `user_agent.name`, `user_agent.version`, `user_agent.os.name`, `user_agent.device.name`, `enrich.error` |
@@ -63,6 +64,32 @@ attributes.event.action : "ui.error" and attributes.metadata.scenario : "network
 ```
 
 Alertas Telegram (`quiver-tap-ui-error-*`) **não** disparam para `handled=true` + `kind` de negócio esperado (`validation` / `api_client`); só para `handled=false`, legado sem flag, ou `kind` in `network|api_server|ui_bug`.
+
+#### Cenário funcional completo (TAP-179)
+
+Regra: todo log do frontend precisa responder, sem perguntar ao usuário, **onde ele estava** e **o que ele queria fazer**. Para isso todo evento (clique, busca, page view, `http.request.completed`, `ui.submit`, `ui.error`) carrega dois blocos:
+
+| Campo | Conteúdo | Origem |
+| --- | --- | --- |
+| `metadata.context` | onde estava: `tela`, `resumo` ("Comanda #42 · Mesa 3 · cliente Ana"), `comandaId`, `comandaNumero`, `comandaIdentificador`, `comandaStatus`, `subtotal`, `total`, `valorEmAberto`, `itensQtd`, `clienteNome`, `eventoNome`… | a tela declara com `useAuditContext(...)`; para comanda use `comandaAuditContext(comanda)` |
+| `metadata.intent` | o que queria: `summary` em português ("Incluir 2x Chopp Pilsen 300ml; 1x Batata frita (+ Cheddar)") e os detalhes (`itens[]` com produto/quantidade/volume/preço, `pagamentos[]`, `desconto`, `deixarPendente`, quantidade anterior/nova…) | a mutação declara `meta: auditMutationMeta({ feature, operation, intent: (variáveis) => ... })` |
+
+Com isso:
+
+- ao começar uma mutação o `MutationCache` guarda um retrato do contexto; em caso de sucesso grava `ui.submit` com `metadata.actionOutcome=success`, `durationMs` e a mensagem `Concluiu "<summary>" em <tela> [<resumo>]`; em caso de falha o `ui.error` sai com a mesma intenção (`Erro na interface em <tela> ao tentar "<summary>": <mensagem> [<resumo>]`);
+- sem `entityType/entityId` explícitos, o evento herda a comanda do contexto (`entity.type=comanda`), então qualquer clique é filtrável por comanda;
+- o alerta do Telegram/e-mail monta o **Cenário** com comanda e intenção e abre o **Detalhamento** com `Onde`, `Queria`, `Mensagem exibida`, campos do contexto, itens, `Correlation ID`/`Request ID`/`Sessao`; o stack vai por último, para que o corte de 4000 caracteres do Telegram só atinja o stack.
+
+Proibido no contexto/intenção (o servidor descarta a chave): textos digitados livremente (observação, motivo), telefone, e-mail, endereço, documento, senha, token, dados de cartão. Observação só como `temObservacao: true/false`. Valores aceitos: texto (até 200 caracteres, com a mesma redação de cartão/token), número e booleano; listas apenas de objetos planos (até 30 itens × 15 campos).
+
+Telas cobertas: detalhe da comanda na Operação (`/operacao/comandas/:id`: incluir itens, remover, alterar quantidade, fechar conta, encerrar, abrir nova, atender balcão, cliente avisado, dispensar pedido de conta) e detalhe da comanda legado (`/comandas/:id`). Nova tela ou ação: declarar `useAuditContext` e `auditMutationMeta` — mutação sem `operation` continua gerando `ui.error`, mas sem `ui.submit` de sucesso nem intenção.
+
+O OTel grava `attributes.metadata` como **um único JSON `keyword` (`ignore_above: 1024`)**, então chaves internas não eram pesquisáveis. O emissor agora também grava como atributos próprios: `metadata.handled`, `kind`, `feature`, `operation`, `scenario`, `httpStatus`, `apiCode`, `actionOutcome`, `durationMs`, `tipo`, `comandaId`, `comandaNumero`, `eventoId`, `clienteId`, `produtoId`, e os valores simples de `metadata.context.*` e `metadata.intent.*` (listas como `itens` ficam só no JSON). Isso também faz os filtros `metadata.handled`/`metadata.kind` das regras `quiver-tap-ui-error-*` funcionarem a partir deste release (antes todo `ui.error` passava pelo ramo "sem `handled`").
+
+```text
+attributes.metadata.context.comandaNumero : 42
+attributes.event.action : "ui.submit" and attributes.metadata.operation : "comanda.itens.incluir"
+```
 
 Campos de busca marcados com `data-audit-search`: busca de comandas (Comandas e Operação), seleção de cliente na operação, contas pendentes, unir cliente, clientes, estoque da operação e QR do portal no PDV.
 

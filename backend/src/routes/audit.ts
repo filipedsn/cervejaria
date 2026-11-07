@@ -7,8 +7,10 @@ import {
   describeSearch,
   describeSelection,
   describeUiAction,
+  describeUiActionResult,
   describeUiError,
   describeWebVital,
+  withFunctionalScope,
 } from '../lib/audit/describe.js';
 import { verifySession } from '../lib/session.js';
 import { verifyClienteSession } from '../lib/cliente-session.js';
@@ -65,6 +67,8 @@ const uiEventSchema = z.object({
   interactionId: z.string().refine(validCorrelationId).optional(),
   meta: z.record(z.unknown()).optional(),
   http: httpTelemetrySchema.optional(),
+  context: z.record(z.unknown()).optional(),
+  intent: z.record(z.unknown()).optional(),
 });
 
 const bodySchema = z.object({
@@ -196,12 +200,87 @@ export function safeUiMetadata(meta: Record<string, unknown> | undefined): Recor
   }
   const option = typeof meta.option === 'string' ? safeUiText(meta.option, 80) : undefined;
   if (option) out.option = option;
+  if (meta.actionOutcome === 'success' || meta.actionOutcome === 'failure') out.actionOutcome = meta.actionOutcome;
+  const durationMs = meta.durationMs;
+  if (typeof durationMs === 'number' && Number.isInteger(durationMs) && durationMs >= 0 && durationMs <= 600_000) {
+    out.durationMs = durationMs;
+  }
+  return out;
+}
+
+const FUNCTIONAL_KEY = /^[a-z][a-zA-Z0-9]{0,39}$/;
+/** Contact data and typed free text never belong in functional context. */
+const FORBIDDEN_FUNCTIONAL_KEY =
+  /senha|password|token|secret|cpf|cnpj|numerocartao|cardnumber|creditcard|cvv|cvc|telefone|phone|email|endereco|address|^observac|^motivo/i;
+const MAX_FUNCTIONAL_KEYS = 30;
+const MAX_INTENT_ITEMS = 30;
+const MAX_ITEM_KEYS = 15;
+
+type FunctionalPrimitive = string | number | boolean;
+
+function safeFunctionalPrimitive(value: unknown, maxLength = 200): FunctionalPrimitive | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) && Math.abs(value) <= 1e12 ? value : undefined;
+  if (typeof value === 'string') return safeUiText(value, maxLength);
+  return undefined;
+}
+
+function safeFunctionalKey(key: string): boolean {
+  return FUNCTIONAL_KEY.test(key) && !FORBIDDEN_FUNCTIONAL_KEY.test(key);
+}
+
+function safeFlatRecord(raw: unknown, maxKeys: number): Record<string, FunctionalPrimitive> {
+  const out: Record<string, FunctionalPrimitive> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Object.keys(out).length >= maxKeys) break;
+    if (!safeFunctionalKey(key)) continue;
+    const safe = safeFunctionalPrimitive(value);
+    if (safe !== undefined) out[key] = safe;
+  }
+  return out;
+}
+
+/** Where the operator was: comanda, mesa, cliente, totals (flat primitives only). */
+export function safeFunctionalContext(raw: Record<string, unknown> | undefined): Record<string, FunctionalPrimitive> | undefined {
+  const out = safeFlatRecord(raw, MAX_FUNCTIONAL_KEYS);
+  if (typeof out.tela === 'string' && !/^[a-z][a-z0-9._-]{0,79}$/.test(out.tela)) delete out.tela;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** What the operator wanted: a PT summary plus primitives and flat item lists. */
+export function safeFunctionalIntent(raw: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  const summary = typeof raw.summary === 'string' ? safeUiText(raw.summary, 500) : undefined;
+  if (!summary) return undefined;
+  const out: Record<string, unknown> = { summary };
+  for (const [key, value] of Object.entries(raw)) {
+    if (key === 'summary' || !safeFunctionalKey(key)) continue;
+    if (Object.keys(out).length > MAX_FUNCTIONAL_KEYS) break;
+    if (Array.isArray(value)) {
+      const items = value
+        .slice(0, MAX_INTENT_ITEMS)
+        .map((item) => safeFlatRecord(item, MAX_ITEM_KEYS))
+        .filter((item) => Object.keys(item).length > 0);
+      if (items.length > 0) out[key] = items;
+      continue;
+    }
+    const safe = safeFunctionalPrimitive(value);
+    if (safe !== undefined) out[key] = safe;
+  }
   return out;
 }
 
 type UiEvent = z.infer<typeof uiEventSchema>;
 
-function describeUiEvent(event: UiEvent, label: string, page: string, screen: string, option: string | undefined): string {
+function describeUiEvent(
+  event: UiEvent,
+  label: string,
+  page: string,
+  screen: string,
+  option: string | undefined,
+  functional: { intentSummary?: string; actionOutcome?: 'success' | 'failure' } = {},
+): string {
   switch (event.type) {
     case 'page_view':
       return describePageView(page);
@@ -214,7 +293,12 @@ function describeUiEvent(event: UiEvent, label: string, page: string, screen: st
         ? describeWebVital(event.vitals.name, event.vitals.value, event.vitals.rating, screen)
         : describeUiAction(label, page);
     case 'error':
-      return describeUiError(screen, safeUiText(event.error?.message, 500) ?? label);
+      return describeUiError(screen, safeUiText(event.error?.message, 500) ?? label, functional.intentSummary);
+    case 'submit':
+      if (functional.intentSummary && functional.actionOutcome) {
+        return describeUiActionResult(functional.intentSummary, screen, functional.actionOutcome);
+      }
+      return describeUiAction(label, page);
     default:
       return option && label.startsWith('select:')
         ? describeSelection(label.slice('select:'.length), option, page)
@@ -298,13 +382,23 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
       const source = customerSession ? 'cliente' : 'staff';
       const emit = (input: Parameters<typeof emitAuditEvent>[0]) =>
         runWithTelemetryContext(context, () => dependencies.emit(input));
+      const functionalContext = safeFunctionalContext(event.context);
+      const functionalIntent = safeFunctionalIntent(event.intent);
+      const functionalScope = typeof functionalContext?.resumo === 'string' ? functionalContext.resumo : undefined;
+      const functionalMetadata = {
+        ...(functionalContext ? { context: functionalContext } : {}),
+        ...(functionalIntent ? { intent: functionalIntent } : {}),
+      };
 
       if (event.type === 'http_request' && event.http) {
         const outcome = event.http.outcome === 'success' ? 'success' : 'failure';
         const route = safeUiPath(event.http.route);
         emit({
           action: 'http.request.completed',
-          message: `Requisição frontend ${event.http.method} ${route}: ${event.http.outcome}`,
+          message: withFunctionalScope(
+            `Requisição frontend ${event.http.method} ${route}: ${event.http.outcome}`,
+            functionalScope,
+          ),
           outcome,
           http: {
             method: event.http.method,
@@ -321,6 +415,7 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
             outcome: event.http.outcome,
             clientTimestamp: event.timestamp,
             identitySource: 'authenticated_batch_session',
+            ...functionalMetadata,
           },
         });
         continue;
@@ -339,8 +434,23 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
           ? metadata.correlationId
           : undefined;
       const requestId = typeof metadata.requestId === 'string' ? metadata.requestId : undefined;
-      const entityType = typeof metadata.entityType === 'string' ? metadata.entityType : undefined;
-      const entityId = typeof metadata.entityId === 'string' ? metadata.entityId : undefined;
+      const contextComandaId =
+        typeof functionalContext?.comandaId === 'string' ? safeUiText(functionalContext.comandaId, 80) : undefined;
+      const entityType =
+        typeof metadata.entityType === 'string' ? metadata.entityType : contextComandaId ? 'comanda' : undefined;
+      const entityId =
+        typeof metadata.entityId === 'string'
+          ? metadata.entityId
+          : entityType === 'comanda'
+            ? contextComandaId
+            : undefined;
+      const actionOutcome =
+        metadata.actionOutcome === 'success' || metadata.actionOutcome === 'failure' ? metadata.actionOutcome : undefined;
+      const intentSummary = typeof functionalIntent?.summary === 'string' ? functionalIntent.summary : undefined;
+      const message = withFunctionalScope(
+        describeUiEvent(event, label, page, screen, option, { intentSummary, actionOutcome }),
+        functionalScope,
+      );
 
       emit({
         action: `ui.${event.type}`,
@@ -349,8 +459,8 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
         ...(requestId ? { requestId } : {}),
         ...(entityType ? { entityType } : {}),
         ...(entityId ? { entityId } : {}),
-        message: describeUiEvent(event, label, page, screen, option),
-        outcome: event.type === 'error' ? 'failure' : 'success',
+        message,
+        outcome: event.type === 'error' || actionOutcome === 'failure' ? 'failure' : 'success',
         ui: {
           page,
           element: safeUiLabel(event.element),
@@ -375,6 +485,7 @@ export async function auditRoutes(app: FastifyInstance, options: AuditRouteTestO
           clientTimestamp: event.timestamp,
           identitySource: 'authenticated_batch_session',
           ...metadata,
+          ...functionalMetadata,
         },
       });
     }

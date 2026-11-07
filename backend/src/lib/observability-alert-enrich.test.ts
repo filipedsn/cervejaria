@@ -231,4 +231,49 @@ describe('observability alert enrich', () => {
     assert.match(cenario, /cenario=network_unreachable/);
     assert.match(cenario, /navegador nao conseguiu falar com o servidor/i);
   });
+
+  it('cenario e detalhamento trazem comanda, intencao, itens e IDs; stack fica por ultimo', () => {
+    const log = parseAuditLogSource({
+      '@timestamp': '2026-11-06T22:10:00.000Z',
+      attributes: {
+        'event.action': 'ui.error',
+        'event.outcome': 'failure',
+        'cervejaria.slug': 'churrasquinho-do-thiago',
+        'user.name': 'Thiago Silva',
+        'ui.page': '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+        'error.message': 'Não foi possível falar com o servidor. Tente de novo.',
+        'error.stack_trace': 'ApiError: x\n    at request (api.ts:10)',
+        correlationId: 'f4311c18-422d-4b47-bc63-be144dcf7167',
+        'session.id': 'sess_abcdefgh',
+        message: 'Erro na interface em /operacao/comandas/:id ao tentar "Incluir 2x Chopp Pilsen 300ml": Não foi possível falar com o servidor. [Comanda #42 · Mesa 3]',
+        metadata: {
+          handled: true,
+          kind: 'network',
+          operation: 'comanda.itens.incluir',
+          context: { resumo: 'Comanda #42 · Mesa 3', comandaNumero: 42, comandaStatus: 'ABERTA', subtotal: 87.5 },
+          intent: {
+            summary: 'Incluir 2x Chopp Pilsen 300ml',
+            itensQuantidade: 2,
+            itens: [{ produtoId: 'p1', produtoNome: 'Chopp Pilsen', quantidade: 2, volumeMl: 300, precoUnit: 12 }],
+          },
+        },
+      },
+    });
+    const payload = { ruleName: 'quiver-tap-ui-error-prd', alertState: 'active', reason: 'Document count is 1' };
+
+    const cenario = buildUiErrorCenario(log, payload);
+    assert.match(cenario, /Thiago Silva em Churrasquinho Do Thiago/);
+    assert.match(cenario, /na Comanda #42 · Mesa 3, tentando "Incluir 2x Chopp Pilsen 300ml"/);
+    assert.match(cenario, /Mensagem exibida ao usuario: "Não foi possível falar com o servidor/);
+
+    const ctx = buildEnrichedContextFromLogs(payload, [log]);
+    const details = ctx?.technicalDetails ?? [];
+    assert.equal(details[0], 'Onde: Comanda #42 · Mesa 3');
+    assert.equal(details[1], 'Queria: Incluir 2x Chopp Pilsen 300ml');
+    assert.ok(details.includes('Comanda status: ABERTA'));
+    assert.ok(details.includes('itens:\n- 2x Chopp Pilsen 300ml (produtoId=p1, precoUnit=12)'));
+    assert.ok(details.includes('Correlation ID: f4311c18-422d-4b47-bc63-be144dcf7167'));
+    assert.ok(!details.some((line) => line.startsWith('Metadata:') && line.includes('intent')));
+    assert.match(details.at(-1) ?? '', /^Stack trace:/);
+  });
 });
