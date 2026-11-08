@@ -566,7 +566,15 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
           onSaved={() => queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] })}
           comboId={composicaoProduto.id}
           comboNome={composicaoProduto.nome}
-          produtos={(produtos ?? []).filter((produto) => produto.ativo && !produto.combo && produto.id !== composicaoProduto.id && !isChopeOperacao(produto))}
+          produtos={(produtos ?? [])
+            .filter((produto) => produto.ativo && !produto.combo && produto.id !== composicaoProduto.id && !isChopeOperacao(produto))
+            .map((produto) => ({
+              id: produto.id,
+              nome: produto.nome,
+              categoria: categoriasCanonicas.find((categoria) => categoria.id === produto.categoriaPdvId)?.nome ?? produto.categoria,
+              categoriaPdvId: produto.categoriaPdvId ?? null,
+              precoUnit: produto.precoUnit,
+            }))}
           usaCardapio={usaCardapio}
         />
       )}

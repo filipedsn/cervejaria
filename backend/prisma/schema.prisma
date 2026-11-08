@@ -445,6 +445,7 @@ model CategoriaProdutoPdv {
 
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   produtos   Produto[]
+  gruposCombo ComboGrupo[]
 
   @@unique([id, cervejariaId])
   @@unique([cervejariaId, nomeNormalizado])
@@ -567,24 +568,48 @@ model ProdutoOpcionalVinculo {
   @@schema("public")
 }
 
+enum ComboGrupoModo {
+  LISTA
+  CATEGORIA
+  @@schema("public")
+}
+
+enum ComboGrupoPrecoModo {
+  FIXO
+  CATALOGO
+  @@schema("public")
+}
+
 /// Grupo de escolha de um combo; item fixo é um grupo com uma opção e minimo = maximo = 1.
 model ComboGrupo {
-  id                   String   @id @default(cuid())
+  id                   String              @id @default(cuid())
   comboProdutoId       String
   cervejariaId         String
-  nome                 String   @db.VarChar(80)
-  minimo               Int      @default(1)
-  maximo               Int      @default(1)
+  nome                 String              @db.VarChar(80)
+  minimo               Int                 @default(1)
+  maximo               Int                 @default(1)
+  /// LISTA = produtos explícitos; CATEGORIA = qualquer produto elegível da categoria.
+  modo                 ComboGrupoModo      @default(LISTA)
+  /// Nome da categoria quando modo = CATEGORIA (projeção legada / catálogo não canônico).
+  categoria            String?             @db.VarChar(80)
+  /// Categoria canônica do PDV quando modo = CATEGORIA.
+  categoriaPdvId       String?
+  /// FIXO = precoFixo por escolha; CATALOGO = preço avulso do produto. Só CATEGORIA.
+  precoModo            ComboGrupoPrecoModo?
+  /// Preço unitário de qualquer escolha quando precoModo = FIXO.
+  precoFixo            Decimal?            @db.Decimal(10, 2)
   /// Só oferece opções que estão no cardápio do turno aberto.
-  somenteCardapioTurno Boolean  @default(false)
-  ordem                Int      @default(0)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  somenteCardapioTurno Boolean             @default(false)
+  ordem                Int                 @default(0)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
-  comboProduto Produto           @relation("ComboGrupoProduto", fields: [comboProdutoId], references: [id], onDelete: Cascade)
+  comboProduto Produto              @relation("ComboGrupoProduto", fields: [comboProdutoId], references: [id], onDelete: Cascade)
+  categoriaPdv CategoriaProdutoPdv? @relation(fields: [categoriaPdvId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
   opcoes       ComboGrupoOpcao[]
 
   @@index([comboProdutoId, ordem])
+  @@index([categoriaPdvId])
   @@schema("public")
 }
 

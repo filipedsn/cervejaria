@@ -1,3 +1,6 @@
+export type ComboGrupoModo = 'LISTA' | 'CATEGORIA';
+export type ComboGrupoPrecoModo = 'FIXO' | 'CATALOGO';
+
 export type OpcaoCombo = {
   id: string;
   produtoId: string;
@@ -16,6 +19,11 @@ export type GrupoCombo = {
   nome: string;
   minimo: number;
   maximo: number;
+  modo?: ComboGrupoModo;
+  categoria?: string | null;
+  categoriaPdvId?: string | null;
+  precoModo?: ComboGrupoPrecoModo | null;
+  precoFixo?: number | null;
   somenteCardapioTurno: boolean;
   opcoes: OpcaoCombo[];
 };

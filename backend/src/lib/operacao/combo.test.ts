@@ -9,23 +9,34 @@ const produto = (id: string, extra: Record<string, unknown> = {}) => ({
 
 const janta = [
   {
-    id: 'g-churrasco', nome: 'Churrasquinho', minimo: 1, maximo: 1, somenteCardapioTurno: false, ordem: 0,
+    id: 'g-churrasco', nome: 'Churrasquinho', minimo: 1, maximo: 1, modo: 'LISTA', somenteCardapioTurno: false,
+    categoria: null, categoriaPdvId: null, precoModo: null, precoFixo: null, ordem: 0,
     opcoes: [
       { id: 'o-boi', produtoId: 'boi', precoNoCombo: 10, quantidade: 1, produto: produto('boi') },
       { id: 'o-frango', produtoId: 'frango', precoNoCombo: 8, quantidade: 1, produto: produto('frango') },
     ],
   },
   {
-    id: 'g-acomp', nome: 'Acompanhamento', minimo: 1, maximo: 1, somenteCardapioTurno: false, ordem: 1,
+    id: 'g-acomp', nome: 'Acompanhamento', minimo: 1, maximo: 1, modo: 'LISTA', somenteCardapioTurno: false,
+    categoria: null, categoriaPdvId: null, precoModo: null, precoFixo: null, ordem: 1,
     opcoes: [{ id: 'o-arroz', produtoId: 'arroz', precoNoCombo: 5, quantidade: 1, produto: produto('arroz', { controlaEstoque: false }) }],
   },
   {
-    id: 'g-bebida', nome: 'Bebida', minimo: 0, maximo: 1, somenteCardapioTurno: false, ordem: 2,
+    id: 'g-bebida', nome: 'Bebida', minimo: 0, maximo: 1, modo: 'LISTA', somenteCardapioTurno: false,
+    categoria: null, categoriaPdvId: null, precoModo: null, precoFixo: null, ordem: 2,
     opcoes: [{ id: 'o-refri', produtoId: 'refri', precoNoCombo: 5, quantidade: 1, produto: produto('refri', { exigePreparo: false, tipo: 'BEBIDA' }) }],
   },
 ];
 
-const txCom = (grupos: unknown[]) => ({ comboGrupo: { findMany: async () => grupos } }) as any;
+const txCom = (grupos: unknown[], extras: {
+  produtosCategoria?: Array<Record<string, unknown>>;
+} = {}) => ({
+  produto: {
+    findFirst: async () => ({ id: 'janta', cervejariaId: 'tenant', pontoVendaId: 'pdv' }),
+    findMany: async () => extras.produtosCategoria ?? [],
+  },
+  comboGrupo: { findMany: async () => grupos },
+}) as any;
 
 describe('precoBaseCombo', () => {
   it('soma as opções mais baratas exigidas por grupo e ignora grupos opcionais', () => {
@@ -76,6 +87,28 @@ describe('validarGruposCombo', () => {
   });
   it('recusa mínimo maior que o máximo', () => {
     assert.throws(() => validarGruposCombo([{ ...grupo, minimo: 2, maximo: 1, opcoes: [grupo.opcoes[0]!, { produtoId: 'frango', precoNoCombo: 8 }] }]), /máximo/);
+  });
+  it('aceita grupo por categoria com preço fixo ou de catálogo', () => {
+    assert.doesNotThrow(() => validarGruposCombo([{
+      nome: 'Complementos', minimo: 0, maximo: 3, modo: 'CATEGORIA', categoria: 'Complementos',
+      precoModo: 'FIXO', precoFixo: 2, opcoes: [],
+    }, grupo]));
+    assert.doesNotThrow(() => validarGruposCombo([{
+      nome: 'Molhos', minimo: 1, maximo: 1, modo: 'CATEGORIA', categoriaPdvId: 'cat-molhos',
+      precoModo: 'CATALOGO', opcoes: [],
+    }]));
+  });
+  it('recusa categoria sem preço, sem categoria ou com produtos listados', () => {
+    assert.throws(() => validarGruposCombo([{
+      nome: 'Complementos', minimo: 1, maximo: 1, modo: 'CATEGORIA', categoria: 'Complementos', opcoes: [],
+    }]), /preço/);
+    assert.throws(() => validarGruposCombo([{
+      nome: 'Complementos', minimo: 1, maximo: 1, modo: 'CATEGORIA', precoModo: 'FIXO', precoFixo: 2, opcoes: [],
+    }]), /categoria/);
+    assert.throws(() => validarGruposCombo([{
+      nome: 'Complementos', minimo: 1, maximo: 1, modo: 'CATEGORIA', categoria: 'Complementos',
+      precoModo: 'FIXO', precoFixo: 2, opcoes: [{ produtoId: 'x', precoNoCombo: 1 }],
+    }]), /não lista produtos/);
   });
 });
 
@@ -135,6 +168,54 @@ describe('resolverEscolhasCombo', () => {
       /boi está indisponível/,
     );
     await assert.rejects(resolverEscolhasCombo(txCom([]), { ...base, escolhas: [] }), /ainda não tem composição/);
+  });
+
+  it('resolve grupo por categoria com preço fixo', async () => {
+    const grupos = [{
+      id: 'g-comp', nome: 'Complementos', minimo: 1, maximo: 2, modo: 'CATEGORIA',
+      categoria: 'Complementos', categoriaPdvId: null, precoModo: 'FIXO', precoFixo: 2,
+      somenteCardapioTurno: false, ordem: 0, opcoes: [],
+    }];
+    const produtosCategoria = [
+      { ...produto('granola', { categoria: 'Complementos' }), pontoVendaId: 'pdv', categoriaPdvId: null, precos: [{ volumeMl: 1, preco: 5 }] },
+      { ...produto('banana', { categoria: 'Complementos' }), pontoVendaId: 'pdv', categoriaPdvId: null, precos: [{ volumeMl: 1, preco: 3 }] },
+    ];
+    const componentes = await resolverEscolhasCombo(txCom(grupos, { produtosCategoria }), {
+      comboProdutoId: 'acai', comboNome: 'Açaí', quantidade: 1, precoEfetivo: 4, precoCatalogo: 4,
+      escolhas: [{ grupoId: 'g-comp', opcaoIds: ['granola', 'banana'] }],
+    });
+    assert.deepEqual(componentes.map((c) => [c.produtoId, c.precoUnit]), [['granola', 2], ['banana', 2]]);
+  });
+
+  it('resolve grupo por categoria com preço do catálogo', async () => {
+    const grupos = [{
+      id: 'g-comp', nome: 'Complementos', minimo: 1, maximo: 1, modo: 'CATEGORIA',
+      categoria: 'Complementos', categoriaPdvId: null, precoModo: 'CATALOGO', precoFixo: null,
+      somenteCardapioTurno: false, ordem: 0, opcoes: [],
+    }];
+    const produtosCategoria = [
+      { ...produto('granola', { categoria: 'Complementos' }), pontoVendaId: 'pdv', categoriaPdvId: null, precos: [{ volumeMl: 1, preco: 5 }] },
+    ];
+    const componentes = await resolverEscolhasCombo(txCom(grupos, { produtosCategoria }), {
+      comboProdutoId: 'acai', comboNome: 'Açaí', quantidade: 1, precoEfetivo: 5, precoCatalogo: 5,
+      escolhas: [{ grupoId: 'g-comp', opcaoIds: ['granola'] }],
+    });
+    assert.equal(componentes[0]!.precoUnit, 5);
+  });
+
+  it('recusa produto fora da categoria no modo CATEGORIA', async () => {
+    const grupos = [{
+      id: 'g-comp', nome: 'Complementos', minimo: 1, maximo: 1, modo: 'CATEGORIA',
+      categoria: 'Complementos', categoriaPdvId: null, precoModo: 'FIXO', precoFixo: 2,
+      somenteCardapioTurno: false, ordem: 0, opcoes: [],
+    }];
+    await assert.rejects(
+      resolverEscolhasCombo(txCom(grupos, { produtosCategoria: [] }), {
+        comboProdutoId: 'acai', comboNome: 'Açaí', quantidade: 1, precoEfetivo: 2, precoCatalogo: 2,
+        escolhas: [{ grupoId: 'g-comp', opcaoIds: ['fora'] }],
+      }),
+      /composição de Açaí mudou/,
+    );
   });
 });
 

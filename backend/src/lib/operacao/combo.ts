@@ -13,12 +13,33 @@ export class ComboInvalidoError extends Error {
 
 export type EscolhaComboInput = { grupoId: string; opcaoIds: string[] };
 
+export type ComboGrupoModo = 'LISTA' | 'CATEGORIA';
+export type ComboGrupoPrecoModo = 'FIXO' | 'CATALOGO';
+
 export type GrupoComboInput = {
   nome: string;
   minimo: number;
   maximo: number;
   somenteCardapioTurno?: boolean;
+  modo?: ComboGrupoModo;
+  categoria?: string | null;
+  categoriaPdvId?: string | null;
+  precoModo?: ComboGrupoPrecoModo | null;
+  precoFixo?: number | null;
   opcoes: Array<{ produtoId: string; precoNoCombo: number; quantidade?: number }>;
+};
+
+export type OpcaoComboResolvida = {
+  id: string;
+  produtoId: string;
+  nome: string;
+  ativo: boolean;
+  categoria: string | null;
+  precoNoCombo: number;
+  quantidade: number;
+  exigePreparo: boolean;
+  estacaoPreparo: EstacaoPreparo;
+  controlaEstoque: boolean;
 };
 
 export const LIMITES_COMBO = { grupos: 20, opcoesPorGrupo: 100, quantidadePorOpcao: 20 } as const;
@@ -28,17 +49,24 @@ export const escolhasComboSchema = z.array(z.object({
   opcaoIds: z.array(z.string().min(1)).max(LIMITES_COMBO.opcoesPorGrupo),
 })).max(LIMITES_COMBO.grupos).optional();
 
+const opcaoSchema = z.object({
+  produtoId: z.string().min(1),
+  precoNoCombo: z.number().min(0).max(99999),
+  quantidade: z.number().int().min(1).max(LIMITES_COMBO.quantidadePorOpcao).optional(),
+});
+
 export const composicaoComboSchema = z.object({
   grupos: z.array(z.object({
     nome: z.string().trim().min(1).max(80),
     minimo: z.number().int().min(0).max(LIMITES_COMBO.opcoesPorGrupo),
     maximo: z.number().int().min(1).max(LIMITES_COMBO.opcoesPorGrupo),
     somenteCardapioTurno: z.boolean().optional(),
-    opcoes: z.array(z.object({
-      produtoId: z.string().min(1),
-      precoNoCombo: z.number().min(0).max(99999),
-      quantidade: z.number().int().min(1).max(LIMITES_COMBO.quantidadePorOpcao).optional(),
-    })).min(1).max(LIMITES_COMBO.opcoesPorGrupo),
+    modo: z.enum(['LISTA', 'CATEGORIA']).optional(),
+    categoria: z.string().trim().min(1).max(80).nullable().optional(),
+    categoriaPdvId: z.string().min(1).nullable().optional(),
+    precoModo: z.enum(['FIXO', 'CATALOGO']).nullable().optional(),
+    precoFixo: z.number().min(0).max(99999).nullable().optional(),
+    opcoes: z.array(opcaoSchema).max(LIMITES_COMBO.opcoesPorGrupo).default([]),
   })).min(1).max(LIMITES_COMBO.grupos),
 });
 
@@ -47,34 +75,148 @@ const PRODUTO_DA_OPCAO = {
   exigePreparo: true, estacaoPreparo: true, controlaEstoque: true,
 } satisfies Prisma.ProdutoSelect;
 
+const PRODUTO_COM_PRECO = {
+  ...PRODUTO_DA_OPCAO,
+  pontoVendaId: true,
+  categoriaPdvId: true,
+  precos: { select: { volumeMl: true, preco: true }, orderBy: { volumeMl: 'asc' as const } },
+} satisfies Prisma.ProdutoSelect;
+
 const INCLUDE_COMPOSICAO = {
   opcoes: { orderBy: { ordem: 'asc' }, include: { produto: { select: PRODUTO_DA_OPCAO } } },
 } satisfies Prisma.ComboGrupoInclude;
 
+type ProdutoComPreco = Prisma.ProdutoGetPayload<{ select: typeof PRODUTO_COM_PRECO }>;
+
+function produtoElegivelCombo(produto: { ativo: boolean; combo: boolean; tipo: string; formato: string | null; categoria: string | null }) {
+  return produto.ativo && !produto.combo && produto.categoria !== 'Chope' && !isBebidaChopeOperacao(produto);
+}
+
+function precoAvulsoProduto(produto: { precos: Array<{ volumeMl: number; preco: unknown }> }): number {
+  const unitario = produto.precos.find((preco) => preco.volumeMl === 1) ?? produto.precos[0];
+  return unitario ? toNumber(unitario.preco) : 0;
+}
+
+function modoDoGrupo(grupo: { modo?: ComboGrupoModo | null }): ComboGrupoModo {
+  return grupo.modo === 'CATEGORIA' ? 'CATEGORIA' : 'LISTA';
+}
+
+function mapearOpcaoLista(opcao: {
+  id: string;
+  produtoId: string;
+  precoNoCombo: unknown;
+  quantidade: number;
+  produto: {
+    nome: string;
+    ativo: boolean;
+    categoria: string | null;
+    exigePreparo: boolean;
+    estacaoPreparo: EstacaoPreparo;
+    controlaEstoque: boolean;
+  };
+}): OpcaoComboResolvida {
+  return {
+    id: opcao.id,
+    produtoId: opcao.produtoId,
+    nome: opcao.produto.nome,
+    ativo: opcao.produto.ativo,
+    categoria: opcao.produto.categoria,
+    precoNoCombo: toNumber(opcao.precoNoCombo),
+    quantidade: opcao.quantidade,
+    exigePreparo: opcao.produto.exigePreparo,
+    estacaoPreparo: opcao.produto.estacaoPreparo,
+    controlaEstoque: opcao.produto.controlaEstoque,
+  };
+}
+
+function mapearOpcaoCategoria(
+  produto: ProdutoComPreco,
+  grupo: { precoModo: ComboGrupoPrecoModo | null; precoFixo: unknown },
+): OpcaoComboResolvida {
+  const precoNoCombo = grupo.precoModo === 'FIXO'
+    ? toNumber(grupo.precoFixo ?? 0)
+    : precoAvulsoProduto(produto);
+  return {
+    id: produto.id,
+    produtoId: produto.id,
+    nome: produto.nome,
+    ativo: produto.ativo,
+    categoria: produto.categoria,
+    precoNoCombo,
+    quantidade: 1,
+    exigePreparo: produto.exigePreparo,
+    estacaoPreparo: produto.estacaoPreparo,
+    controlaEstoque: produto.controlaEstoque,
+  };
+}
+
+async function carregarProdutosCategoria(
+  client: TxClient,
+  params: {
+    cervejariaId: string;
+    pontoVendaId: string | null;
+    categoria: string | null;
+    categoriaPdvId: string | null;
+  },
+): Promise<ProdutoComPreco[]> {
+  const where: Prisma.ProdutoWhereInput = {
+    cervejariaId: params.cervejariaId,
+    pontoVendaId: params.pontoVendaId,
+    ativo: true,
+    combo: false,
+    NOT: { categoria: 'Chope' },
+    ...(params.categoriaPdvId
+      ? { categoriaPdvId: params.categoriaPdvId }
+      : { categoria: params.categoria ?? undefined }),
+  };
+  const produtos = await client.produto.findMany({
+    where,
+    select: PRODUTO_COM_PRECO,
+    orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
+  });
+  return produtos.filter((produto) => produtoElegivelCombo(produto));
+}
+
 export async function listarComposicaoCombo(client: TxClient, comboProdutoId: string) {
+  const combo = await client.produto.findFirst({
+    where: { id: comboProdutoId },
+    select: { id: true, cervejariaId: true, pontoVendaId: true },
+  });
+  if (!combo) return [];
+
   const grupos = await client.comboGrupo.findMany({
     where: { comboProdutoId },
     orderBy: { ordem: 'asc' },
     include: INCLUDE_COMPOSICAO,
   });
-  return grupos.map((grupo) => ({
-    id: grupo.id,
-    nome: grupo.nome,
-    minimo: grupo.minimo,
-    maximo: grupo.maximo,
-    somenteCardapioTurno: grupo.somenteCardapioTurno,
-    opcoes: grupo.opcoes.map((opcao) => ({
-      id: opcao.id,
-      produtoId: opcao.produtoId,
-      nome: opcao.produto.nome,
-      ativo: opcao.produto.ativo,
-      categoria: opcao.produto.categoria,
-      precoNoCombo: toNumber(opcao.precoNoCombo),
-      quantidade: opcao.quantidade,
-      exigePreparo: opcao.produto.exigePreparo,
-      estacaoPreparo: opcao.produto.estacaoPreparo,
-      controlaEstoque: opcao.produto.controlaEstoque,
-    })),
+
+  return Promise.all(grupos.map(async (grupo) => {
+    const modo = modoDoGrupo(grupo);
+    const opcoes = modo === 'CATEGORIA'
+      ? (await carregarProdutosCategoria(client, {
+        cervejariaId: combo.cervejariaId,
+        pontoVendaId: combo.pontoVendaId,
+        categoria: grupo.categoria,
+        categoriaPdvId: grupo.categoriaPdvId,
+      })).map((produto) => mapearOpcaoCategoria(produto, {
+        precoModo: grupo.precoModo,
+        precoFixo: grupo.precoFixo,
+      }))
+      : grupo.opcoes.map(mapearOpcaoLista);
+
+    return {
+      id: grupo.id,
+      nome: grupo.nome,
+      minimo: grupo.minimo,
+      maximo: grupo.maximo,
+      modo,
+      categoria: grupo.categoria,
+      categoriaPdvId: grupo.categoriaPdvId,
+      precoModo: grupo.precoModo,
+      precoFixo: grupo.precoFixo == null ? null : toNumber(grupo.precoFixo),
+      somenteCardapioTurno: grupo.somenteCardapioTurno,
+      opcoes,
+    };
   }));
 }
 
@@ -113,17 +255,40 @@ export function validarGruposCombo(grupos: GrupoComboInput[]) {
   if (grupos.length > LIMITES_COMBO.grupos) throw new ComboInvalidoError(`Um combo aceita até ${LIMITES_COMBO.grupos} grupos`);
   for (const grupo of grupos) {
     const nome = grupo.nome.trim();
+    const modo = modoDoGrupo(grupo);
     if (!nome) throw new ComboInvalidoError('Dê um nome para cada grupo do combo');
+    if (!Number.isInteger(grupo.minimo) || grupo.minimo < 0) throw new ComboInvalidoError(`Mínimo inválido em "${nome}"`);
+    if (!Number.isInteger(grupo.maximo) || grupo.maximo < 1 || grupo.maximo < grupo.minimo) {
+      throw new ComboInvalidoError(`O máximo de "${nome}" deve ser pelo menos 1 e não menor que o mínimo`);
+    }
+
+    if (modo === 'CATEGORIA') {
+      const categoria = grupo.categoria?.trim() || null;
+      const categoriaPdvId = grupo.categoriaPdvId?.trim() || null;
+      if (!categoria && !categoriaPdvId) throw new ComboInvalidoError(`Escolha a categoria de "${nome}"`);
+      if (categoria === 'Chope') throw new ComboInvalidoError(`"${nome}" não pode usar a categoria Chope`);
+      if (grupo.opcoes.length > 0) throw new ComboInvalidoError(`"${nome}" por categoria não lista produtos individualmente`);
+      if (grupo.precoModo !== 'FIXO' && grupo.precoModo !== 'CATALOGO') {
+        throw new ComboInvalidoError(`Escolha o preço de "${nome}" (fixo ou do catálogo)`);
+      }
+      if (grupo.precoModo === 'FIXO') {
+        if (grupo.precoFixo == null || !(grupo.precoFixo >= 0)) throw new ComboInvalidoError(`Informe o preço fixo de "${nome}"`);
+      }
+      continue;
+    }
+
     if (grupo.opcoes.length === 0) throw new ComboInvalidoError(`Inclua ao menos um produto em "${nome}"`);
     if (grupo.opcoes.length > LIMITES_COMBO.opcoesPorGrupo) throw new ComboInvalidoError(`"${nome}" aceita até ${LIMITES_COMBO.opcoesPorGrupo} produtos`);
-    if (!Number.isInteger(grupo.minimo) || grupo.minimo < 0) throw new ComboInvalidoError(`Mínimo inválido em "${nome}"`);
-    if (!Number.isInteger(grupo.maximo) || grupo.maximo < 1 || grupo.maximo < grupo.minimo) throw new ComboInvalidoError(`O máximo de "${nome}" deve ser pelo menos 1 e não menor que o mínimo`);
     if (grupo.maximo > grupo.opcoes.length) throw new ComboInvalidoError(`"${nome}" permite escolher ${grupo.maximo}, mas tem só ${grupo.opcoes.length} produto(s)`);
-    if (new Set(grupo.opcoes.map((opcao) => opcao.produtoId)).size !== grupo.opcoes.length) throw new ComboInvalidoError(`Produto repetido em "${nome}"`);
+    if (new Set(grupo.opcoes.map((opcao) => opcao.produtoId)).size !== grupo.opcoes.length) {
+      throw new ComboInvalidoError(`Produto repetido em "${nome}"`);
+    }
     for (const opcao of grupo.opcoes) {
       if (!(opcao.precoNoCombo >= 0)) throw new ComboInvalidoError(`Preço inválido em "${nome}"`);
       const quantidade = opcao.quantidade ?? 1;
-      if (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > LIMITES_COMBO.quantidadePorOpcao) throw new ComboInvalidoError(`Quantidade inválida em "${nome}"`);
+      if (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > LIMITES_COMBO.quantidadePorOpcao) {
+        throw new ComboInvalidoError(`Quantidade inválida em "${nome}"`);
+      }
     }
   }
   if (!grupos.some((grupo) => grupo.minimo >= 1)) throw new ComboInvalidoError('Ao menos um grupo precisa ser obrigatório (mínimo 1)');
@@ -135,21 +300,74 @@ export async function substituirComposicaoCombo(tx: TxClient, cervejariaId: stri
   if (!combo.combo) throw new ComboInvalidoError('Este produto não é um combo');
   validarGruposCombo(grupos);
 
-  const produtoIds = [...new Set(grupos.flatMap((grupo) => grupo.opcoes.map((opcao) => opcao.produtoId)))];
-  const produtos = await tx.produto.findMany({
-    where: { id: { in: produtoIds }, cervejariaId },
-    select: { ...PRODUTO_DA_OPCAO, pontoVendaId: true, precos: { select: { volumeMl: true } } },
-  });
-  if (produtos.length !== produtoIds.length || produtos.some((produto) => produto.pontoVendaId !== combo.pontoVendaId)) {
+  const produtoIdsLista = [...new Set(grupos
+    .filter((grupo) => modoDoGrupo(grupo) === 'LISTA')
+    .flatMap((grupo) => grupo.opcoes.map((opcao) => opcao.produtoId)))];
+  const produtosLista = produtoIdsLista.length
+    ? await tx.produto.findMany({
+      where: { id: { in: produtoIdsLista }, cervejariaId },
+      select: { ...PRODUTO_DA_OPCAO, pontoVendaId: true, precos: { select: { volumeMl: true } } },
+    })
+    : [];
+  if (produtosLista.length !== produtoIdsLista.length || produtosLista.some((produto) => produto.pontoVendaId !== combo.pontoVendaId)) {
     throw Object.assign(new Error('Produto do combo não pertence à empresa ou ao ponto de venda'), { statusCode: 404 });
   }
-  for (const produto of produtos) {
+  for (const produto of produtosLista) {
     if (produto.combo) throw new ComboInvalidoError(`${produto.nome} é um combo e não pode fazer parte de outro combo`);
     if (isBebidaChopeOperacao(produto)) throw new ComboInvalidoError(`${produto.nome} é vendido por Tap e não pode fazer parte de um combo`);
   }
 
+  const categoriasExpandidas: Array<{ minimo: number; opcoes: Array<{ precoNoCombo: number; quantidade?: number }> }> = [];
+
+  for (const grupo of grupos) {
+    if (modoDoGrupo(grupo) !== 'CATEGORIA') {
+      categoriasExpandidas.push({ minimo: grupo.minimo, opcoes: grupo.opcoes });
+      continue;
+    }
+
+    let categoria = grupo.categoria?.trim() || null;
+    let categoriaPdvId = grupo.categoriaPdvId?.trim() || null;
+    if (categoriaPdvId) {
+      const categoriaPdv = await tx.categoriaProdutoPdv.findFirst({
+        where: { id: categoriaPdvId, cervejariaId },
+        select: { id: true, nome: true },
+      });
+      if (!categoriaPdv) throw new ComboInvalidoError(`Categoria de "${grupo.nome.trim()}" não encontrada`);
+      if (categoriaPdv.nome === 'Chope') throw new ComboInvalidoError(`"${grupo.nome.trim()}" não pode usar a categoria Chope`);
+      categoria = categoriaPdv.nome;
+      categoriaPdvId = categoriaPdv.id;
+    }
+
+    const produtos = await carregarProdutosCategoria(tx, {
+      cervejariaId,
+      pontoVendaId: combo.pontoVendaId,
+      categoria,
+      categoriaPdvId,
+    });
+    if (produtos.length === 0) {
+      throw new ComboInvalidoError(`"${grupo.nome.trim()}" não tem produtos ativos na categoria ${categoria ?? ''}`);
+    }
+    if (produtos.length > LIMITES_COMBO.opcoesPorGrupo) {
+      throw new ComboInvalidoError(`"${grupo.nome.trim()}" tem mais de ${LIMITES_COMBO.opcoesPorGrupo} produtos na categoria`);
+    }
+    if (grupo.maximo > produtos.length) {
+      throw new ComboInvalidoError(`"${grupo.nome.trim()}" permite escolher ${grupo.maximo}, mas a categoria tem só ${produtos.length} produto(s)`);
+    }
+
+    grupo.categoria = categoria;
+    grupo.categoriaPdvId = categoriaPdvId;
+    categoriasExpandidas.push({
+      minimo: grupo.minimo,
+      opcoes: produtos.map((produto) => mapearOpcaoCategoria(produto, {
+        precoModo: grupo.precoModo ?? null,
+        precoFixo: grupo.precoFixo,
+      })),
+    });
+  }
+
   await tx.comboGrupo.deleteMany({ where: { comboProdutoId } });
   for (const [ordem, grupo] of grupos.entries()) {
+    const modo = modoDoGrupo(grupo);
     await tx.comboGrupo.create({
       data: {
         comboProdutoId,
@@ -157,22 +375,31 @@ export async function substituirComposicaoCombo(tx: TxClient, cervejariaId: stri
         nome: grupo.nome.trim(),
         minimo: grupo.minimo,
         maximo: grupo.maximo,
+        modo,
+        categoria: modo === 'CATEGORIA' ? (grupo.categoria?.trim() || null) : null,
+        categoriaPdvId: modo === 'CATEGORIA' ? (grupo.categoriaPdvId?.trim() || null) : null,
+        precoModo: modo === 'CATEGORIA' ? grupo.precoModo ?? null : null,
+        precoFixo: modo === 'CATEGORIA' && grupo.precoModo === 'FIXO' ? grupo.precoFixo ?? 0 : null,
         somenteCardapioTurno: grupo.somenteCardapioTurno ?? false,
         ordem,
-        opcoes: {
-          create: grupo.opcoes.map((opcao, ordemOpcao) => ({
-            produtoId: opcao.produtoId,
-            precoNoCombo: opcao.precoNoCombo,
-            quantidade: opcao.quantidade ?? 1,
-            ordem: ordemOpcao,
-          })),
-        },
+        ...(modo === 'LISTA'
+          ? {
+            opcoes: {
+              create: grupo.opcoes.map((opcao, ordemOpcao) => ({
+                produtoId: opcao.produtoId,
+                precoNoCombo: opcao.precoNoCombo,
+                quantidade: opcao.quantidade ?? 1,
+                ordem: ordemOpcao,
+              })),
+            },
+          }
+          : {}),
       },
     });
   }
 
   await tx.preco.deleteMany({ where: { produtoId: comboProdutoId } });
-  await tx.preco.create({ data: { produtoId: comboProdutoId, volumeMl: 1, preco: precoBaseCombo(grupos) } });
+  await tx.preco.create({ data: { produtoId: comboProdutoId, volumeMl: 1, preco: precoBaseCombo(categoriasExpandidas) } });
   return listarComposicaoCombo(tx, comboProdutoId);
 }
 
@@ -223,6 +450,11 @@ export type ComponenteComboResolvido = {
   controlaEstoque: boolean;
 };
 
+type LinhaResolvida = {
+  grupoNome: string;
+  opcao: OpcaoComboResolvida;
+};
+
 /** Confere as escolhas contra a composição atual e devolve os componentes de uma linha de combo. */
 export async function resolverEscolhasCombo(
   tx: TxClient,
@@ -236,6 +468,12 @@ export async function resolverEscolhasCombo(
     sessaoCaixaId?: string;
   },
 ): Promise<ComponenteComboResolvido[]> {
+  const combo = await tx.produto.findFirst({
+    where: { id: params.comboProdutoId },
+    select: { id: true, cervejariaId: true, pontoVendaId: true },
+  });
+  if (!combo) throw new ComboInvalidoError(`${params.comboNome} ainda não tem composição`);
+
   const grupos = await tx.comboGrupo.findMany({
     where: { comboProdutoId: params.comboProdutoId },
     orderBy: { ordem: 'asc' },
@@ -255,39 +493,60 @@ export async function resolverEscolhasCombo(
     escolhidasPorGrupo.set(escolha.grupoId, atuais);
   }
 
-  const linhas: Array<{ grupoNome: string; opcao: (typeof grupos)[number]['opcoes'][number] }> = [];
+  const linhas: LinhaResolvida[] = [];
   for (const grupo of grupos) {
     const escolhidas = escolhidasPorGrupo.get(grupo.id) ?? new Set<string>();
-    const opcoes = grupo.opcoes.filter((opcao) => escolhidas.has(opcao.id));
-    if (opcoes.length !== escolhidas.size) {
-      throw new ComboInvalidoError(`A composição de ${params.comboNome} mudou. Escolha os itens novamente.`);
+    const modo = modoDoGrupo(grupo);
+    let opcoes: OpcaoComboResolvida[];
+
+    if (modo === 'CATEGORIA') {
+      const produtos = await carregarProdutosCategoria(tx, {
+        cervejariaId: combo.cervejariaId,
+        pontoVendaId: combo.pontoVendaId,
+        categoria: grupo.categoria,
+        categoriaPdvId: grupo.categoriaPdvId,
+      });
+      const porId = new Map(produtos.map((produto) => [produto.id, mapearOpcaoCategoria(produto, {
+        precoModo: grupo.precoModo,
+        precoFixo: grupo.precoFixo,
+      })]));
+      opcoes = [...escolhidas].map((id) => porId.get(id)).filter((opcao): opcao is OpcaoComboResolvida => Boolean(opcao));
+      if (opcoes.length !== escolhidas.size) {
+        throw new ComboInvalidoError(`A composição de ${params.comboNome} mudou. Escolha os itens novamente.`);
+      }
+    } else {
+      opcoes = grupo.opcoes.filter((opcao) => escolhidas.has(opcao.id)).map(mapearOpcaoLista);
+      if (opcoes.length !== escolhidas.size) {
+        throw new ComboInvalidoError(`A composição de ${params.comboNome} mudou. Escolha os itens novamente.`);
+      }
     }
+
     if (opcoes.length < grupo.minimo || opcoes.length > grupo.maximo) {
       const faixa = grupo.minimo === grupo.maximo ? `${grupo.minimo}` : `de ${grupo.minimo} a ${grupo.maximo}`;
       throw new ComboInvalidoError(`Escolha ${faixa} opção(ões) em "${grupo.nome}"`);
     }
     for (const opcao of opcoes) {
-      if (!opcao.produto.ativo) throw new ComboInvalidoError(`${opcao.produto.nome} está indisponível`);
+      if (!opcao.ativo) throw new ComboInvalidoError(`${opcao.nome} está indisponível`);
       if (grupo.somenteCardapioTurno && params.sessaoCaixaId
         && !(await assertProdutoNoCardapioTurno(params.sessaoCaixaId, opcao.produtoId, 0))) {
-        throw new ComboInvalidoError(`${opcao.produto.nome} não está no cardápio deste turno`);
+        throw new ComboInvalidoError(`${opcao.nome} não está no cardápio deste turno`);
       }
       linhas.push({ grupoNome: grupo.nome, opcao });
     }
   }
 
   const precos = ratearPrecoCombo(
-    linhas.map(({ opcao }) => ({ precoNoCombo: toNumber(opcao.precoNoCombo), quantidade: opcao.quantidade })),
+    linhas.map(({ opcao }) => ({ precoNoCombo: opcao.precoNoCombo, quantidade: opcao.quantidade })),
     fatorPrecoCombo(params.precoEfetivo, params.precoCatalogo),
   );
   return linhas.map(({ grupoNome, opcao }, indice) => ({
     produtoId: opcao.produtoId,
-    nome: opcao.produto.nome,
+    nome: opcao.nome,
     grupoNome,
     precoUnit: precos[indice]!,
     quantidade: params.quantidade * opcao.quantidade,
-    exigePreparo: opcao.produto.exigePreparo,
-    estacaoPreparo: opcao.produto.estacaoPreparo,
-    controlaEstoque: opcao.produto.controlaEstoque,
+    exigePreparo: opcao.exigePreparo,
+    estacaoPreparo: opcao.estacaoPreparo,
+    controlaEstoque: opcao.controlaEstoque,
   }));
 }

@@ -1,21 +1,72 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, formatCurrency } from '../../lib/api';
 import { formatCurrencyInputFromNumber, parseCurrencyInput } from '../../lib/currency';
-import { precoBaseCombo, precoMaximoCombo, type ComposicaoCombo } from '../../lib/combo';
+import { precoBaseCombo, precoMaximoCombo, type ComboGrupoModo, type ComboGrupoPrecoModo, type ComposicaoCombo } from '../../lib/combo';
 import { Modal } from '../Modal';
 import { CurrencyInput } from '../CurrencyInput';
 import { IconPlus, IconTrash } from '../NavIcons';
 
-export type ProdutoParaCombo = { id: string; nome: string; categoria: string | null; precoUnit: string | number };
+export type ProdutoParaCombo = {
+  id: string;
+  nome: string;
+  categoria: string | null;
+  categoriaPdvId?: string | null;
+  precoUnit: string | number;
+};
 
 type OpcaoForm = { produtoId: string; precoNoCombo: string; quantidade: number };
-type GrupoForm = { chave: string; nome: string; minimo: number; maximo: number; somenteCardapioTurno: boolean; faixa: boolean; opcoes: OpcaoForm[] };
+type GrupoForm = {
+  chave: string;
+  nome: string;
+  minimo: number;
+  maximo: number;
+  somenteCardapioTurno: boolean;
+  faixa: boolean;
+  modo: ComboGrupoModo;
+  categoria: string;
+  categoriaPdvId: string;
+  precoModo: ComboGrupoPrecoModo;
+  precoFixo: string;
+  opcoes: OpcaoForm[];
+};
 
 const LIMITE_QUANTIDADE = 20;
 let proximaChave = 0;
 const novaChave = () => `grupo-${++proximaChave}`;
-const grupoVazio = (): GrupoForm => ({ chave: novaChave(), nome: '', minimo: 1, maximo: 1, somenteCardapioTurno: false, faixa: false, opcoes: [] });
+const grupoVazio = (): GrupoForm => ({
+  chave: novaChave(),
+  nome: '',
+  minimo: 1,
+  maximo: 1,
+  somenteCardapioTurno: false,
+  faixa: false,
+  modo: 'LISTA',
+  categoria: '',
+  categoriaPdvId: '',
+  precoModo: 'FIXO',
+  precoFixo: formatCurrencyInputFromNumber(0),
+  opcoes: [],
+});
 const categoriaDe = (produto: ProdutoParaCombo) => produto.categoria?.trim() || 'Outros';
+
+function produtosDaCategoria(produtos: ProdutoParaCombo[], grupo: GrupoForm): ProdutoParaCombo[] {
+  if (!grupo.categoria && !grupo.categoriaPdvId) return [];
+  return produtos.filter((produto) => {
+    if (grupo.categoriaPdvId && produto.categoriaPdvId) return produto.categoriaPdvId === grupo.categoriaPdvId;
+    return categoriaDe(produto) === grupo.categoria;
+  });
+}
+
+function opcoesParaCalculo(grupo: GrupoForm, produtos: ProdutoParaCombo[]) {
+  if (grupo.modo === 'CATEGORIA') {
+    const precoFixo = parseCurrencyInput(grupo.precoFixo);
+    return produtosDaCategoria(produtos, grupo).map((produto) => ({
+      precoNoCombo: grupo.precoModo === 'FIXO' ? precoFixo : Number(produto.precoUnit) || 0,
+      quantidade: 1,
+    }));
+  }
+  return grupo.opcoes.map((opcao) => ({ precoNoCombo: parseCurrencyInput(opcao.precoNoCombo), quantidade: opcao.quantidade }));
+}
 
 function resumoRegra(grupo: GrupoForm): string {
   if (grupo.minimo === 0) return grupo.maximo === 1 ? 'Opcional: o cliente pode escolher 1' : `Opcional: o cliente pode escolher até ${grupo.maximo}`;
@@ -23,8 +74,17 @@ function resumoRegra(grupo: GrupoForm): string {
   return `O cliente escolhe de ${grupo.minimo} a ${grupo.maximo}`;
 }
 
-function validarGrupo(grupo: GrupoForm): string | null {
+function validarGrupo(grupo: GrupoForm, produtos: ProdutoParaCombo[]): string | null {
   if (!grupo.nome.trim()) return 'Dê um nome para esta pergunta.';
+  if (grupo.modo === 'CATEGORIA') {
+    if (!grupo.categoria.trim() && !grupo.categoriaPdvId) return 'Escolha a categoria.';
+    if (grupo.categoria === 'Chope') return 'A categoria Chope não pode entrar em combo.';
+    if (grupo.precoModo === 'FIXO' && !(parseCurrencyInput(grupo.precoFixo) >= 0)) return 'Informe o preço fixo.';
+    const daCategoria = produtosDaCategoria(produtos, grupo);
+    if (daCategoria.length === 0) return 'Essa categoria não tem produtos ativos.';
+    if (grupo.maximo > daCategoria.length) return `A regra permite escolher ${grupo.maximo}, mas a categoria tem só ${daCategoria.length} produto(s).`;
+    return null;
+  }
   if (grupo.opcoes.length === 0) return 'Adicione ao menos um produto.';
   if (grupo.maximo > grupo.opcoes.length) return `A regra permite escolher ${grupo.maximo}, mas há só ${grupo.opcoes.length} produto(s).`;
   return null;
@@ -118,46 +178,34 @@ function SeletorProdutosCombo({ disponiveis, onAdicionar, onCancelar }: {
   }
 
   return (
-    <div className="space-y-3 rounded-xl bg-surface-lighter p-3">
-      <input className="input" type="search" placeholder="Buscar produto" aria-label="Buscar produto" value={busca} onChange={(event) => setBusca(event.target.value)} autoFocus />
+    <div className="space-y-3 rounded-xl border border-line bg-surface-lighter p-3">
+      <input className="input" placeholder="Buscar produto" value={busca} onChange={(event) => setBusca(event.target.value)} aria-label="Buscar produto" />
       {categorias.length > 1 && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por categoria">
-          {[null, ...categorias].map((item) => (
-            <button
-              key={item ?? 'todas'}
-              type="button"
-              aria-pressed={categoria === item}
-              className={`min-h-9 rounded-full border px-3 text-sm font-semibold ${categoria === item ? 'border-brand-500 bg-brand-500/15 text-ink' : 'border-line text-ink-muted'}`}
-              onClick={() => setCategoria(item)}
-            >
-              {item ?? 'Todas'}
-            </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={`touch-btn-sm ${categoria === null ? 'touch-btn-primary' : 'touch-btn-secondary'}`} onClick={() => setCategoria(null)}>Todas</button>
+          {categorias.map((nome) => (
+            <button key={nome} type="button" className={`touch-btn-sm ${categoria === nome ? 'touch-btn-primary' : 'touch-btn-secondary'}`} onClick={() => setCategoria(nome)}>{nome}</button>
           ))}
         </div>
       )}
-      {visiveis.length === 0 ? (
-        <p className="py-2 text-sm text-ink-muted">Nenhum produto encontrado com “{busca.trim()}”.</p>
-      ) : (
-        <>
-          <button type="button" className="text-sm font-semibold text-brand-400 underline-offset-4 hover:underline" onClick={alternarVisiveis}>
-            {todosVisiveisMarcados ? 'Desmarcar todos' : `Marcar todos${categoria ? ` de ${categoria}` : ''} (${visiveis.length})`}
-          </button>
-          <ul className="max-h-64 divide-y divide-line overflow-y-auto rounded-xl border border-line bg-surface">
-            {visiveis.map((produto) => (
-              <li key={produto.id}>
-                <label className="flex min-h-12 cursor-pointer items-center gap-3 px-3 py-2">
-                  <input type="checkbox" className="h-5 w-5 shrink-0 accent-brand-500" checked={marcados.has(produto.id)} onChange={() => alternar(produto.id)} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words font-medium">{produto.nome}</span>
-                    {!categoria && <span className="block text-xs text-ink-faint">{categoriaDe(produto)}</span>}
-                  </span>
-                  <span className="shrink-0 text-sm tabular-nums text-ink-muted">{formatCurrency(Number(produto.precoUnit))}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        </>
+      {visiveis.length > 0 && (
+        <label className="flex items-center gap-2 text-sm font-semibold text-ink-muted">
+          <input type="checkbox" className="h-5 w-5 accent-brand-500" checked={todosVisiveisMarcados} onChange={alternarVisiveis} />
+          Selecionar todos{categoria ? ` de ${categoria}` : ' visíveis'}
+        </label>
       )}
+      <ul className="max-h-56 space-y-1 overflow-y-auto">
+        {visiveis.map((produto) => (
+          <li key={produto.id}>
+            <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface">
+              <input type="checkbox" className="h-5 w-5 shrink-0 accent-brand-500" checked={marcados.has(produto.id)} onChange={() => alternar(produto.id)} />
+              <span className="min-w-0 flex-1 break-words font-semibold">{produto.nome}</span>
+              <span className="shrink-0 text-sm tabular-nums text-ink-muted">{formatCurrency(Number(produto.precoUnit) || 0)}</span>
+            </label>
+          </li>
+        ))}
+        {visiveis.length === 0 && <li className="px-2 py-3 text-sm text-ink-muted">Nenhum produto encontrado.</li>}
+      </ul>
       <div className="grid grid-cols-2 gap-2">
         <button type="button" className="touch-btn-secondary" onClick={onCancelar}>Cancelar</button>
         <button type="button" className="touch-btn-primary" disabled={marcados.size === 0} onClick={() => onAdicionar(disponiveis.filter((produto) => marcados.has(produto.id)))}>
@@ -168,11 +216,12 @@ function SeletorProdutosCombo({ disponiveis, onAdicionar, onCancelar }: {
   );
 }
 
-function GrupoComboEditor({ grupo, indice, produtos, produtoPorId, usaCardapio, erro, onChange, onRemover }: {
+function GrupoComboEditor({ grupo, indice, produtos, produtoPorId, categorias, usaCardapio, erro, onChange, onRemover }: {
   grupo: GrupoForm;
   indice: number;
   produtos: ProdutoParaCombo[];
   produtoPorId: Map<string, ProdutoParaCombo>;
+  categorias: Array<{ nome: string; categoriaPdvId: string }>;
   usaCardapio: boolean;
   erro: string | null;
   onChange: (alterar: (grupo: GrupoForm) => GrupoForm) => void;
@@ -180,11 +229,20 @@ function GrupoComboEditor({ grupo, indice, produtos, produtoPorId, usaCardapio, 
 }) {
   const [adicionando, setAdicionando] = useState(false);
   const opcional = grupo.minimo === 0;
-  const limite = Math.max(1, grupo.opcoes.length);
+  const daCategoria = produtosDaCategoria(produtos, grupo);
+  const limite = Math.max(1, grupo.modo === 'CATEGORIA' ? daCategoria.length : grupo.opcoes.length);
   const disponiveis = produtos.filter((produto) => !grupo.opcoes.some((opcao) => opcao.produtoId === produto.id));
   const tornarOpcional = (valor: boolean) => onChange((atual) => valor
     ? { ...atual, minimo: 0, faixa: false }
     : { ...atual, minimo: atual.faixa ? 1 : atual.maximo });
+  const trocarModo = (modo: ComboGrupoModo) => onChange((atual) => ({
+    ...atual,
+    modo,
+    opcoes: modo === 'LISTA' ? atual.opcoes : [],
+    categoria: modo === 'CATEGORIA' ? atual.categoria : '',
+    categoriaPdvId: modo === 'CATEGORIA' ? atual.categoriaPdvId : '',
+    maximo: Math.min(atual.maximo, Math.max(1, modo === 'CATEGORIA' ? (atual.categoria ? produtosDaCategoria(produtos, { ...atual, modo }).length || 1 : 1) : atual.opcoes.length || 1)),
+  }));
 
   return (
     <section className="rounded-2xl border border-line p-4" aria-label={grupo.nome || `Pergunta ${indice + 1}`}>
@@ -192,7 +250,7 @@ function GrupoComboEditor({ grupo, indice, produtos, produtoPorId, usaCardapio, 
         <div className="min-w-0 flex-1">
           <input
             className="w-full border-b border-transparent bg-transparent py-1 text-lg font-bold text-ink placeholder:font-semibold placeholder:text-ink-faint focus:border-brand-400 focus:outline-none"
-            placeholder="Nome da pergunta, ex.: Churrasquinho"
+            placeholder="Nome da pergunta, ex.: Complementos"
             aria-label="Nome da pergunta"
             maxLength={80}
             value={grupo.nome}
@@ -203,6 +261,16 @@ function GrupoComboEditor({ grupo, indice, produtos, produtoPorId, usaCardapio, 
         <button type="button" className="icon-btn-danger" aria-label={`Apagar a pergunta ${grupo.nome || indice + 1}`} title="Apagar pergunta" onClick={onRemover}>
           <IconTrash className="h-4 w-4" />
         </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="segmented-control" role="group" aria-label="Como montar esta pergunta">
+          {([['LISTA', 'Lista de produtos'], ['CATEGORIA', 'Categoria']] as const).map(([valor, rotulo]) => (
+            <button key={valor} type="button" aria-pressed={grupo.modo === valor} className={`segmented-control-btn px-4 ${grupo.modo === valor ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`} onClick={() => trocarModo(valor)}>
+              {rotulo}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -245,46 +313,117 @@ function GrupoComboEditor({ grupo, indice, produtos, produtoPorId, usaCardapio, 
         )}
       </div>
 
-      {grupo.opcoes.length > 0 ? (
-        <ul className="mt-3 divide-y divide-line border-t border-line">
-          {grupo.opcoes.map((opcao) => (
-            <OpcaoComboLinha
-              key={opcao.produtoId}
-              opcao={opcao}
-              produto={produtoPorId.get(opcao.produtoId)}
-              onChange={(alteracao) => onChange((atual) => ({ ...atual, opcoes: atual.opcoes.map((item) => item.produtoId === opcao.produtoId ? { ...item, ...alteracao } : item) }))}
-              onRemover={() => onChange((atual) => {
-                const opcoes = atual.opcoes.filter((item) => item.produtoId !== opcao.produtoId);
-                const maximo = Math.min(atual.maximo, Math.max(1, opcoes.length));
-                return { ...atual, opcoes, maximo, minimo: Math.min(atual.minimo, maximo) };
+      {grupo.modo === 'CATEGORIA' ? (
+        <div className="mt-3 space-y-3">
+          <label className="block space-y-1 text-sm">
+            <span className="font-semibold text-ink-muted">Categoria</span>
+            <select
+              className="input"
+              aria-label="Categoria da pergunta"
+              value={grupo.categoriaPdvId || grupo.categoria}
+              onChange={(event) => {
+                const escolhida = categorias.find((item) => item.categoriaPdvId === event.target.value || item.nome === event.target.value);
+                onChange((atual) => {
+                  const proximo = {
+                    ...atual,
+                    categoria: escolhida?.nome ?? event.target.value,
+                    categoriaPdvId: escolhida?.categoriaPdvId ?? '',
+                  };
+                  const total = produtosDaCategoria(produtos, proximo).length;
+                  const maximo = Math.min(atual.maximo, Math.max(1, total || 1));
+                  return { ...proximo, maximo, minimo: Math.min(atual.minimo, maximo) };
+                });
+              }}
+            >
+              <option value="">Selecione</option>
+              {categorias.filter((item) => item.nome !== 'Chope').map((item) => (
+                <option key={item.categoriaPdvId || item.nome} value={item.categoriaPdvId || item.nome}>{item.nome}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="segmented-control" role="group" aria-label="Como precificar esta categoria">
+            {([['FIXO', 'Preço fixo'], ['CATALOGO', 'Preço do catálogo']] as const).map(([valor, rotulo]) => (
+              <button key={valor} type="button" aria-pressed={grupo.precoModo === valor} className={`segmented-control-btn px-4 ${grupo.precoModo === valor ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`} onClick={() => onChange((atual) => ({ ...atual, precoModo: valor }))}>
+                {rotulo}
+              </button>
+            ))}
+          </div>
+
+          {grupo.precoModo === 'FIXO' && (
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-semibold text-ink-muted">Preço de cada escolha</span>
+              <div className="w-32 shrink-0">
+                <CurrencyInput className="input text-right font-semibold" aria-label="Preço fixo da categoria" value={grupo.precoFixo} onChange={(precoFixo) => onChange((atual) => ({ ...atual, precoFixo }))} />
+              </div>
+            </label>
+          )}
+
+          {daCategoria.length > 0 ? (
+            <ul className="divide-y divide-line border-t border-line">
+              {daCategoria.map((produto) => {
+                const preco = grupo.precoModo === 'FIXO' ? parseCurrencyInput(grupo.precoFixo) : Number(produto.precoUnit) || 0;
+                return (
+                  <li key={produto.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <span className="min-w-0 break-words font-semibold">{produto.nome}</span>
+                    <span className="shrink-0 tabular-nums text-ink-muted">{formatCurrency(preco)}</span>
+                  </li>
+                );
               })}
-            />
-          ))}
-        </ul>
-      ) : !adicionando && (
-        <p className="mt-3 rounded-xl border border-dashed border-line px-3 py-4 text-center text-sm text-ink-muted">
-          Nenhum produto ainda. Adicione os que o cliente pode escolher.
-        </p>
+            </ul>
+          ) : (
+            <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-sm text-ink-muted">
+              {grupo.categoria || grupo.categoriaPdvId ? 'Nenhum produto ativo nesta categoria.' : 'Escolha a categoria para ver os produtos.'}
+            </p>
+          )}
+        </div>
+      ) : (
+        <>
+          {grupo.opcoes.length > 0 ? (
+            <ul className="mt-3 divide-y divide-line border-t border-line">
+              {grupo.opcoes.map((opcao) => (
+                <OpcaoComboLinha
+                  key={opcao.produtoId}
+                  opcao={opcao}
+                  produto={produtoPorId.get(opcao.produtoId)}
+                  onChange={(alteracao) => onChange((atual) => ({ ...atual, opcoes: atual.opcoes.map((item) => item.produtoId === opcao.produtoId ? { ...item, ...alteracao } : item) }))}
+                  onRemover={() => onChange((atual) => {
+                    const opcoes = atual.opcoes.filter((item) => item.produtoId !== opcao.produtoId);
+                    const maximo = Math.min(atual.maximo, Math.max(1, opcoes.length));
+                    return { ...atual, opcoes, maximo, minimo: Math.min(atual.minimo, maximo) };
+                  })}
+                />
+              ))}
+            </ul>
+          ) : !adicionando && (
+            <p className="mt-3 rounded-xl border border-dashed border-line px-3 py-4 text-center text-sm text-ink-muted">
+              Nenhum produto ainda. Adicione os que o cliente pode escolher.
+            </p>
+          )}
+
+          <div className="mt-3 space-y-3">
+            {adicionando ? (
+              <SeletorProdutosCombo
+                disponiveis={disponiveis}
+                onCancelar={() => setAdicionando(false)}
+                onAdicionar={(novos) => {
+                  onChange((atual) => ({
+                    ...atual,
+                    opcoes: [...atual.opcoes, ...novos.map((produto) => ({ produtoId: produto.id, precoNoCombo: formatCurrencyInputFromNumber(produto.precoUnit), quantidade: 1 }))],
+                  }));
+                  setAdicionando(false);
+                }}
+              />
+            ) : (
+              <button type="button" className="touch-btn-secondary flex w-full items-center justify-center gap-2" onClick={() => setAdicionando(true)}>
+                <IconPlus className="h-4 w-4" /> Adicionar produtos
+              </button>
+            )}
+          </div>
+        </>
       )}
 
       <div className="mt-3 space-y-3">
-        {adicionando ? (
-          <SeletorProdutosCombo
-            disponiveis={disponiveis}
-            onCancelar={() => setAdicionando(false)}
-            onAdicionar={(novos) => {
-              onChange((atual) => ({
-                ...atual,
-                opcoes: [...atual.opcoes, ...novos.map((produto) => ({ produtoId: produto.id, precoNoCombo: formatCurrencyInputFromNumber(produto.precoUnit), quantidade: 1 }))],
-              }));
-              setAdicionando(false);
-            }}
-          />
-        ) : (
-          <button type="button" className="touch-btn-secondary flex w-full items-center justify-center gap-2" onClick={() => setAdicionando(true)}>
-            <IconPlus className="h-4 w-4" /> Adicionar produtos
-          </button>
-        )}
         {usaCardapio && (
           <label className="flex cursor-pointer items-start gap-3 text-sm text-ink-muted">
             <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-brand-500" checked={grupo.somenteCardapioTurno} onChange={(event) => onChange((atual) => ({ ...atual, somenteCardapioTurno: event.target.checked }))} />
@@ -327,29 +466,47 @@ export function ComboComposicaoModal({
     setCarregando(true);
     api.get<ComposicaoCombo>(`/api/operacao/produtos/${comboId}/combo`)
       .then((composicao) => setGrupos(composicao.grupos.length
-        ? composicao.grupos.map((grupo) => ({
-          chave: novaChave(),
-          nome: grupo.nome,
-          minimo: grupo.minimo,
-          maximo: grupo.maximo,
-          somenteCardapioTurno: grupo.somenteCardapioTurno,
-          faixa: grupo.minimo > 0 && grupo.minimo !== grupo.maximo,
-          opcoes: grupo.opcoes.map((opcao) => ({ produtoId: opcao.produtoId, precoNoCombo: formatCurrencyInputFromNumber(opcao.precoNoCombo), quantidade: opcao.quantidade })),
-        }))
+        ? composicao.grupos.map((grupo) => {
+          const modo: ComboGrupoModo = grupo.modo === 'CATEGORIA' ? 'CATEGORIA' : 'LISTA';
+          return {
+            chave: novaChave(),
+            nome: grupo.nome,
+            minimo: grupo.minimo,
+            maximo: grupo.maximo,
+            somenteCardapioTurno: grupo.somenteCardapioTurno,
+            faixa: grupo.minimo > 0 && grupo.minimo !== grupo.maximo,
+            modo,
+            categoria: grupo.categoria ?? '',
+            categoriaPdvId: grupo.categoriaPdvId ?? '',
+            precoModo: grupo.precoModo === 'CATALOGO' ? 'CATALOGO' : 'FIXO',
+            precoFixo: formatCurrencyInputFromNumber(grupo.precoFixo ?? 0),
+            opcoes: modo === 'LISTA'
+              ? grupo.opcoes.map((opcao) => ({ produtoId: opcao.produtoId, precoNoCombo: formatCurrencyInputFromNumber(opcao.precoNoCombo), quantidade: opcao.quantidade }))
+              : [],
+          };
+        })
         : [grupoVazio()]))
       .catch((error) => setErro(error instanceof ApiError ? error.message : 'Não foi possível carregar a composição'))
       .finally(() => setCarregando(false));
   }, [open, comboId]);
 
   const produtoPorId = new Map(produtos.map((produto) => [produto.id, produto]));
+  const categorias = [...produtos.reduce((mapa, produto) => {
+    const nome = categoriaDe(produto);
+    if (!mapa.has(nome)) mapa.set(nome, { nome, categoriaPdvId: produto.categoriaPdvId ?? '' });
+    else if (!mapa.get(nome)!.categoriaPdvId && produto.categoriaPdvId) mapa.set(nome, { nome, categoriaPdvId: produto.categoriaPdvId });
+    return mapa;
+  }, new Map<string, { nome: string; categoriaPdvId: string }>()).values()]
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
   const gruposCalculo = grupos.map((grupo) => ({
     minimo: grupo.minimo,
     maximo: grupo.maximo,
-    opcoes: grupo.opcoes.map((opcao) => ({ precoNoCombo: parseCurrencyInput(opcao.precoNoCombo), quantidade: opcao.quantidade })),
+    opcoes: opcoesParaCalculo(grupo, produtos),
   }));
   const minimo = precoBaseCombo(gruposCalculo);
   const maximo = precoMaximoCombo(gruposCalculo);
-  const errosGrupos = new Map(grupos.map((grupo) => [grupo.chave, validarGrupo(grupo)]));
+  const errosGrupos = new Map(grupos.map((grupo) => [grupo.chave, validarGrupo(grupo, produtos)]));
 
   const salvar = async () => {
     setErro('');
@@ -360,13 +517,29 @@ export function ComboComposicaoModal({
     setSalvando(true);
     try {
       await api.put(`/api/operacao/produtos/${comboId}/combo`, {
-        grupos: grupos.map((grupo) => ({
-          nome: grupo.nome.trim(),
-          minimo: grupo.minimo,
-          maximo: grupo.maximo,
-          somenteCardapioTurno: grupo.somenteCardapioTurno,
-          opcoes: grupo.opcoes.map((opcao) => ({ produtoId: opcao.produtoId, precoNoCombo: parseCurrencyInput(opcao.precoNoCombo), quantidade: opcao.quantidade })),
-        })),
+        grupos: grupos.map((grupo) => (
+          grupo.modo === 'CATEGORIA'
+            ? {
+              nome: grupo.nome.trim(),
+              minimo: grupo.minimo,
+              maximo: grupo.maximo,
+              somenteCardapioTurno: grupo.somenteCardapioTurno,
+              modo: 'CATEGORIA' as const,
+              categoria: grupo.categoria || null,
+              categoriaPdvId: grupo.categoriaPdvId || null,
+              precoModo: grupo.precoModo,
+              precoFixo: grupo.precoModo === 'FIXO' ? parseCurrencyInput(grupo.precoFixo) : null,
+              opcoes: [],
+            }
+            : {
+              nome: grupo.nome.trim(),
+              minimo: grupo.minimo,
+              maximo: grupo.maximo,
+              somenteCardapioTurno: grupo.somenteCardapioTurno,
+              modo: 'LISTA' as const,
+              opcoes: grupo.opcoes.map((opcao) => ({ produtoId: opcao.produtoId, precoNoCombo: parseCurrencyInput(opcao.precoNoCombo), quantidade: opcao.quantidade })),
+            }
+        )),
       });
       onSaved();
       onClose();
@@ -401,7 +574,7 @@ export function ComboComposicaoModal({
     >
       <div className="space-y-4">
         <p className="text-sm text-ink-muted">
-          Monte as perguntas que o atendente faz ao cliente. Cada produto tem o seu preço dentro do combo; um item fixo é uma pergunta com um só produto.
+          Monte as perguntas que o atendente faz ao cliente. Use lista de produtos ou uma categoria inteira (ex.: complementos do açaí).
         </p>
         {carregando ? <p role="status" className="text-sm text-ink-muted">Carregando composição...</p> : (
           <>
@@ -412,6 +585,7 @@ export function ComboComposicaoModal({
                 indice={indice}
                 produtos={produtos}
                 produtoPorId={produtoPorId}
+                categorias={categorias}
                 usaCardapio={usaCardapio}
                 erro={mostrarErrosGrupos ? errosGrupos.get(grupo.chave) ?? null : null}
                 onChange={(alterar) => setGrupos((atual) => atual.map((item) => item.chave === grupo.chave ? alterar(item) : item))}

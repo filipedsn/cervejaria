@@ -133,12 +133,15 @@ describe('resolverItens independent-order authority', () => {
 
 describe('resolverItens com combo (TAP-183)', () => {
   const tx: any = {
-    produto: { findMany: async () => [{ id: 'janta', nome: 'Janta', tipo: 'COMIDA', formato: null, categoria: 'Combos', pontoVendaId: null, exigePreparo: false, estacaoPreparo: 'COZINHA', controlaEstoque: false, combo: true, precos: [{ volumeMl: 1, preco: 15 }] }] },
+    produto: {
+      findMany: async () => [{ id: 'janta', nome: 'Janta', tipo: 'COMIDA', formato: null, categoria: 'Combos', pontoVendaId: null, exigePreparo: false, estacaoPreparo: 'COZINHA', controlaEstoque: false, combo: true, precos: [{ volumeMl: 1, preco: 15 }] }],
+      findFirst: async () => ({ id: 'janta', cervejariaId: 'tenant', pontoVendaId: null }),
+    },
     comboGrupo: { findMany: async () => [
-      { id: 'g1', nome: 'Churrasquinho', minimo: 1, maximo: 1, somenteCardapioTurno: false, opcoes: [
+      { id: 'g1', nome: 'Churrasquinho', minimo: 1, maximo: 1, modo: 'LISTA', categoria: null, categoriaPdvId: null, precoModo: null, precoFixo: null, somenteCardapioTurno: false, opcoes: [
         { id: 'o-boi', produtoId: 'boi', precoNoCombo: 10, quantidade: 1, produto: { id: 'boi', nome: 'Churrasquinho de boi', ativo: true, combo: false, tipo: 'COMIDA', formato: null, categoria: 'Espetos', exigePreparo: true, estacaoPreparo: 'COZINHA', controlaEstoque: true } },
       ] },
-      { id: 'g2', nome: 'Bebida', minimo: 1, maximo: 1, somenteCardapioTurno: false, opcoes: [
+      { id: 'g2', nome: 'Bebida', minimo: 1, maximo: 1, modo: 'LISTA', categoria: null, categoriaPdvId: null, precoModo: null, precoFixo: null, somenteCardapioTurno: false, opcoes: [
         { id: 'o-refri', produtoId: 'refri', precoNoCombo: 5, quantidade: 1, produto: { id: 'refri', nome: 'Refrigerante', ativo: true, combo: false, tipo: 'BEBIDA', formato: 'LATA', categoria: 'Bebidas', exigePreparo: false, estacaoPreparo: 'COZINHA', controlaEstoque: true } },
       ] },
     ] },
