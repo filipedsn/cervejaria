@@ -28,6 +28,7 @@ import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
 import { proximoNumeroComandaOperacaoTurno } from '../../lib/comanda-numero.js';
 import { assertPodeDarDescontoOperacao, DescontoInvalidoError } from '../../lib/operacao/desconto.js';
 import { inventoryService } from '../../services/inventory-service.js';
+import { escolhasComboSchema } from '../../lib/operacao/combo.js';
 import {
   removeItemFromComandaOperacao,
   updateItemQuantidadeComandaOperacao,
@@ -54,6 +55,7 @@ const itemSchema = z.object({
   paraViagem: z.boolean().default(false),
   observacao: z.string().trim().max(280).optional(),
   opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
+  escolhasCombo: escolhasComboSchema,
 }).strict();
 
 const pagamentoSchema = z.object({

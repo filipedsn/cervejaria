@@ -14,6 +14,7 @@ import {
   VendaInvalidaError,
 } from '../../lib/operacao/venda.js';
 import { EstoqueInvalidoError } from '../../lib/operacao/estoque.js';
+import { escolhasComboSchema } from '../../lib/operacao/combo.js';
 import { CaixaInvalidoError } from '../../lib/operacao/caixa.js';
 import { notificarPedidoNovo } from '../../lib/operacao/cozinha.js';
 import { assertCaixaAberto, lockCaixaEmTx } from '../../lib/operacao/caixa.js';
@@ -43,6 +44,7 @@ const vendaAvulsaSchema = z.object({
         paraViagem: z.boolean().default(false),
         observacao: z.string().trim().max(280).optional(),
         opcionais: z.array(z.object({ opcionalId: z.string().min(1), quantidade: z.number().int().positive().max(99).optional() })).optional(),
+        escolhasCombo: escolhasComboSchema,
       }),
     )
     .min(1),

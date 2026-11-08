@@ -167,6 +167,7 @@ export async function addItemToComandaInTx(
     include: { precos: true, opcionaisVinculados: { include: { opcional: true }, orderBy: { ordem: 'asc' } } },
   });
   if (!produto) return { error: 'Produto inválido' as const };
+  if (produto.combo) return { error: 'Combos só podem ser vendidos pelo caixa do PDV' as const };
 
   const isChope = isBebidaChope(produto.tipo, produto.formato);
   let tapId = item.tapId ?? null;

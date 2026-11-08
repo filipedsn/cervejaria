@@ -18,6 +18,7 @@ type LinhaLike = {
   paraViagem?: boolean;
   observacao?: string;
   opcionais?: Array<{ opcionalId: string; nome: string; precoAdicional: number; quantidade: number }>;
+  combo?: { resumo: string[] };
 };
 
 type ComandaItensLike = {
@@ -66,6 +67,7 @@ export function intentLancarItens(itens: LinhaLike[]): AuditIntent {
   const partes = itens.map((linha) => {
     const extras: string[] = [];
     if (linha.opcionais?.length) extras.push(`+ ${linha.opcionais.map((o) => o.nome).join(', ')}`);
+    if (linha.combo?.resumo.length) extras.push(`com ${linha.combo.resumo.join(', ')}`);
     if (linha.paraViagem) extras.push('para viagem');
     if (linha.observacao?.trim()) extras.push('com observação');
     return descreverItem(linha.produto.nome, linha.quantidade, linha.volumeMl, extras);

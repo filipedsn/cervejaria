@@ -18,6 +18,7 @@ import {
 import { FOOD_UNIT_ML, VOLUMES, type FormatoBebida } from '../../types';
 import { CardapiosOperacaoPage } from './CardapiosOperacaoPage';
 import { ProdutoOpcionaisModal } from '../../components/ProdutoOpcionaisModal';
+import { ComboComposicaoModal } from '../../components/operacao/ComboComposicaoModal';
 import { CategoriasGestaoPanel } from '../../components/operacao/CategoriasGestaoPanel';
 import { DestinoPreparoSelector, camposDoDestino, destinoDoProduto } from '../../components/operacao/DestinoPreparoSelector';
 import type { EstacaoPreparo } from '../../lib/estacao';
@@ -48,6 +49,7 @@ interface ProdutoOperacao {
   controlaEstoque: boolean;
   ativo: boolean;
   ordem: number;
+  combo?: boolean;
   gruposOpcionais?: unknown[];
 }
 
@@ -71,6 +73,7 @@ const FORM_VAZIO = {
   estacaoPreparo: 'COZINHA' as EstacaoPreparo,
   prepararEmPedidoSeparado: false,
   controlaEstoque: true,
+  combo: false,
 };
 
 const CATEGORIAS_COMIDA = new Set(['Porções', 'Lanches', 'Salgados', 'Doces e sobremesas']);
@@ -89,6 +92,8 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
   const [form, setForm] = useState({ ...FORM_VAZIO });
   const [error, setError] = useState('');
   const [opcionaisProduto, setOpcionaisProduto] = useState<ProdutoOperacao | null>(null);
+  const [composicaoProduto, setComposicaoProduto] = useState<ProdutoOperacao | null>(null);
+  const [confirmandoConversao, setConfirmandoConversao] = useState(false);
 
   const controlaEstoque = contexto.ativo && contexto.controlaEstoque;
   const temCozinha = contexto.ativo && contexto.temCozinha;
@@ -121,6 +126,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
 
   const fechar = () => {
     setShowModal(false);
+    setConfirmandoConversao(false);
     setEditando(null);
     setForm({ ...FORM_VAZIO });
     setError('');
@@ -154,6 +160,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
       estacaoPreparo: produto.estacaoPreparo ?? 'COZINHA',
       prepararEmPedidoSeparado: produto.prepararEmPedidoSeparado ?? false,
       controlaEstoque: produto.controlaEstoque,
+      combo: produto.combo ?? false,
     });
     setError('');
     setShowModal(true);
@@ -161,6 +168,16 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
 
   const salvar = useMutation({
     mutationFn: () => {
+      if (form.combo) {
+        const corpoCombo = {
+          nome: form.nome.trim(),
+          categoria: form.categoria,
+          ...(form.categoriaPdvId ? { categoriaPdvId: form.categoriaPdvId } : {}),
+        };
+        return editando
+          ? api.put<ProdutoOperacao>(`/api/operacao/produtos/${editando.id}`, corpoCombo)
+          : api.post<ProdutoOperacao>('/api/operacao/produtos', { ...corpoCombo, combo: true });
+      }
       // Categorias comuns organizam a exibicao; em produtos existentes nao
       // reclassificam tipo/formato ao alterar nome, preco ou categoria. A
       // classificacao so e enviada ao criar ou ao mudar para/de Chope.
@@ -194,15 +211,27 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
         controlaEstoque: form.controlaEstoque,
       };
       return editando
-        ? api.put(`/api/operacao/produtos/${editando.id}`, corpo)
-        : api.post('/api/operacao/produtos', corpo);
+        ? api.put<ProdutoOperacao>(`/api/operacao/produtos/${editando.id}`, corpo)
+        : api.post<ProdutoOperacao>('/api/operacao/produtos', corpo);
     },
-    onSuccess: () => {
+    onSuccess: (produto) => {
       queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] });
       invalidateOnboardingReadiness(queryClient);
+      const comboNovo = !editando && produto?.combo;
       fechar();
+      if (comboNovo) setComposicaoProduto(produto);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Erro ao salvar produto'),
+  });
+
+  const converterEmCombo = useMutation({
+    mutationFn: (produto: ProdutoOperacao) => api.post<ProdutoOperacao>(`/api/operacao/produtos/${produto.id}/converter-combo`, {}),
+    onSuccess: (produto) => {
+      queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] });
+      fechar();
+      setComposicaoProduto(produto);
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : 'Não foi possível transformar em combo'),
   });
 
   const alternarAtivo = useMutation({
@@ -215,7 +244,9 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
     e.preventDefault();
     const preco = parseCurrencyInput(form.precoUnit);
     if (!form.nome.trim()) return setError('Informe o nome do produto');
-    if (categoriaSelecionadaEhChope) {
+    if (form.combo) {
+      if (form.categoria === 'Chope') return setError('Combos não podem ficar na categoria Chope');
+    } else if (categoriaSelecionadaEhChope) {
       if (!form.precos.some((item) => parseCurrencyInput(item.preco) > 0)) return setError('Informe pelo menos um preço por volume');
     } else if (!preco || preco <= 0) return setError('Informe um preço maior que zero');
     setError('');
@@ -293,7 +324,10 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                     ? produto.precos.filter((preco) => preco.volumeMl > FOOD_UNIT_ML).map((preco) => (
                         <span key={preco.volumeMl}>{preco.volumeMl}ml: {formatCurrency(preco.preco)}</span>
                       ))
-                    : <span>{formatCurrency(produto.precoUnit)}</span>}
+                    : <span>{produto.combo ? `a partir de ${formatCurrency(produto.precoUnit)}` : formatCurrency(produto.precoUnit)}</span>}
+                  {produto.combo && (
+                    <span className="rounded-full bg-brand-500/10 px-2 py-0.5 font-semibold text-brand-500">combo</span>
+                  )}
                   {produto.categoria && (
                     <span>· {categoriasCanonicas.find((categoria) => categoria.id === produto.categoriaPdvId)?.nome ?? normalizeCategoriaProduto(produto.categoria)}</span>
                   )}
@@ -307,7 +341,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                       bar
                     </span>
                   )}
-                  {controlaEstoque && !produto.controlaEstoque && (
+                  {controlaEstoque && !produto.controlaEstoque && !produto.combo && (
                     <span className="rounded-full bg-surface-lighter px-2 py-0.5">sem estoque</span>
                   )}
                 </p>
@@ -328,7 +362,11 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                   >
                     Editar
                   </button>
-                  <button type="button" className="touch-btn-ghost touch-btn-sm" onClick={() => setOpcionaisProduto(produto)}>Opcionais</button>
+                  {produto.combo ? (
+                    <button type="button" className="touch-btn-ghost touch-btn-sm" onClick={() => setComposicaoProduto(produto)}>Composição</button>
+                  ) : (
+                    <button type="button" className="touch-btn-ghost touch-btn-sm" onClick={() => setOpcionaisProduto(produto)}>Opcionais</button>
+                  )}
                 </div>
               )}
             </div>
@@ -353,10 +391,26 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <div className="alert-error">{error}</div>}
 
+          {!editando && (
+            <div className="segmented-control" role="group" aria-label="Tipo de cadastro">
+              {([['simples', 'Produto simples'], ['combo', 'Combo']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={form.combo === (id === 'combo')}
+                  className={`segmented-control-btn ${form.combo === (id === 'combo') ? 'segmented-control-btn-active' : 'segmented-control-btn-inactive'}`}
+                  onClick={() => setForm({ ...form, combo: id === 'combo', ...(id === 'combo' && form.categoria === 'Chope' ? { categoria: '', categoriaPdvId: '' } : {}) })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div>
             <label className="label">Categoria</label>
             <div className="chip-picker" role="group" aria-label="Categoria do produto">
-              {categoriasVisiveis.map((categoria) => (
+              {categoriasVisiveis.filter((categoria) => !form.combo || categoria !== 'Chope').map((categoria) => (
                 <button
                   key={categoria}
                   type="button"
@@ -381,7 +435,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </div>
           </div>
 
-          {!CATEGORIAS_PRODUTO_OPERACAO.includes(form.categoria as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) && !categoriaSelecionadaEhChope && (
+          {!form.combo && !CATEGORIAS_PRODUTO_OPERACAO.includes(form.categoria as (typeof CATEGORIAS_PRODUTO_OPERACAO)[number]) && !categoriaSelecionadaEhChope && (
             <div>
               <label className="label" htmlFor="produto-pdv-tipo">Tipo do produto</label>
               <select id="produto-pdv-tipo" className="input" value={form.tipo} onChange={(event) => setForm({ ...form, tipo: event.target.value as 'BEBIDA' | 'COMIDA' })}>
@@ -402,7 +456,12 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             />
           </div>
 
-          {categoriaSelecionadaEhChope && !contexto.tapsEnabled ? (
+          {form.combo ? (
+            <p className="rounded-xl border border-line bg-surface-lighter px-3 py-2 text-sm text-ink-muted">
+              O preço do combo é a soma dos itens escolhidos, e o estoque e o preparo seguem cada item.
+              {editando ? ' Use “Composição” na lista para alterar os grupos.' : ' Depois de salvar, você monta os grupos de escolha.'}
+            </p>
+          ) : categoriaSelecionadaEhChope && !contexto.tapsEnabled ? (
             <p className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">Ative “Torneiras de chope” nas configurações para editar este produto.</p>
           ) : categoriaSelecionadaEhChope ? (
             <>
@@ -431,7 +490,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </div>
           )}
 
-          {!categoriaSelecionadaEhChope && (
+          {!form.combo && !categoriaSelecionadaEhChope && (
             <DestinoPreparoSelector
               value={destinoDoProduto(form)}
               temCozinha={temCozinha}
@@ -443,7 +502,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             />
           )}
 
-          {(temCozinha || temBar) && form.exigePreparo && !categoriaSelecionadaEhChope && (
+          {(temCozinha || temBar) && form.exigePreparo && !form.combo && !categoriaSelecionadaEhChope && (
             <label className="card flex cursor-pointer items-start gap-3 py-3">
               <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-brand-400" checked={form.prepararEmPedidoSeparado} onChange={(e) => setForm({ ...form, prepararEmPedidoSeparado: e.target.checked })} />
               <span className="min-w-0">
@@ -453,7 +512,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </label>
           )}
 
-          {controlaEstoque && (
+          {controlaEstoque && !form.combo && (
             <label className="card flex cursor-pointer items-start gap-3 py-3">
               <input
                 type="checkbox"
@@ -470,7 +529,29 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
             </label>
           )}
 
-          <button type="submit" className="touch-btn-primary w-full" disabled={salvar.isPending || (categoriaSelecionadaEhChope && !contexto.tapsEnabled)}>
+          {editando && !editando.combo && !isChopeOperacao(editando) && (
+            confirmandoConversao ? (
+              <div className="space-y-3 rounded-xl border border-brand-500/40 bg-brand-500/5 p-3 text-sm">
+                <p className="font-semibold">Transformar “{editando.nome}” em combo?</p>
+                <ul className="list-disc space-y-1 pl-5 text-ink-muted">
+                  <li>O estoque passa a ser baixado dos itens escolhidos; o saldo deste produto precisa estar zerado.</li>
+                  <li>Os opcionais vinculados são removidos e o preparo passa a seguir cada item.</li>
+                  <li>O preço nos cardápios continua valendo. O preço do catálogo vira o “a partir de” quando você salvar a composição.</li>
+                  <li>Vendas antigas não mudam. Enquanto a composição não for salva, o combo não pode ser vendido.</li>
+                </ul>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className="touch-btn-secondary" onClick={() => setConfirmandoConversao(false)} disabled={converterEmCombo.isPending}>Cancelar</button>
+                  <button type="button" className="touch-btn-primary" onClick={() => { setError(''); converterEmCombo.mutate(editando); }} disabled={converterEmCombo.isPending}>
+                    {converterEmCombo.isPending ? 'Transformando...' : 'Transformar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="touch-btn-secondary w-full" onClick={() => setConfirmandoConversao(true)}>Transformar em combo</button>
+            )
+          )}
+
+          <button type="submit" className="touch-btn-primary w-full" disabled={salvar.isPending || (!form.combo && categoriaSelecionadaEhChope && !contexto.tapsEnabled)}>
             {salvar.isPending ? 'Salvando...' : 'Salvar'}
           </button>
           <button type="button" className="touch-btn-orange w-full" onClick={fechar}>
@@ -478,6 +559,25 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
           </button>
         </form>
       </Modal>
+      {composicaoProduto && (
+        <ComboComposicaoModal
+          open={!!composicaoProduto}
+          onClose={() => setComposicaoProduto(null)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['operacao-produtos'] })}
+          comboId={composicaoProduto.id}
+          comboNome={composicaoProduto.nome}
+          produtos={(produtos ?? [])
+            .filter((produto) => produto.ativo && !produto.combo && produto.id !== composicaoProduto.id && !isChopeOperacao(produto))
+            .map((produto) => ({
+              id: produto.id,
+              nome: produto.nome,
+              categoria: categoriasCanonicas.find((categoria) => categoria.id === produto.categoriaPdvId)?.nome ?? produto.categoria,
+              categoriaPdvId: produto.categoriaPdvId ?? null,
+              precoUnit: produto.precoUnit,
+            }))}
+          usaCardapio={usaCardapio}
+        />
+      )}
       {opcionaisProduto && <ProdutoOpcionaisModal open={!!opcionaisProduto} onClose={() => setOpcionaisProduto(null)} produtoId={opcionaisProduto.id} produtoNome={opcionaisProduto.nome} baseUrl="/api/operacao/produtos" />}
         </>
       )}

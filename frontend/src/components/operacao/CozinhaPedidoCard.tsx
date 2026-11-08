@@ -153,6 +153,7 @@ export function CozinhaPedidoCard({
                   </button>
                 )}
               </div>
+                {item.comboNome ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Combo:</strong> <span>{item.comboNome}</span></small> : null}
                 {item.opcionais?.length ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-options"><strong>Opcionais:</strong> <span>{item.opcionais.map((o) => (o.quantidade > 1 ? o.quantidade + '× ' : '') + o.nome).join(', ')}</span></small> : null}
                 {item.observacao ? <small className="cozinha-tv-card-item-details cozinha-tv-card-item-observation"><strong>Observação:</strong><span>{item.observacao}</span></small> : null}
             </li>
@@ -257,6 +258,7 @@ export function CozinhaPedidoCard({
                 Confirmar cancelamento
               </button>
             )}
+            {item.comboNome ? <small className="block text-xs text-ink-muted">Combo: {item.comboNome}</small> : null}
             {item.opcionais?.length ? <small className="block text-xs text-ink-muted">Opcionais: {item.opcionais.map((o) => (o.quantidade > 1 ? o.quantidade + '× ' : '') + o.nome).join(', ')}</small> : null}
             {item.observacao ? <small className="block text-xs text-ink-muted">Obs: {item.observacao}</small> : null}
             {item.paraViagem && <small className="block text-amber-300">Para viagem</small>}
