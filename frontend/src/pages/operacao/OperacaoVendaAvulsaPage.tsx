@@ -106,9 +106,9 @@ export function OperacaoVendaAvulsaPage() {
     setPaymentForm((prev) => syncCoveringPaymentForm(prev, totalComDesconto));
   }, [descontoInput, showPayment, totalComDesconto]);
 
-  const adicionarNoModal = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; tapId?: string; volumeMl?: number; precoUnit?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais'] }) => {
+  const adicionarNoModal = (produto: ProdutoOperacao, configuracao?: { quantidade?: number; tapId?: string; volumeMl?: number; precoUnit?: number; paraViagem?: boolean; observacao?: string; opcionais?: LinhaCarrinho['opcionais']; combo?: LinhaCarrinho['combo'] }) => {
     setItensModal((atual) => {
-      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []));
+      const existente = atual.find((linha) => linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) && JSON.stringify(linha.combo?.escolhas ?? null) === JSON.stringify(configuracao?.combo?.escolhas ?? null));
       const quantidadeCarrinho = carrinho.filter((linha) => linha.produto.id === produto.id).reduce((total, linha) => total + linha.quantidade, 0);
       const quantidadeAtual = quantidadeCarrinho + (existente?.quantidade ?? 0);
       const litrosJaNoCarrinho = [...carrinho, ...atual].filter((linha) => linha.produto.id === produto.id && isChopeOperacao(linha.produto)).reduce((total, linha) => total + ((linha.volumeMl ?? 0) * linha.quantidade) / 1000, 0);
@@ -118,9 +118,9 @@ export function OperacaoVendaAvulsaPage() {
       if (!podeIncrementarLinhaCarrinho(produto, quantidadeAtual, saldos, controlaEstoque, consumoChope)) {
         return atual;
       }
-      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, tapId: configuracao?.tapId, volumeMl: configuracao?.volumeMl, precoUnit: configuracao?.precoUnit, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais }];
+      if (!existente) return [...atual, { produto, quantidade: configuracao?.quantidade ?? 1, tapId: configuracao?.tapId, volumeMl: configuracao?.volumeMl, precoUnit: configuracao?.precoUnit, paraViagem: configuracao?.paraViagem, observacao: configuracao?.observacao, opcionais: configuracao?.opcionais, combo: configuracao?.combo }];
       return atual.map((linha) =>
-        linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
+        linha.produto.id === produto.id && linha.tapId === configuracao?.tapId && linha.volumeMl === configuracao?.volumeMl && linha.paraViagem === configuracao?.paraViagem && linha.observacao === configuracao?.observacao && JSON.stringify(linha.opcionais ?? []) === JSON.stringify(configuracao?.opcionais ?? []) && JSON.stringify(linha.combo?.escolhas ?? null) === JSON.stringify(configuracao?.combo?.escolhas ?? null) ? { ...linha, quantidade: linha.quantidade + (configuracao?.quantidade ?? 1) } : linha,
       );
     });
     setErro('');
@@ -155,7 +155,7 @@ export function OperacaoVendaAvulsaPage() {
     setCarrinho((atual) => {
       const next = [...atual];
       for (const linha of itensModal) {
-        const index = next.findIndex((item) => item.produto.id === linha.produto.id && item.tapId === linha.tapId && item.volumeMl === linha.volumeMl && item.paraViagem === linha.paraViagem && item.observacao === linha.observacao && JSON.stringify(item.opcionais ?? []) === JSON.stringify(linha.opcionais ?? []));
+        const index = next.findIndex((item) => item.produto.id === linha.produto.id && item.tapId === linha.tapId && item.volumeMl === linha.volumeMl && item.paraViagem === linha.paraViagem && item.observacao === linha.observacao && JSON.stringify(item.opcionais ?? []) === JSON.stringify(linha.opcionais ?? []) && JSON.stringify(item.combo?.escolhas ?? null) === JSON.stringify(linha.combo?.escolhas ?? null));
         if (index < 0) next.push(linha);
         else next[index] = { ...next[index], quantidade: next[index].quantidade + linha.quantidade };
       }
@@ -180,7 +180,7 @@ export function OperacaoVendaAvulsaPage() {
       api.post<ComandaOperacao>('/api/operacao/vendas', {
         pontoVendaId: pontoAtivo,
         nomeCliente: nomeCliente.trim(),
-        itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade, tapId: linha.tapId, volumeMl: linha.volumeMl, paraViagem: linha.paraViagem ?? false, observacao: linha.observacao, opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })) })),
+        itens: carrinho.map((linha) => ({ produtoId: linha.produto.id, quantidade: linha.quantidade, tapId: linha.tapId, volumeMl: linha.volumeMl, paraViagem: linha.paraViagem ?? false, observacao: linha.observacao, opcionais: linha.opcionais?.map(({ opcionalId, quantidade }) => ({ opcionalId, quantidade })), escolhasCombo: linha.combo?.escolhas })),
         pagamentos,
         desconto,
       }),

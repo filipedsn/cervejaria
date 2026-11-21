@@ -17,7 +17,7 @@ interface Props {
 export function ResumoCarrinho({ linhas, onAlterar, saldos, controlaEstoque = false }: Props) {
   return (
     <div className="space-y-1">
-      {linhas.map((linha) => {
+      {linhas.map((linha, indice) => {
         const limite = limiteEstoqueCarrinho(linha.produto, saldos, controlaEstoque);
         const chope = isChopeOperacao(linha.produto);
         const saldo = saldos?.get(linha.produto.id);
@@ -29,8 +29,11 @@ export function ResumoCarrinho({ linhas, onAlterar, saldos, controlaEstoque = fa
           : podeIncrementarLinhaCarrinho(linha.produto, linha.quantidade, saldos, controlaEstoque);
 
         return (
-        <div key={`${linha.produto.id}-${linha.tapId ?? 'unit'}-${linha.volumeMl ?? 0}`} className="flex items-center justify-between gap-3 py-1">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{linha.produto.nome}{linha.volumeMl ? ` · ${linha.volumeMl} ml` : ''}</span>
+        <div key={`${linha.produto.id}-${linha.tapId ?? 'unit'}-${linha.volumeMl ?? 0}-${linha.combo ? indice : ''}`} className="flex items-center justify-between gap-3 py-1">
+          <span className="min-w-0 flex-1 text-sm font-medium">
+            <span className="block truncate">{linha.produto.nome}{linha.volumeMl ? ` · ${linha.volumeMl} ml` : ''}</span>
+            {linha.combo?.resumo.length ? <span className="block truncate text-xs text-ink-muted">{linha.combo.resumo.join(' · ')}</span> : null}
+          </span>
           <div className="flex shrink-0 items-center gap-2">
             <div className="flex items-center rounded-xl border border-line bg-surface p-0.5 shadow-sm">
               <button

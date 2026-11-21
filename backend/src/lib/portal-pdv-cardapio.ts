@@ -32,7 +32,8 @@ export async function buildPublicPdvCardapio(params: {
   const { cervejariaId, pontoVendaId, dia, tapsEnabled, allowedCategories } = params;
   const produtos = await listProdutosOperacionaisTurno(cervejariaId, pontoVendaId, dia, tapsEnabled);
   const unitarios = filterPortalCategories(
-    produtos.filter((produto) => !isBebidaChopeOperacao(produto)),
+    // O portal ainda não tem a tela de escolhas do combo.
+    produtos.filter((produto) => !isBebidaChopeOperacao(produto) && !produto.combo),
     allowedCategories,
   );
 

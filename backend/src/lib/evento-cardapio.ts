@@ -62,7 +62,7 @@ function enriquecerProdutosComPrecoTemplate<
 
 export async function listCatalogoCardapio(cervejariaId: string) {
   const produtos = await prisma.produto.findMany({
-    where: { cervejariaId, ativo: true },
+    where: { cervejariaId, ativo: true, combo: false },
     include: produtoInclude,
     orderBy: [{ tipo: 'asc' }, { nome: 'asc' }],
   });

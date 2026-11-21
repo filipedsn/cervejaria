@@ -240,6 +240,10 @@ export async function removeItemFromComandaOperacao(params: {
             paraViagem: itemAtual.paraViagem,
             cancelamentoPendenteEm,
             pedidoCozinhaId: itemAtual.pedidoCozinhaId,
+            comboInstanciaId: itemAtual.comboInstanciaId,
+            comboProdutoId: itemAtual.comboProdutoId,
+            comboNome: itemAtual.comboNome,
+            comboGrupoNome: itemAtual.comboGrupoNome,
           },
         });
         if (itemAtual.opcionais.length > 0) {
@@ -497,6 +501,9 @@ export async function updateItemQuantidadeComandaOperacao(params: {
   }
 
   const delta = params.quantidade - item.quantidade;
+  if (delta !== 0 && item.comboInstanciaId) {
+    return { error: 'A quantidade de um item de combo não pode ser alterada. Cancele o item ou lance o combo novamente.' as const };
+  }
   if (delta === 0) {
     const chargeKitchenAtLaunch = await cobrancaAoLancarEmpresa(prisma, params.cervejariaId);
     return { ok: true as const, comanda: resumoComanda(comanda, chargeKitchenAtLaunch), item };
