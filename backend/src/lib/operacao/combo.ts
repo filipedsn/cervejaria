@@ -56,6 +56,10 @@ const opcaoSchema = z.object({
 });
 
 export const composicaoComboSchema = z.object({
+  /** Preço explícito do pacote no catálogo; se omitido, usa o “a partir de” (mínimo das escolhas). */
+  precoPacote: z.number().min(0).max(99999).optional(),
+  /** Combo fechado: itens fixos, sem escolha na venda. */
+  comboFechado: z.boolean().optional(),
   grupos: z.array(z.object({
     nome: z.string().trim().min(1).max(80),
     minimo: z.number().int().min(0).max(LIMITES_COMBO.opcoesPorGrupo),
@@ -69,6 +73,8 @@ export const composicaoComboSchema = z.object({
     opcoes: z.array(opcaoSchema).max(LIMITES_COMBO.opcoesPorGrupo).default([]),
   })).min(1).max(LIMITES_COMBO.grupos),
 });
+
+export const NOME_GRUPO_COMBO_FECHADO = 'Itens';
 
 const PRODUTO_DA_OPCAO = {
   id: true, nome: true, ativo: true, combo: true, tipo: true, formato: true, categoria: true,
@@ -99,6 +105,23 @@ function precoAvulsoProduto(produto: { precos: Array<{ volumeMl: number; preco: 
 
 function modoDoGrupo(grupo: { modo?: ComboGrupoModo | null }): ComboGrupoModo {
   return grupo.modo === 'CATEGORIA' ? 'CATEGORIA' : 'LISTA';
+}
+
+/** Valida regras extras do combo fechado (lista única com todas as opções obrigatórias). */
+export function validarComboFechado(grupos: GrupoComboInput[]) {
+  if (grupos.length !== 1) {
+    throw new ComboInvalidoError('Combo fechado deve ter uma única lista de itens');
+  }
+  const grupo = grupos[0]!;
+  if (modoDoGrupo(grupo) !== 'LISTA') {
+    throw new ComboInvalidoError('Combo fechado só aceita lista de produtos');
+  }
+  if (grupo.opcoes.length === 0) {
+    throw new ComboInvalidoError('Inclua ao menos um produto no combo fechado');
+  }
+  if (grupo.minimo !== grupo.opcoes.length || grupo.maximo !== grupo.opcoes.length) {
+    throw new ComboInvalidoError('No combo fechado o cliente leva todos os itens (sem escolha)');
+  }
 }
 
 function mapearOpcaoLista(opcao: {
@@ -294,10 +317,18 @@ export function validarGruposCombo(grupos: GrupoComboInput[]) {
   if (!grupos.some((grupo) => grupo.minimo >= 1)) throw new ComboInvalidoError('Ao menos um grupo precisa ser obrigatório (mínimo 1)');
 }
 
-export async function substituirComposicaoCombo(tx: TxClient, cervejariaId: string, comboProdutoId: string, grupos: GrupoComboInput[]) {
+export async function substituirComposicaoCombo(
+  tx: TxClient,
+  cervejariaId: string,
+  comboProdutoId: string,
+  grupos: GrupoComboInput[],
+  opcoes: { comboFechado?: boolean; precoPacote?: number } = {},
+) {
   const combo = await tx.produto.findFirst({ where: { id: comboProdutoId, cervejariaId }, select: { id: true, combo: true, pontoVendaId: true } });
   if (!combo) throw Object.assign(new Error('Produto não encontrado'), { statusCode: 404 });
   if (!combo.combo) throw new ComboInvalidoError('Este produto não é um combo');
+  const comboFechado = Boolean(opcoes.comboFechado);
+  if (comboFechado) validarComboFechado(grupos);
   validarGruposCombo(grupos);
 
   const produtoIdsLista = [...new Set(grupos
@@ -398,8 +429,17 @@ export async function substituirComposicaoCombo(tx: TxClient, cervejariaId: stri
     });
   }
 
+  const precoBase = precoBaseCombo(categoriasExpandidas);
+  const precoPacote = opcoes.precoPacote != null && Number.isFinite(opcoes.precoPacote)
+    ? Math.max(0, opcoes.precoPacote)
+    : precoBase;
+
+  await tx.produto.update({
+    where: { id: comboProdutoId },
+    data: { comboFechado },
+  });
   await tx.preco.deleteMany({ where: { produtoId: comboProdutoId } });
-  await tx.preco.create({ data: { produtoId: comboProdutoId, volumeMl: 1, preco: precoBaseCombo(categoriasExpandidas) } });
+  await tx.preco.create({ data: { produtoId: comboProdutoId, volumeMl: 1, preco: precoPacote } });
   return listarComposicaoCombo(tx, comboProdutoId);
 }
 
@@ -434,7 +474,13 @@ export async function converterProdutoEmCombo(tx: TxClient, cervejariaId: string
   await tx.produtoOpcionalVinculo.deleteMany({ where: { produtoId } });
   return tx.produto.update({
     where: { id: produtoId },
-    data: { combo: true, exigePreparo: false, prepararEmPedidoSeparado: false, controlaEstoque: false },
+    data: {
+      combo: true,
+      comboFechado: false,
+      exigePreparo: false,
+      prepararEmPedidoSeparado: false,
+      controlaEstoque: false,
+    },
     select: { id: true },
   });
 }
@@ -470,7 +516,7 @@ export async function resolverEscolhasCombo(
 ): Promise<ComponenteComboResolvido[]> {
   const combo = await tx.produto.findFirst({
     where: { id: params.comboProdutoId },
-    select: { id: true, cervejariaId: true, pontoVendaId: true },
+    select: { id: true, cervejariaId: true, pontoVendaId: true, comboFechado: true },
   });
   if (!combo) throw new ComboInvalidoError(`${params.comboNome} ainda não tem composição`);
 
@@ -535,10 +581,20 @@ export async function resolverEscolhasCombo(
     }
   }
 
-  const precos = ratearPrecoCombo(
-    linhas.map(({ opcao }) => ({ precoNoCombo: opcao.precoNoCombo, quantidade: opcao.quantidade })),
-    fatorPrecoCombo(params.precoEfetivo, params.precoCatalogo),
-  );
+  const linhasPreco = linhas.map(({ opcao }) => ({
+    precoNoCombo: toNumber(opcao.precoNoCombo),
+    quantidade: opcao.quantidade,
+  }));
+  // Combo fechado: o cliente paga o preço do pacote; os itens só rateiam.
+  // Combo com escolhas: fator cardápio/catálogo (comportamento anterior).
+  const somaItens = linhasPreco.reduce(
+    (total, linha) => total + Math.round(linha.precoNoCombo * 100) * linha.quantidade,
+    0,
+  ) / 100;
+  const fator = combo.comboFechado
+    ? (somaItens > 0 ? params.precoEfetivo / somaItens : 1)
+    : fatorPrecoCombo(params.precoEfetivo, params.precoCatalogo);
+  const precos = ratearPrecoCombo(linhasPreco, fator);
   return linhas.map(({ grupoNome, opcao }, indice) => ({
     produtoId: opcao.produtoId,
     nome: opcao.nome,

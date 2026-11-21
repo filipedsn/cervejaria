@@ -28,7 +28,25 @@ export type GrupoCombo = {
   opcoes: OpcaoCombo[];
 };
 
-export type ComposicaoCombo = { precoCatalogo: number; grupos: GrupoCombo[] };
+export type ComposicaoCombo = {
+  precoCatalogo: number;
+  comboFechado?: boolean;
+  grupos: GrupoCombo[];
+};
+
+/** Nome interno do único grupo de um combo fechado. */
+export const NOME_GRUPO_COMBO_FECHADO = 'Itens';
+
+/** Monta as escolhas de um combo fechado (todas as opções de cada grupo). */
+export function escolhasComboFechado(grupos: GrupoCombo[]): Record<string, string[]> {
+  const escolhas: Record<string, string[]> = {};
+  for (const grupo of grupos) {
+    escolhas[grupo.id] = grupo.opcoes
+      .filter((opcao) => opcao.disponivel !== false)
+      .map((opcao) => opcao.id);
+  }
+  return escolhas;
+}
 
 export type EscolhaCombo = { grupoId: string; opcaoIds: string[] };
 

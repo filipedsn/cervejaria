@@ -458,8 +458,10 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
 
           {form.combo ? (
             <p className="rounded-xl border border-line bg-surface-lighter px-3 py-2 text-sm text-ink-muted">
-              O preço do combo é a soma dos itens escolhidos, e o estoque e o preparo seguem cada item.
-              {editando ? ' Use “Composição” na lista para alterar os grupos.' : ' Depois de salvar, você monta os grupos de escolha.'}
+              O estoque e o preparo seguem cada item do combo.
+              {editando
+                ? ' Use “Composição” na lista para montar o combo fechado ou com escolhas e definir o preço.'
+                : ' Depois de salvar, abra “Composição” para dizer o que entra no combo e o preço.'}
             </p>
           ) : categoriaSelecionadaEhChope && !contexto.tapsEnabled ? (
             <p className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">Ative “Torneiras de chope” nas configurações para editar este produto.</p>
@@ -536,7 +538,7 @@ export function OperacaoCatalogoPage({ modo }: { modo?: 'caixa' | 'evento' } = {
                 <ul className="list-disc space-y-1 pl-5 text-ink-muted">
                   <li>O estoque passa a ser baixado dos itens escolhidos; o saldo deste produto precisa estar zerado.</li>
                   <li>Os opcionais vinculados são removidos e o preparo passa a seguir cada item.</li>
-                  <li>O preço nos cardápios continua valendo. O preço do catálogo vira o “a partir de” quando você salvar a composição.</li>
+                  <li>O preço nos cardápios continua valendo. Ao salvar a composição você define o preço do combo e o que entra nele.</li>
                   <li>Vendas antigas não mudam. Enquanto a composição não for salva, o combo não pode ser vendido.</li>
                 </ul>
                 <div className="grid grid-cols-2 gap-2">

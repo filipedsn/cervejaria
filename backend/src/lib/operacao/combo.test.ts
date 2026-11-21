@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ComboInvalidoError, converterProdutoEmCombo, fatorPrecoCombo, precoBaseCombo, ratearPrecoCombo, resolverEscolhasCombo, validarGruposCombo } from './combo.js';
+import { ComboInvalidoError, converterProdutoEmCombo, fatorPrecoCombo, precoBaseCombo, ratearPrecoCombo, resolverEscolhasCombo, validarComboFechado, validarGruposCombo } from './combo.js';
 
 const produto = (id: string, extra: Record<string, unknown> = {}) => ({
   id, nome: id, ativo: true, combo: false, tipo: 'COMIDA', formato: null, categoria: 'Comidas',
@@ -30,9 +30,15 @@ const janta = [
 
 const txCom = (grupos: unknown[], extras: {
   produtosCategoria?: Array<Record<string, unknown>>;
+  comboFechado?: boolean;
 } = {}) => ({
   produto: {
-    findFirst: async () => ({ id: 'janta', cervejariaId: 'tenant', pontoVendaId: 'pdv' }),
+    findFirst: async () => ({
+      id: 'janta',
+      cervejariaId: 'tenant',
+      pontoVendaId: 'pdv',
+      comboFechado: Boolean(extras.comboFechado),
+    }),
     findMany: async () => extras.produtosCategoria ?? [],
   },
   comboGrupo: { findMany: async () => grupos },
@@ -109,6 +115,27 @@ describe('validarGruposCombo', () => {
       nome: 'Complementos', minimo: 1, maximo: 1, modo: 'CATEGORIA', categoria: 'Complementos',
       precoModo: 'FIXO', precoFixo: 2, opcoes: [{ produtoId: 'x', precoNoCombo: 1 }],
     }]), /não lista produtos/);
+  });
+});
+
+describe('validarComboFechado', () => {
+  it('aceita uma lista com todos os itens obrigatórios', () => {
+    assert.doesNotThrow(() => validarComboFechado([{
+      nome: 'Itens', minimo: 2, maximo: 2, modo: 'LISTA',
+      opcoes: [{ produtoId: 'a', precoNoCombo: 10 }, { produtoId: 'b', precoNoCombo: 5 }],
+    }]));
+  });
+  it('recusa mais de um grupo, categoria ou escolha parcial', () => {
+    assert.throws(() => validarComboFechado([
+      { nome: 'Itens', minimo: 1, maximo: 1, opcoes: [{ produtoId: 'a', precoNoCombo: 1 }] },
+      { nome: 'Outro', minimo: 1, maximo: 1, opcoes: [{ produtoId: 'b', precoNoCombo: 1 }] },
+    ]), /única lista/);
+    assert.throws(() => validarComboFechado([{
+      nome: 'Itens', minimo: 1, maximo: 1, modo: 'CATEGORIA', categoria: 'X', precoModo: 'FIXO', precoFixo: 1, opcoes: [],
+    }]), /lista de produtos/);
+    assert.throws(() => validarComboFechado([{
+      nome: 'Itens', minimo: 1, maximo: 1, opcoes: [{ produtoId: 'a', precoNoCombo: 1 }, { produtoId: 'b', precoNoCombo: 2 }],
+    }]), /sem escolha/);
   });
 });
 
@@ -217,6 +244,25 @@ describe('resolverEscolhasCombo', () => {
       /composição de Açaí mudou/,
     );
   });
+
+  it('no combo fechado rateia para o preço do pacote', async () => {
+    const grupos = [{
+      id: 'g-itens', nome: 'Itens', minimo: 2, maximo: 2, modo: 'LISTA',
+      categoria: null, categoriaPdvId: null, precoModo: null, precoFixo: null,
+      somenteCardapioTurno: false, ordem: 0,
+      opcoes: [
+        { id: 'o-a', produtoId: 'a', precoNoCombo: 10, quantidade: 1, produto: produto('a') },
+        { id: 'o-b', produtoId: 'b', precoNoCombo: 10, quantidade: 1, produto: produto('b') },
+      ],
+    }];
+    const componentes = await resolverEscolhasCombo(txCom(grupos, { comboFechado: true }), {
+      comboProdutoId: 'fechado', comboNome: 'Fechado', quantidade: 1,
+      precoEfetivo: 25, precoCatalogo: 25,
+      escolhas: [{ grupoId: 'g-itens', opcaoIds: ['o-a', 'o-b'] }],
+    });
+    const total = componentes.reduce((soma, c) => soma + c.precoUnit * c.quantidade, 0);
+    assert.equal(Math.round(total * 100), 2500);
+  });
 });
 
 describe('converterProdutoEmCombo', () => {
@@ -237,7 +283,13 @@ describe('converterProdutoEmCombo', () => {
   it('vira combo sem estoque nem preparo próprios e sem opcionais', async () => {
     const { tx, chamadas } = txConversao();
     await converterProdutoEmCombo(tx, 'tenant', 'jantinha');
-    assert.deepEqual(chamadas.update, { combo: true, exigePreparo: false, prepararEmPedidoSeparado: false, controlaEstoque: false });
+    assert.deepEqual(chamadas.update, {
+      combo: true,
+      comboFechado: false,
+      exigePreparo: false,
+      prepararEmPedidoSeparado: false,
+      controlaEstoque: false,
+    });
     assert.equal(chamadas.opcionaisRemovidos, true);
   });
 

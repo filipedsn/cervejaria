@@ -7,6 +7,7 @@ import { IconChefHat, IconClipboard, IconPackage, IconPlus } from '../NavIcons';
 import { api, formatCurrency } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
+  escolhasComboFechado,
   escolhasCompletas,
   fatorPrecoCombo,
   precoEscolhasCombo,
@@ -146,10 +147,14 @@ export function AdicionarItensOperacaoModal({
   }, [pontoVendaId, sessaoCaixaId]);
 
   const produtoEhChope = produto ? isChopeOperacao(produto) : false;
-  const fatorCombo = produto?.combo && composicao
+  const fatorCombo = produto?.combo && composicao && !composicao.comboFechado
     ? fatorPrecoCombo(Number(produto.precoEfetivo ?? produto.precoUnit), composicao.precoCatalogo)
     : 1;
-  const precoCombo = composicao ? precoEscolhasCombo(composicao.grupos, escolhasCombo, fatorCombo) : 0;
+  const precoCombo = !composicao
+    ? 0
+    : composicao.comboFechado
+      ? Number(produto?.precoEfetivo ?? produto?.precoUnit ?? composicao.precoCatalogo) || 0
+      : precoEscolhasCombo(composicao.grupos, escolhasCombo, fatorCombo);
   const comboCompleto = Boolean(composicao && escolhasCompletas(composicao.grupos, escolhasCombo));
   const alternarEscolhaCombo = (grupo: ComposicaoCombo['grupos'][number], opcaoId: string) => {
     setEscolhasCombo((atual) => {
@@ -275,11 +280,15 @@ export function AdicionarItensOperacaoModal({
     if (item.combo) {
       api.get<ComposicaoCombo>(`/api/operacao/produtos/${item.id}/combo?pontoVendaId=${encodeURIComponent(pontoVendaId)}`)
         .then((dados) => {
-          const iniciais: Record<string, string[]> = {};
-          for (const grupo of dados.grupos) {
-            const disponiveis = grupo.opcoes.filter((opcao) => opcao.disponivel !== false);
-            if (grupo.minimo > 0 && grupo.minimo === grupo.maximo && disponiveis.length === grupo.minimo) {
-              iniciais[grupo.id] = disponiveis.map((opcao) => opcao.id);
+          const iniciais: Record<string, string[]> = dados.comboFechado
+            ? escolhasComboFechado(dados.grupos)
+            : {};
+          if (!dados.comboFechado) {
+            for (const grupo of dados.grupos) {
+              const disponiveis = grupo.opcoes.filter((opcao) => opcao.disponivel !== false);
+              if (grupo.minimo > 0 && grupo.minimo === grupo.maximo && disponiveis.length === grupo.minimo) {
+                iniciais[grupo.id] = disponiveis.map((opcao) => opcao.id);
+              }
             }
           }
           setComposicao(dados);
@@ -479,15 +488,26 @@ export function AdicionarItensOperacaoModal({
         {produtoEhChope && <section className="space-y-3 border-b border-line pb-5"><div><h3 className="text-lg font-bold">Tap e volume</h3><p className="text-sm text-ink-muted">Escolha a Tap com este chope montado e o volume da venda.</p></div>{tapsDoProduto.length === 0 ? <p className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">Nenhuma Tap ativa está montada com este chope neste turno.</p> : <select className="input" aria-label="Tap selecionada" value={tapId} onChange={(e) => { const tap = tapsDoProduto.find((item) => item.id === e.target.value); setTapId(tap?.id ?? ''); setProdutoMontadoSelecionado(tap?.chopeAtual?.id ?? undefined); setVolumeMl(undefined); setMontagemAlterada(false); }}><option value="">Selecione a Tap</option>{tapsDoProduto.map((tap) => <option key={tap.id} value={tap.id}>Tap {tap.numero}{tap.nome ? ` — ${tap.nome}` : ''}</option>)}</select>}{volumesDoTap.length === 0 || !volumesDoTap.some((item) => item.preco > 0) ? <p role="status" className="text-sm text-ink-muted">Este chope não tem volume com preço elegível no cardápio deste turno.</p> : null}<div className="grid grid-cols-2 gap-2">{volumesDoTap.filter((preco) => preco.preco > 0).map((preco) => <button key={preco.volumeMl} type="button" aria-pressed={volumeMl === preco.volumeMl} disabled={!tapId || !tapsDoProduto.some((tap) => tap.id === tapId)} className={`rounded-xl border px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-50 ${volumeMl === preco.volumeMl ? 'border-brand-500 bg-brand-500/10' : 'border-line bg-surface'}`} onClick={() => setVolumeMl(preco.volumeMl)}><span className="block font-semibold">{preco.volumeMl} ml</span><span className="text-sm text-ink-muted">{formatCurrency(Number(preco.preco))}</span></button>)}</div>{montagemAlterada && <p role="alert" className="text-sm text-amber-700">A montagem ou os preços desta Tap mudaram. Escolha a Tap e o volume novamente.</p>}</section>}
         {produto.combo && <section className="space-y-5 border-b border-line pb-5">
           {erroCombo && <p role="alert" className="alert-error text-sm">{erroCombo}</p>}
-          {!composicao && !erroCombo && <p role="status" className="text-sm text-ink-muted">Carregando opções do combo...</p>}
-          {composicao?.grupos.map((grupo) => {
+          {!composicao && !erroCombo && <p role="status" className="text-sm text-ink-muted">Carregando o combo...</p>}
+          {composicao?.comboFechado ? (
+            <div className="space-y-3">
+              <p className="text-sm text-ink-muted">Combo fechado — já vem montado com estes itens:</p>
+              <ul className="space-y-2">
+                {composicao.grupos.flatMap((grupo) => grupo.opcoes.map((opcao) => (
+                  <li key={opcao.id} className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+                    <span className="min-w-0 font-semibold">{opcao.quantidade > 1 ? `${opcao.quantidade}× ` : ''}{opcao.nome}</span>
+                  </li>
+                )))}
+              </ul>
+            </div>
+          ) : composicao?.grupos.map((grupo) => {
             const marcadas = escolhasCombo[grupo.id] ?? [];
             const regra = grupo.minimo === grupo.maximo
               ? `Escolha ${grupo.minimo}`
-              : grupo.minimo === 0 ? `Opcional, até ${grupo.maximo}` : `Escolha de ${grupo.minimo} a ${grupo.maximo}`;
+              : grupo.minimo === 0 ? `Pode pular · até ${grupo.maximo}` : `Escolha de ${grupo.minimo} a ${grupo.maximo}`;
             return <div key={grupo.id} className="space-y-2">
               <div className="flex items-baseline justify-between gap-3">
-                <h3 className="text-lg font-bold">{grupo.nome}</h3>
+                <h3 className="text-lg font-bold">Escolha: {grupo.nome}</h3>
                 <span className={`text-xs font-semibold ${marcadas.length >= grupo.minimo ? 'text-ink-faint' : 'text-orange'}`}>{regra}</span>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
