@@ -563,6 +563,48 @@ export function rotuloStatusPedido(status: StatusPedido): string {
   }
 }
 
+/** Ordem das seções do resumo na Cozinha/Bar TV (somente status visíveis na fila). */
+export const STATUS_RESUMO_COZINHA_TV: StatusPedido[] = [
+  'RECEBIDO',
+  'EM_PREPARO',
+  'PRONTO',
+  'CANCELAMENTO_PENDENTE',
+];
+
+const ROTULO_RESUMO_COZINHA_TV: Partial<Record<StatusPedido, string>> = {
+  RECEBIDO: 'Na fila',
+  EM_PREPARO: 'Preparando',
+  PRONTO: 'Pronto',
+  CANCELAMENTO_PENDENTE: 'Cancelamento solicitado',
+};
+
+export type SecaoResumoCozinhaTv = {
+  status: StatusPedido;
+  label: string;
+  pedidos: PedidoCozinha[];
+  totalItens: number;
+};
+
+/** Agrupa a fila da TV por status, na ordem operacional; omite seções vazias. */
+export function agruparPedidosCozinhaPorStatus(pedidos: PedidoCozinha[]): SecaoResumoCozinhaTv[] {
+  return STATUS_RESUMO_COZINHA_TV.flatMap((status) => {
+    const doStatus = pedidos.filter((pedido) => pedido.status === status);
+    if (doStatus.length === 0) return [];
+    const totalItens = doStatus.reduce(
+      (total, pedido) => total + pedido.itens.reduce((soma, item) => soma + item.quantidade, 0),
+      0,
+    );
+    return [
+      {
+        status,
+        label: ROTULO_RESUMO_COZINHA_TV[status] ?? rotuloStatusPedido(status),
+        pedidos: doStatus,
+        totalItens,
+      },
+    ];
+  });
+}
+
 /** Status operacional por item: balcão e cozinha usam o mesmo vocabulário (Entregue). */
 export function rotuloStatusItemPedido(
   pedido: Pick<PedidoOperacao, 'status'>,

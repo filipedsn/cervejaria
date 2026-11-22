@@ -4,6 +4,7 @@ import { Loading } from '../../components/Loading';
 import { EmptyState } from '../../components/EmptyState';
 import { CozinhaPedidoCard } from '../../components/operacao/CozinhaPedidoCard';
 import { CozinhaTvGrid } from '../../components/operacao/CozinhaTvGrid';
+import { CozinhaTvResumoModal } from '../../components/operacao/CozinhaTvResumoModal';
 import { CancelarQuantidadeModal } from '../../components/operacao/CancelarQuantidadeModal';
 import { Modal } from '../../components/Modal';
 import { IconBell } from '../../components/NavIcons';
@@ -29,6 +30,7 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false, estacao = 'co
   const [avisoSincronizacao, setAvisoSincronizacao] = useState('');
   const confirmingItems = useRef(new Set<string>());
   const [confirmacaoCancelamento, setConfirmacaoCancelamento] = useState<ConfirmacaoCancelamento | null>(null);
+  const [resumoAberto, setResumoAberto] = useState(false);
   const [itemParaCancelar, setItemParaCancelar] = useState<{
     comandaId: string;
     itemId: string;
@@ -171,6 +173,15 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false, estacao = 'co
           </div>
           <button
             type="button"
+            onClick={() => setResumoAberto(true)}
+            aria-label="Abrir resumo da fila por status"
+            title="Resumo da fila"
+            className="cozinha-tv-resumo-btn"
+          >
+            Resumo
+          </button>
+          <button
+            type="button"
             onClick={toggleFullscreen}
             aria-label={isNativeFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
             title={isNativeFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
@@ -287,6 +298,11 @@ export function OperacaoCozinhaTvPage({ forceTabletLayout = false, estacao = 'co
           ))}
         </CozinhaTvGrid>
       )}
+      <CozinhaTvResumoModal
+        open={resumoAberto}
+        onClose={() => setResumoAberto(false)}
+        pedidos={naFila}
+      />
       <CancelarQuantidadeModal
         open={itemParaCancelar !== null}
         nomeItem={itemParaCancelar?.nome ?? ''}

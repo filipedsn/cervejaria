@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  agruparPedidosCozinhaPorStatus,
   estacaoBloqueiaFechamentoComanda,
   estacaoDoPedido,
   itemConfirmadoNaComanda,
@@ -15,6 +16,7 @@ import {
   rotuloComanda,
   rotuloStatusItemPedido,
   rotuloStatusPedidoResumo,
+  type PedidoCozinha,
   type PedidoOperacao,
 } from '../src/lib/operacao.ts';
 
@@ -194,4 +196,40 @@ test('senhas da comanda aparecem em ordem numérica decrescente sem mutar a list
     'pedido-numero-maior', 'pedido-empate', 'pedido-recente', 'pedido-antigo',
   ]);
   assert.deepEqual(pedidos.map(({ id }) => id), ['pedido-antigo', 'pedido-recente', 'pedido-empate', 'pedido-numero-maior']);
+});
+
+test('resumo da cozinha TV agrupa por status na ordem operacional e omite seções vazias', () => {
+  const base: PedidoCozinha = {
+    id: 'p1',
+    numero: 1,
+    status: 'RECEBIDO',
+    observacao: null,
+    createdAt: '2026-11-22T12:00:00.000Z',
+    statusDesde: '2026-11-22T12:00:00.000Z',
+    entregueEm: null,
+    comanda: { id: 'c1', tipo: 'MESA', identificador: '7', numero: 10, cliente: null },
+    itens: [{ id: 'i1', nome: 'Burger', quantidade: 2, precoUnit: 30 }],
+  };
+  const fila: PedidoCozinha[] = [
+    { ...base, id: 'pronto', numero: 3, status: 'PRONTO', itens: [{ id: 'i3', nome: 'Fritas', quantidade: 1, precoUnit: 18 }] },
+    { ...base, id: 'fila', numero: 1, status: 'RECEBIDO' },
+    {
+      ...base,
+      id: 'preparo',
+      numero: 2,
+      status: 'EM_PREPARO',
+      itens: [
+        { id: 'i2a', nome: 'Pastel', quantidade: 1, precoUnit: 12 },
+        { id: 'i2b', nome: 'Coxinha', quantidade: 3, precoUnit: 8 },
+      ],
+    },
+  ];
+
+  const secoes = agruparPedidosCozinhaPorStatus(fila);
+  assert.deepEqual(secoes.map((secao) => secao.status), ['RECEBIDO', 'EM_PREPARO', 'PRONTO']);
+  assert.deepEqual(secoes.map((secao) => secao.label), ['Na fila', 'Preparando', 'Pronto']);
+  assert.equal(secoes[0]!.totalItens, 2);
+  assert.equal(secoes[1]!.totalItens, 4);
+  assert.equal(secoes[2]!.totalItens, 1);
+  assert.equal(agruparPedidosCozinhaPorStatus([]).length, 0);
 });
