@@ -1178,6 +1178,161 @@ button[title="Excluir"].icon-btn-danger {
   border-color: var(--ranking-border-strong);
 }
 
+.cozinha-tv-resumo-btn {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ranking-text-primary);
+  padding: 0.5rem 0.85rem;
+  min-height: 2.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--ranking-cyan-border);
+  background: var(--ranking-cyan-soft);
+  white-space: nowrap;
+}
+
+.cozinha-tv-resumo-btn:hover {
+  border-color: var(--ranking-cyan-border-strong);
+  background: rgba(14, 165, 233, 0.18);
+}
+
+.cozinha-tv-resumo {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cozinha-tv-resumo-vazio {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+}
+
+.cozinha-tv-resumo-secao {
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--color-surface-lighter);
+}
+
+.cozinha-tv-resumo-secao--fila {
+  border-color: rgba(14, 165, 233, 0.45);
+  background: rgba(14, 165, 233, 0.1);
+}
+
+.cozinha-tv-resumo-secao--preparo {
+  border-color: rgba(245, 185, 66, 0.55);
+  background: rgba(245, 185, 66, 0.12);
+}
+
+.cozinha-tv-resumo-secao--pronto {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.cozinha-tv-resumo-secao--cancelamento {
+  border-color: rgba(249, 115, 22, 0.5);
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.cozinha-tv-resumo-secao-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.cozinha-tv-resumo-secao-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-ink);
+}
+
+.cozinha-tv-resumo-secao--fila .cozinha-tv-resumo-secao-title {
+  color: #0369a1;
+}
+
+.cozinha-tv-resumo-secao--preparo .cozinha-tv-resumo-secao-title {
+  color: #a16207;
+}
+
+.cozinha-tv-resumo-secao--pronto .cozinha-tv-resumo-secao-title {
+  color: #15803d;
+}
+
+.cozinha-tv-resumo-secao--cancelamento .cozinha-tv-resumo-secao-title {
+  color: #c2410c;
+}
+
+.cozinha-tv-resumo-secao-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cozinha-tv-resumo-itens {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--fila {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(14, 165, 233, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--preparo {
+  border-color: rgba(245, 185, 66, 0.55);
+  background: rgba(245, 185, 66, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--pronto {
+  border-color: rgba(74, 222, 128, 0.45);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--cancelamento {
+  border-color: rgba(251, 146, 60, 0.55);
+  background: rgba(249, 115, 22, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--fila .cozinha-tv-resumo-secao-title {
+  color: #7dd3fc;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--preparo .cozinha-tv-resumo-secao-title {
+  color: #f5b942;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--pronto .cozinha-tv-resumo-secao-title {
+  color: #4ade80;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--cancelamento .cozinha-tv-resumo-secao-title {
+  color: #fb923c;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-itens {
+  color: var(--color-ink);
+}
+
 .cozinha-tv-hint {
   font-size: 0.75rem;
   color: var(--ranking-text-muted);
@@ -1700,6 +1855,12 @@ button[title="Excluir"].icon-btn-danger {
   .cozinha-tv-fullscreen {
     width: 2.4rem;
     height: 2.4rem;
+  }
+
+  .cozinha-tv-resumo-btn {
+    min-height: 2.4rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.65rem;
   }
 
   .cozinha-tv-link-operacional {
