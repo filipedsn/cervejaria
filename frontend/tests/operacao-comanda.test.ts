@@ -198,7 +198,7 @@ test('senhas da comanda aparecem em ordem numérica decrescente sem mutar a list
   assert.deepEqual(pedidos.map(({ id }) => id), ['pedido-antigo', 'pedido-recente', 'pedido-empate', 'pedido-numero-maior']);
 });
 
-test('resumo da cozinha TV agrupa por status na ordem operacional e omite seções vazias', () => {
+test('resumo da cozinha TV agrupa só status e produtos consolidados', () => {
   const base: PedidoCozinha = {
     id: 'p1',
     numero: 1,
@@ -212,7 +212,8 @@ test('resumo da cozinha TV agrupa por status na ordem operacional e omite seçõ
   };
   const fila: PedidoCozinha[] = [
     { ...base, id: 'pronto', numero: 3, status: 'PRONTO', itens: [{ id: 'i3', nome: 'Fritas', quantidade: 1, precoUnit: 18 }] },
-    { ...base, id: 'fila', numero: 1, status: 'RECEBIDO' },
+    { ...base, id: 'fila-a', numero: 1, status: 'RECEBIDO', itens: [{ id: 'i1a', nome: 'C. BOI', quantidade: 1, precoUnit: 30 }] },
+    { ...base, id: 'fila-b', numero: 4, status: 'RECEBIDO', itens: [{ id: 'i1b', nome: 'C. BOI', quantidade: 2, precoUnit: 30 }] },
     {
       ...base,
       id: 'preparo',
@@ -228,8 +229,13 @@ test('resumo da cozinha TV agrupa por status na ordem operacional e omite seçõ
   const secoes = agruparPedidosCozinhaPorStatus(fila);
   assert.deepEqual(secoes.map((secao) => secao.status), ['RECEBIDO', 'EM_PREPARO', 'PRONTO']);
   assert.deepEqual(secoes.map((secao) => secao.label), ['Na fila', 'Preparando', 'Pronto']);
-  assert.equal(secoes[0]!.totalItens, 2);
+  assert.deepEqual(secoes[0]!.produtos, [{ nome: 'C. BOI', quantidade: 3 }]);
+  assert.equal(secoes[0]!.totalItens, 3);
+  assert.deepEqual(secoes[1]!.produtos, [
+    { nome: 'Coxinha', quantidade: 3 },
+    { nome: 'Pastel', quantidade: 1 },
+  ]);
   assert.equal(secoes[1]!.totalItens, 4);
-  assert.equal(secoes[2]!.totalItens, 1);
+  assert.deepEqual(secoes[2]!.produtos, [{ nome: 'Fritas', quantidade: 1 }]);
   assert.equal(agruparPedidosCozinhaPorStatus([]).length, 0);
 });

@@ -1277,32 +1277,16 @@ button[title="Excluir"].icon-btn-danger {
   font-variant-numeric: tabular-nums;
 }
 
-.cozinha-tv-resumo-lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.cozinha-tv-resumo-pedido-titulo {
-  margin: 0 0 0.2rem;
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--ink, #0f172a);
-}
-
 .cozinha-tv-resumo-itens {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--ink-muted, #475569);
+  gap: 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
 }
 
 .cozinha-tv-hint {

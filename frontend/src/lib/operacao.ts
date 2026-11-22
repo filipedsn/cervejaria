@@ -578,28 +578,47 @@ const ROTULO_RESUMO_COZINHA_TV: Partial<Record<StatusPedido, string>> = {
   CANCELAMENTO_PENDENTE: 'Cancelamento solicitado',
 };
 
+export type ProdutoResumoCozinhaTv = {
+  nome: string;
+  quantidade: number;
+};
+
 export type SecaoResumoCozinhaTv = {
   status: StatusPedido;
   label: string;
-  pedidos: PedidoCozinha[];
   totalItens: number;
+  produtos: ProdutoResumoCozinhaTv[];
 };
 
-/** Agrupa a fila da TV por status, na ordem operacional; omite seções vazias. */
+/** Consolida quantidades por nome de produto (resumo da TV). */
+export function consolidarProdutosCozinhaTv(
+  pedidos: Array<Pick<PedidoCozinha, 'itens'>>,
+): ProdutoResumoCozinhaTv[] {
+  const mapa = new Map<string, number>();
+  for (const pedido of pedidos) {
+    for (const item of pedido.itens) {
+      const nome = item.nome.trim() || 'Item';
+      mapa.set(nome, (mapa.get(nome) ?? 0) + item.quantidade);
+    }
+  }
+  return [...mapa.entries()]
+    .map(([nome, quantidade]) => ({ nome, quantidade }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+}
+
+/** Agrupa a fila da TV por status com produtos consolidados; omite seções vazias. */
 export function agruparPedidosCozinhaPorStatus(pedidos: PedidoCozinha[]): SecaoResumoCozinhaTv[] {
   return STATUS_RESUMO_COZINHA_TV.flatMap((status) => {
     const doStatus = pedidos.filter((pedido) => pedido.status === status);
     if (doStatus.length === 0) return [];
-    const totalItens = doStatus.reduce(
-      (total, pedido) => total + pedido.itens.reduce((soma, item) => soma + item.quantidade, 0),
-      0,
-    );
+    const produtos = consolidarProdutosCozinhaTv(doStatus);
+    const totalItens = produtos.reduce((total, produto) => total + produto.quantidade, 0);
     return [
       {
         status,
         label: ROTULO_RESUMO_COZINHA_TV[status] ?? rotuloStatusPedido(status),
-        pedidos: doStatus,
         totalItens,
+        produtos,
       },
     ];
   });

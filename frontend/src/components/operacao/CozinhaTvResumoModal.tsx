@@ -1,7 +1,6 @@
 import { Modal } from '../Modal';
 import {
   agruparPedidosCozinhaPorStatus,
-  rotuloComanda,
   type PedidoCozinha,
   type StatusPedido,
 } from '../../lib/operacao';
@@ -46,38 +45,15 @@ export function CozinhaTvResumoModal({ open, onClose, pedidos }: Props) {
               <header className="cozinha-tv-resumo-secao-header">
                 <h3 className="cozinha-tv-resumo-secao-title">{secao.label}</h3>
                 <span className="cozinha-tv-resumo-secao-count">
-                  {secao.pedidos.length} {secao.pedidos.length === 1 ? 'pedido' : 'pedidos'}
-                  {' · '}
                   {secao.totalItens} {secao.totalItens === 1 ? 'item' : 'itens'}
                 </span>
               </header>
-              <ul className="cozinha-tv-resumo-lista">
-                {secao.pedidos.map((pedido) => {
-                  const destino = rotuloComanda(pedido.comanda);
-                  const cliente = pedido.comanda.cliente?.nome?.trim();
-                  return (
-                    <li key={pedido.id} className="cozinha-tv-resumo-pedido">
-                      <p className="cozinha-tv-resumo-pedido-titulo">
-                        #{pedido.numero}
-                        <span aria-hidden="true"> · </span>
-                        {destino}
-                        {cliente ? (
-                          <>
-                            <span aria-hidden="true"> · </span>
-                            {cliente}
-                          </>
-                        ) : null}
-                      </p>
-                      <ul className="cozinha-tv-resumo-itens">
-                        {pedido.itens.map((item) => (
-                          <li key={item.id}>
-                            {item.quantidade}× {item.nome}
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  );
-                })}
+              <ul className="cozinha-tv-resumo-itens">
+                {secao.produtos.map((produto) => (
+                  <li key={produto.nome}>
+                    {produto.quantidade}× {produto.nome}
+                  </li>
+                ))}
               </ul>
             </section>
           ))}
