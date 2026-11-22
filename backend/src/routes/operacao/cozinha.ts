@@ -208,7 +208,7 @@ export function criarRotasEstacao(estacao: EstacaoPreparo) {
         const pedidoAtual = await tx.pedidoOperacao.findUniqueOrThrow({
           where: { id: pedido.id },
           include: {
-            itensComanda: { include: { produto: true, opcionais: { include: { opcional: true } } } },
+            itensComanda: { include: { produto: true, opcionais: { include: { opcional: true, opcionalCatalogo: { select: { produtoEstoqueId: true } } } } } },
             comanda: { select: { id: true, status: true, tipo: true } },
           },
         });
@@ -257,7 +257,10 @@ export function criarRotasEstacao(estacao: EstacaoPreparo) {
             tapId: item.tapId,
             volumeMl: item.volumeMl,
             registradoPorId: user.sub,
-            opcionais: item.opcionais.map((opcional) => ({ produtoEstoqueId: opcional.opcional?.produtoEstoqueId ?? null, quantidade: opcional.quantidade })),
+            opcionais: item.opcionais.map((opcional) => ({
+              produtoEstoqueId: opcional.opcional?.produtoEstoqueId ?? opcional.opcionalCatalogo?.produtoEstoqueId ?? null,
+              quantidade: opcional.quantidade,
+            })),
           });
         }
 

@@ -7,6 +7,7 @@ import { pedidoContaNaComanda } from './cozinha.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 import { contasPendentesWhere, sumDebtSettledAfterTurn } from './dashboard-fiado.js';
+import { agregarOpcionaisVendidos } from './dashboard-opcionais.js';
 
 const MS_HOUR = 3_600_000;
 
@@ -62,7 +63,7 @@ async function fetchClosedComandas(
     },
     include: {
       pagamentos: true,
-      itens: true,
+      itens: { include: { opcionais: true } },
       pontoVenda: { select: { id: true, nome: true } },
     },
   });
@@ -219,6 +220,8 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
 
   const porFuncionarioArr = Array.from(porFuncionario.values()).sort((a, b) => b.receita - a.receita);
 
+  const opcionaisAgg = agregarOpcionaisVendidos(comandas.flatMap((comanda) => comanda.itens), receitaTotal);
+
   return {
     receitaTotal,
     vendasAvulsas,
@@ -226,8 +229,12 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     comandasAtendidas,
     ticketMedio,
     itensVendidos,
+    receitaOpcionais: opcionaisAgg.receitaOpcionais,
+    unidadesOpcionais: opcionaisAgg.unidadesOpcionais,
+    percentualReceitaOpcionais: opcionaisAgg.percentualReceitaOpcionais,
     porPagamento: porPagamentoArr,
     porProduto: porProdutoArr,
+    porOpcional: opcionaisAgg.porOpcional,
     porFuncionario: porFuncionarioArr,
   };
 }
@@ -549,12 +556,16 @@ export async function buildOperacaoDashboard(
       receitaAvulsa: resumo.receitaAvulsa,
       ticketMedio: resumo.ticketMedio,
       itensVendidos: resumo.itensVendidos,
+      receitaOpcionais: resumo.receitaOpcionais,
+      unidadesOpcionais: resumo.unidadesOpcionais,
+      percentualReceitaOpcionais: resumo.percentualReceitaOpcionais,
       turnosCaixa: turnosNoMes,
       variacaoReceitaMesAnterior: variacaoReceita,
     },
     evolucaoSemanal,
     porPagamento,
     porProduto: resumo.porProduto,
+    porOpcional: resumo.porOpcional,
     porFuncionario: resumo.porFuncionario,
     turnosRecentes,
     comparativoPontos,

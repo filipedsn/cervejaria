@@ -1046,6 +1046,9 @@ export interface OperacaoDashboard {
     receitaAvulsa: number;
     ticketMedio: number;
     itensVendidos: number;
+    receitaOpcionais: number;
+    unidadesOpcionais: number;
+    percentualReceitaOpcionais: number;
     turnosCaixa: number;
     variacaoReceitaMesAnterior: number | null;
   };
@@ -1053,6 +1056,13 @@ export interface OperacaoDashboard {
   porPagamento: Array<{ forma: string; valor: number; percentual: number }>;
   porProduto: Array<{
     produtoId: string;
+    nome: string;
+    quantidade: number;
+    receita: number;
+    percentual: number;
+  }>;
+  porOpcional: Array<{
+    opcionalId: string;
     nome: string;
     quantidade: number;
     receita: number;

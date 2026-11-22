@@ -219,7 +219,7 @@ export function OperacaoDashboardPage() {
 
   if (isLoading || !data) return <Loading />;
 
-  const { resumo, porPagamento, porProduto, porFuncionario, turnosRecentes, comparativoPontos } = data;
+  const { resumo, porPagamento, porProduto, porOpcional = [], porFuncionario, turnosRecentes, comparativoPontos } = data;
   const mesSelecionadoIdx = mes - 1;
 
   return (
@@ -377,6 +377,11 @@ export function OperacaoDashboardPage() {
         <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
         <KpiCard label="Ticket médio" value={formatCurrency(resumo.ticketMedio)} />
         <KpiCard label="Itens vendidos" value={String(resumo.itensVendidos)} />
+        <KpiCard
+          label="Opcionais"
+          value={formatCurrency(resumo.receitaOpcionais ?? 0)}
+          hint={`${resumo.unidadesOpcionais ?? 0} un · ${resumo.percentualReceitaOpcionais ?? 0}% do faturamento`}
+        />
         <KpiCard label="Turnos de caixa" value={String(resumo.turnosCaixa)} />
       </div>
 
@@ -600,6 +605,27 @@ export function OperacaoDashboardPage() {
               </div>
             </section>
           </div>
+
+          {porOpcional.length > 0 && (
+            <section className="card p-4 sm:p-5">
+              <h2 className="section-label mb-2">Opcionais mais vendidos</h2>
+              <p className="mb-2 text-xs text-ink-faint">Receita só do adicional do opcional (comandas fechadas)</p>
+              <div className="divide-y divide-line">
+                {porOpcional.map((o, i) => (
+                  <div key={o.opcionalId} className="flex items-center gap-4 py-3">
+                    <span className="w-6 shrink-0 text-sm font-bold text-ink-faint tabular-nums">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold truncate">{o.nome}</p>
+                      <p className="text-xs text-ink-faint">
+                        {o.quantidade} un · {o.percentual}% do faturamento
+                      </p>
+                    </div>
+                    <p className="font-bold text-brand-600 tabular-nums shrink-0">{formatCurrency(o.receita)}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {porFuncionario.length > 0 && (
             <section className="space-y-3">

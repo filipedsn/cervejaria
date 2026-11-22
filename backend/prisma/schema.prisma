@@ -419,6 +419,7 @@ model Produto {
   opcionalVinculosPdv ProdutoOpcionalVinculo[] @relation("VinculoOpcionalProdutoPdv")
   cardapioProdutosPdv CardapioProduto[] @relation("CardapioProdutoPdvProduto")
   opcionaisEstoque ProdutoOpcional[] @relation("ProdutoOpcionalEstoque")
+  opcionaisCatalogoEstoque Opcional[] @relation("OpcionalCatalogoEstoque")
   gruposCombo ComboGrupo[] @relation("ComboGrupoProduto")
   opcoesCombo ComboGrupoOpcao[] @relation("ComboGrupoOpcaoProduto")
    saldosEstoqueOperacao InventoryBalance[]
@@ -536,12 +537,15 @@ model Opcional {
   pontoVendaId String?
   nome        String
   preco       Decimal  @default(0) @db.Decimal(10, 2)
+  /// Quando preenchido e o produto tiver controlaEstoque, a venda baixa esse estoque.
+  produtoEstoqueId String?
   ativo       Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   cervejaria Cervejaria @relation(fields: [cervejariaId], references: [id], onDelete: Cascade)
   pontoVenda PontoVenda? @relation(fields: [pontoVendaId, cervejariaId], references: [id, cervejariaId], onDelete: Restrict)
+  produtoEstoque Produto? @relation("OpcionalCatalogoEstoque", fields: [produtoEstoqueId], references: [id], onDelete: SetNull)
   produtos ProdutoOpcionalVinculo[]
   produtosPdv ProdutoOpcionalVinculo[] @relation("VinculoOpcionalOpcionalPdv")
   itens ItemComandaOpcional[]
@@ -549,6 +553,7 @@ model Opcional {
   @@unique([cervejariaId, nome])
   @@unique([id, cervejariaId, pontoVendaId])
   @@index([cervejariaId, ativo, nome])
+  @@index([produtoEstoqueId])
   @@schema("public")
 }
 
