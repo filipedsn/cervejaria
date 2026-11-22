@@ -1207,34 +1207,34 @@ button[title="Excluir"].icon-btn-danger {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ink-muted, #64748b);
+  color: var(--color-ink-muted);
 }
 
 .cozinha-tv-resumo-secao {
-  border: 1px solid var(--line, rgba(15, 23, 42, 0.12));
+  border: 1px solid var(--color-line);
   border-radius: 1rem;
   padding: 0.85rem 1rem;
-  background: var(--surface-lighter, rgba(15, 23, 42, 0.03));
+  background: var(--color-surface-lighter);
 }
 
 .cozinha-tv-resumo-secao--fila {
-  border-color: rgba(56, 189, 248, 0.45);
-  background: rgba(14, 165, 233, 0.08);
+  border-color: rgba(14, 165, 233, 0.45);
+  background: rgba(14, 165, 233, 0.1);
 }
 
 .cozinha-tv-resumo-secao--preparo {
   border-color: rgba(245, 185, 66, 0.55);
-  background: rgba(245, 185, 66, 0.1);
+  background: rgba(245, 185, 66, 0.12);
 }
 
 .cozinha-tv-resumo-secao--pronto {
   border-color: rgba(34, 197, 94, 0.45);
-  background: rgba(34, 197, 94, 0.1);
+  background: rgba(34, 197, 94, 0.12);
 }
 
 .cozinha-tv-resumo-secao--cancelamento {
   border-color: rgba(249, 115, 22, 0.5);
-  background: rgba(249, 115, 22, 0.1);
+  background: rgba(249, 115, 22, 0.12);
 }
 
 .cozinha-tv-resumo-secao-header {
@@ -1251,15 +1251,15 @@ button[title="Excluir"].icon-btn-danger {
   font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-  color: var(--ink, #0f172a);
+  color: var(--color-ink);
 }
 
 .cozinha-tv-resumo-secao--fila .cozinha-tv-resumo-secao-title {
-  color: #0284c7;
+  color: #0369a1;
 }
 
 .cozinha-tv-resumo-secao--preparo .cozinha-tv-resumo-secao-title {
-  color: #b45309;
+  color: #a16207;
 }
 
 .cozinha-tv-resumo-secao--pronto .cozinha-tv-resumo-secao-title {
@@ -1273,7 +1273,7 @@ button[title="Excluir"].icon-btn-danger {
 .cozinha-tv-resumo-secao-count {
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--ink-muted, #64748b);
+  color: var(--color-ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1286,7 +1286,51 @@ button[title="Excluir"].icon-btn-danger {
   gap: 0.35rem;
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--ink, #0f172a);
+  color: var(--color-ink);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--fila {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(14, 165, 233, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--preparo {
+  border-color: rgba(245, 185, 66, 0.55);
+  background: rgba(245, 185, 66, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--pronto {
+  border-color: rgba(74, 222, 128, 0.45);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--cancelamento {
+  border-color: rgba(251, 146, 60, 0.55);
+  background: rgba(249, 115, 22, 0.14);
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--fila .cozinha-tv-resumo-secao-title {
+  color: #7dd3fc;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--preparo .cozinha-tv-resumo-secao-title {
+  color: #f5b942;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--pronto .cozinha-tv-resumo-secao-title {
+  color: #4ade80;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-secao--cancelamento .cozinha-tv-resumo-secao-title {
+  color: #fb923c;
+}
+
+[data-theme="dark"] .cozinha-tv-resumo-itens {
+  color: var(--color-ink);
 }
 
 .cozinha-tv-hint {
