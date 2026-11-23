@@ -563,6 +563,67 @@ export function rotuloStatusPedido(status: StatusPedido): string {
   }
 }
 
+/** Ordem das seções do resumo na Cozinha/Bar TV (somente status visíveis na fila). */
+export const STATUS_RESUMO_COZINHA_TV: StatusPedido[] = [
+  'RECEBIDO',
+  'EM_PREPARO',
+  'PRONTO',
+  'CANCELAMENTO_PENDENTE',
+];
+
+const ROTULO_RESUMO_COZINHA_TV: Partial<Record<StatusPedido, string>> = {
+  RECEBIDO: 'Na fila',
+  EM_PREPARO: 'Preparando',
+  PRONTO: 'Pronto',
+  CANCELAMENTO_PENDENTE: 'Cancelamento solicitado',
+};
+
+export type ProdutoResumoCozinhaTv = {
+  nome: string;
+  quantidade: number;
+};
+
+export type SecaoResumoCozinhaTv = {
+  status: StatusPedido;
+  label: string;
+  totalItens: number;
+  produtos: ProdutoResumoCozinhaTv[];
+};
+
+/** Consolida quantidades por nome de produto (resumo da TV). */
+export function consolidarProdutosCozinhaTv(
+  pedidos: Array<Pick<PedidoCozinha, 'itens'>>,
+): ProdutoResumoCozinhaTv[] {
+  const mapa = new Map<string, number>();
+  for (const pedido of pedidos) {
+    for (const item of pedido.itens) {
+      const nome = item.nome.trim() || 'Item';
+      mapa.set(nome, (mapa.get(nome) ?? 0) + item.quantidade);
+    }
+  }
+  return [...mapa.entries()]
+    .map(([nome, quantidade]) => ({ nome, quantidade }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+}
+
+/** Agrupa a fila da TV por status com produtos consolidados; omite seções vazias. */
+export function agruparPedidosCozinhaPorStatus(pedidos: PedidoCozinha[]): SecaoResumoCozinhaTv[] {
+  return STATUS_RESUMO_COZINHA_TV.flatMap((status) => {
+    const doStatus = pedidos.filter((pedido) => pedido.status === status);
+    if (doStatus.length === 0) return [];
+    const produtos = consolidarProdutosCozinhaTv(doStatus);
+    const totalItens = produtos.reduce((total, produto) => total + produto.quantidade, 0);
+    return [
+      {
+        status,
+        label: ROTULO_RESUMO_COZINHA_TV[status] ?? rotuloStatusPedido(status),
+        totalItens,
+        produtos,
+      },
+    ];
+  });
+}
+
 /** Status operacional por item: balcão e cozinha usam o mesmo vocabulário (Entregue). */
 export function rotuloStatusItemPedido(
   pedido: Pick<PedidoOperacao, 'status'>,

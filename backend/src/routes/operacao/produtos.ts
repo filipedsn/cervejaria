@@ -331,6 +331,7 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
 
     return {
       precoCatalogo: Number(produto.precos[0]?.preco ?? 0),
+      comboFechado: Boolean(produto.comboFechado),
       grupos: grupos.map((grupo) => ({
         ...grupo,
         opcoes: grupo.opcoes.map((opcao) => ({
@@ -346,8 +347,12 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = composicaoComboSchema.parse(request.body);
     const precoAntes = await prisma.preco.findMany({ where: { produtoId: id }, select: { volumeMl: true, preco: true } });
-    const grupos = await prisma.$transaction((tx) => substituirComposicaoCombo(tx, cervejariaId, id, body.grupos));
+    const grupos = await prisma.$transaction((tx) => substituirComposicaoCombo(tx, cervejariaId, id, body.grupos, {
+      comboFechado: body.comboFechado,
+      precoPacote: body.precoPacote,
+    }));
     const precoDepois = await prisma.preco.findMany({ where: { produtoId: id }, select: { volumeMl: true, preco: true } });
+    const atualizado = await prisma.produto.findFirst({ where: { id, cervejariaId }, select: { comboFechado: true } });
     emitPriceChangeAudit({
       cervejariaId,
       entityType: 'Produto',
@@ -358,7 +363,11 @@ export async function produtosOperacaoRoutes(app: FastifyInstance) {
         precoDepois.map((p) => ({ produtoId: id, volumeMl: p.volumeMl, preco: p.preco })),
       ),
     });
-    return { precoCatalogo: Number(precoDepois[0]?.preco ?? 0), grupos };
+    return {
+      precoCatalogo: Number(precoDepois[0]?.preco ?? 0),
+      comboFechado: Boolean(atualizado?.comboFechado),
+      grupos,
+    };
   });
 
   app.post('/:id/converter-combo', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request) => {
