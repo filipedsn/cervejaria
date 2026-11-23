@@ -316,10 +316,12 @@ function FragmentDia({
                         {formatMovimentoQty(mov.tipo, mov.quantidade)}
                       </span>
                     </div>
-                    {mov.observacao ? (
+                    {(mov.registradoPorNome || mov.observacao) ? (
                       <p className="mt-0.5 grid grid-cols-[3rem_1fr_auto] gap-x-2">
                         <span aria-hidden="true" />
-                        <span className="min-w-0 truncate text-ink-faint">{mov.observacao}</span>
+                        <span className="min-w-0 truncate text-ink-faint">
+                          {[mov.registradoPorNome, mov.observacao].filter(Boolean).join(' · ')}
+                        </span>
                         <span aria-hidden="true" />
                       </p>
                     ) : null}

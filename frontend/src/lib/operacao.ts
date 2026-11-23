@@ -1240,6 +1240,7 @@ export interface OperacaoDashboardProdutoDetalhe {
       createdAt: string;
       observacao: string | null;
       pontoVendaId: string;
+      registradoPorNome?: string | null;
     }>;
   }>;
 }

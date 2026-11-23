@@ -45,6 +45,7 @@ export type ProdutoDiaRow = {
     createdAt: string;
     observacao: string | null;
     pontoVendaId: string;
+    registradoPorNome: string | null;
   }>;
 };
 
@@ -376,11 +377,27 @@ async function fetchMovimentos(
       tipo: true,
       quantidade: true,
       observacao: true,
+      registradoPorId: true,
       createdAt: true,
       produto: { select: { nome: true } },
     },
     orderBy: { createdAt: 'asc' },
   });
+}
+
+async function mapRegistradoPorNomes(registradoPorIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(registradoPorIds.filter(Boolean))];
+  const nomes = new Map<string, string>();
+  if (ids.length === 0) return nomes;
+  const usuarios = await prisma.usuario.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, nome: true },
+  });
+  for (const usuario of usuarios) {
+    const nome = usuario.nome?.trim();
+    if (nome) nomes.set(usuario.id, nome);
+  }
+  return nomes;
 }
 
 export async function buildDashboardProdutosLista(
@@ -518,6 +535,8 @@ export async function buildDashboardProdutoDetalhe(
     if (item.viaOpcional) vendaViaOpcional = true;
   }
 
+  const nomesPorUsuario = await mapRegistradoPorNomes(movimentos.map((mov) => mov.registradoPorId));
+
   for (const mov of movimentos) {
     const key = dayKeyLocal(mov.createdAt);
     let bucket = byDay.get(key);
@@ -538,6 +557,7 @@ export async function buildDashboardProdutoDetalhe(
       createdAt: mov.createdAt.toISOString(),
       observacao: mov.observacao,
       pontoVendaId: mov.pontoVendaId,
+      registradoPorNome: nomesPorUsuario.get(mov.registradoPorId) ?? null,
     });
   }
 
