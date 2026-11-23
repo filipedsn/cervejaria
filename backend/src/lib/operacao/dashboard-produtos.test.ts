@@ -8,6 +8,7 @@ import {
   deltaEstoqueFromAgg,
   eachDayKeys,
   emptyMovimentoAgg,
+  expandSaleItemsFromLine,
   mergeListaRows,
   outrosFromAgg,
 } from './dashboard-produtos.js';
@@ -81,5 +82,101 @@ describe('dashboard-produtos helpers', () => {
       incluirZerados: true,
     });
     assert.ok(withZeros.some((r) => r.produtoId === 'd' && r.saldoAtual === 9));
+  });
+
+  it('expandSaleItemsFromLine keeps host sale and attributes optional stock product', () => {
+    const lines = expandSaleItemsFromLine(
+      {
+        produtoId: 'host',
+        nome: 'Feijão',
+        quantidade: 2,
+        precoUnit: 18,
+        opcionais: [
+          {
+            quantidade: 1,
+            precoAdicional: 2.5,
+            produtoEstoqueId: 'queijo',
+            produtoEstoqueNome: 'C. QUEIJO COALHO',
+          },
+          {
+            quantidade: 1,
+            precoAdicional: 1,
+            produtoEstoqueId: null,
+            produtoEstoqueNome: null,
+          },
+        ],
+      },
+      '2026-11-23',
+    );
+    assert.equal(lines.length, 2);
+    assert.deepEqual(lines[0], {
+      produtoId: 'host',
+      nome: 'Feijão',
+      quantidade: 2,
+      receita: 36,
+      day: '2026-11-23',
+      viaOpcional: false,
+    });
+    assert.deepEqual(lines[1], {
+      produtoId: 'queijo',
+      nome: 'C. QUEIJO COALHO',
+      quantidade: 2,
+      receita: 5,
+      day: '2026-11-23',
+      viaOpcional: true,
+    });
+  });
+
+  it('expandSaleItemsFromLine filters by stock product id for detail', () => {
+    const lines = expandSaleItemsFromLine(
+      {
+        produtoId: 'host',
+        nome: 'Feijão',
+        quantidade: 2,
+        precoUnit: 18,
+        opcionais: [
+          {
+            quantidade: 1,
+            precoAdicional: 2.5,
+            produtoEstoqueId: 'queijo',
+            produtoEstoqueNome: 'C. QUEIJO COALHO',
+          },
+        ],
+      },
+      '2026-11-23',
+      'queijo',
+    );
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0]?.produtoId, 'queijo');
+    assert.equal(lines[0]?.viaOpcional, true);
+    assert.equal(lines[0]?.quantidade, 2);
+    assert.equal(lines[0]?.receita, 5);
+  });
+
+  it('aggregateSalesByProduct merges optional stock sales into linked product', () => {
+    const map = aggregateSalesByProduct(
+      expandSaleItemsFromLine(
+        {
+          produtoId: 'host',
+          nome: 'Feijão',
+          quantidade: 2,
+          precoUnit: 18,
+          opcionais: [
+            {
+              quantidade: 1,
+              precoAdicional: 2.5,
+              produtoEstoqueId: 'queijo',
+              produtoEstoqueNome: 'C. QUEIJO COALHO',
+            },
+          ],
+        },
+        '2026-11-23',
+      ),
+    );
+    assert.equal(map.get('host')?.quantidade, 2);
+    assert.equal(map.get('host')?.receita, 36);
+    assert.equal(map.get('queijo')?.quantidade, 2);
+    assert.equal(map.get('queijo')?.receita, 5);
+    assert.equal(map.get('queijo')?.nome, 'C. QUEIJO COALHO');
   });
 });

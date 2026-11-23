@@ -1210,6 +1210,8 @@ export interface OperacaoDashboardProdutoDetalhe {
   pontoVendaId: string | null;
   escopoEstoque: 'ponto' | 'todas_unidades';
   produto: { id: string; nome: string };
+  /** True when some qty/revenue on this product came from optionals linked to its stock. */
+  vendaViaOpcional?: boolean;
   totais: {
     quantidadeVendida: number;
     receita: number;

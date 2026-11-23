@@ -141,7 +141,58 @@ type SaleItem = {
   quantidade: number;
   receita: number;
   day: string;
+  viaOpcional?: boolean;
 };
+
+/** Raw closed-comanda line used to expand host + optional stock sales. */
+export type RawClosedSaleLine = {
+  produtoId: string;
+  nome: string;
+  quantidade: number;
+  precoUnit: number;
+  opcionais?: Array<{
+    quantidade: number;
+    precoAdicional: number;
+    produtoEstoqueId: string | null;
+    produtoEstoqueNome: string | null;
+  }>;
+};
+
+/**
+ * Host sale stays on the item product; optionals with produtoEstoqueId also
+ * emit qty/revenue on the linked stock product (clarity for Quadro Produtos).
+ */
+export function expandSaleItemsFromLine(
+  item: RawClosedSaleLine,
+  day: string,
+  filterProdutoId?: string,
+): SaleItem[] {
+  const out: SaleItem[] = [];
+  if (!filterProdutoId || item.produtoId === filterProdutoId) {
+    out.push({
+      produtoId: item.produtoId,
+      nome: item.nome,
+      quantidade: item.quantidade,
+      receita: item.precoUnit * item.quantidade,
+      day,
+      viaOpcional: false,
+    });
+  }
+  for (const opcional of item.opcionais ?? []) {
+    if (!opcional.produtoEstoqueId) continue;
+    if (filterProdutoId && opcional.produtoEstoqueId !== filterProdutoId) continue;
+    const quantidade = item.quantidade * opcional.quantidade;
+    out.push({
+      produtoId: opcional.produtoEstoqueId,
+      nome: opcional.produtoEstoqueNome?.trim() || 'Produto',
+      quantidade,
+      receita: opcional.precoAdicional * quantidade,
+      day,
+      viaOpcional: true,
+    });
+  }
+  return out;
+}
 
 export function aggregateSalesByProduct(
   items: SaleItem[],
@@ -151,7 +202,8 @@ export function aggregateSalesByProduct(
     const row = map.get(item.produtoId) ?? { nome: item.nome, quantidade: 0, receita: 0 };
     row.quantidade += item.quantidade;
     row.receita += item.receita;
-    if (item.nome) row.nome = item.nome;
+    // Prefer the host product name when both direct and via-opcional sales exist.
+    if (item.nome && (!item.viaOpcional || row.nome === 'Produto')) row.nome = item.nome;
     map.set(item.produtoId, row);
   }
   return map;
@@ -211,6 +263,24 @@ async function fetchClosedSaleItems(
   canonicalPdvEnabled: boolean,
   produtoId?: string,
 ) {
+  const itemWhere = produtoId
+    ? {
+        OR: [
+          { produtoId },
+          {
+            opcionais: {
+              some: {
+                OR: [
+                  { opcional: { produtoEstoqueId: produtoId } },
+                  { opcionalCatalogo: { produtoEstoqueId: produtoId } },
+                ],
+              },
+            },
+          },
+        ],
+      }
+    : undefined;
+
   const comandas = await prisma.comanda.findMany({
     where: {
       ...(canonicalPdvEnabled
@@ -224,7 +294,7 @@ async function fetchClosedSaleItems(
     select: {
       fechadaEm: true,
       itens: {
-        where: produtoId ? { produtoId } : undefined,
+        where: itemWhere,
         select: {
           produtoId: true,
           nome: true,
@@ -232,6 +302,24 @@ async function fetchClosedSaleItems(
           precoUnit: true,
           canceladoEm: true,
           cancelamentoPendenteEm: true,
+          opcionais: {
+            select: {
+              quantidade: true,
+              precoAdicional: true,
+              opcional: {
+                select: {
+                  produtoEstoqueId: true,
+                  produtoEstoque: { select: { nome: true } },
+                },
+              },
+              opcionalCatalogo: {
+                select: {
+                  produtoEstoqueId: true,
+                  produtoEstoque: { select: { nome: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -243,13 +331,25 @@ async function fetchClosedSaleItems(
     const day = dayKeyLocal(comanda.fechadaEm);
     for (const item of comanda.itens) {
       if (!item.produtoId || !itemContaNaVendaLiquida(item)) continue;
-      items.push({
+      const raw: RawClosedSaleLine = {
         produtoId: item.produtoId,
         nome: item.nome ?? 'Item',
         quantidade: item.quantidade,
-        receita: toNumber(item.precoUnit) * item.quantidade,
-        day,
-      });
+        precoUnit: toNumber(item.precoUnit),
+        opcionais: item.opcionais.map((op) => {
+          const produtoEstoqueId =
+            op.opcional?.produtoEstoqueId ?? op.opcionalCatalogo?.produtoEstoqueId ?? null;
+          const produtoEstoqueNome =
+            op.opcional?.produtoEstoque?.nome ?? op.opcionalCatalogo?.produtoEstoque?.nome ?? null;
+          return {
+            quantidade: op.quantidade,
+            precoAdicional: toNumber(op.precoAdicional),
+            produtoEstoqueId,
+            produtoEstoqueNome,
+          };
+        }),
+      };
+      items.push(...expandSaleItemsFromLine(raw, day, produtoId));
     }
   }
   return items;
@@ -409,11 +509,13 @@ export async function buildDashboardProdutoDetalhe(
     });
   }
 
+  let vendaViaOpcional = false;
   for (const item of saleItems) {
     const bucket = byDay.get(item.day);
     if (!bucket) continue;
     bucket.quantidadeVendida += item.quantidade;
     bucket.receita += item.receita;
+    if (item.viaOpcional) vendaViaOpcional = true;
   }
 
   for (const mov of movimentos) {
@@ -514,6 +616,7 @@ export async function buildDashboardProdutoDetalhe(
     pontoVendaId: options.pontoVendaId ?? null,
     escopoEstoque: options.pontoVendaId ? 'ponto' : 'todas_unidades',
     produto: { id: produto.id, nome: produto.nome },
+    vendaViaOpcional,
     totais: {
       quantidadeVendida: round3(totais.quantidadeVendida),
       receita: roundMoney(totais.receita),

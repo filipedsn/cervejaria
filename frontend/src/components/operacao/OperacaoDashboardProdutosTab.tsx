@@ -81,6 +81,9 @@ export function OperacaoDashboardProdutosTab({ dashboardQuery, pontoParam }: Pro
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-bold text-ink leading-tight">{detalhe.produto.nome}</h2>
             <p className="text-sm text-ink-muted mt-0.5">{detalhe.periodo.label}</p>
+            {detalhe.vendaViaOpcional ? (
+              <p className="text-xs text-ink-faint mt-1">Inclui vendas via opcional vinculado a este estoque.</p>
+            ) : null}
           </div>
         </div>
 
