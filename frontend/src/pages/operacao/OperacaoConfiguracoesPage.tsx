@@ -20,6 +20,7 @@ import { OnboardingManualEntry } from '../../components/OnboardingManualEntry';
 import { CozinhaVisualSettingsPanel } from '../../components/operacao/CozinhaVisualSettingsPanel';
 import { ConfigPortalCategoriasPanel } from '../../components/ConfigPortalCategoriasPanel';
 import { ConfigPortalAlertaBalcaoPanel } from '../../components/ConfigPortalAlertaBalcaoPanel';
+import { ManualWikiPanel } from '../../components/ManualWikiPanel';
 
 const TABS = [
   { id: 'equipe', label: 'Equipe' },
@@ -27,6 +28,7 @@ const TABS = [
   { id: 'pdv', label: 'PDV' },
   { id: 'operacao', label: 'Operação' },
   { id: 'aparencia', label: 'Aparência' },
+  { id: 'ajuda', label: 'Ajuda' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
@@ -66,7 +68,7 @@ export function OperacaoConfiguracoesPage() {
 
   return (
     <div className="space-y-5 pb-2">
-      <PageHeader title="Configurações" subtitle={canonical ? 'Equipe, PDV e aparência' : 'Equipe, trailers, operação e aparência'} />
+      <PageHeader title="Configurações" subtitle={canonical ? 'Equipe, PDV, aparência e ajuda' : 'Equipe, trailers, operação, aparência e ajuda'} />
 
       <div className="segmented-control">
         {tabs.map(({ id, label }) => (
@@ -121,6 +123,7 @@ export function OperacaoConfiguracoesPage() {
       </div> : <div className="alert-error" role="alert">O contexto deve conter exatamente um PDV ativo. Procure o suporte para validar a unidade.</div>)}
       {tab === 'operacao' && <OperacaoPage embedded modo="operacao" />}
       {tab === 'aparencia' && <AparenciaPage embedded />}
+      {tab === 'ajuda' && <ManualWikiPanel />}
     </div>
   );
 }
