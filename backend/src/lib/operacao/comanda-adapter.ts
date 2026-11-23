@@ -24,7 +24,7 @@ export const INCLUDE_COMANDA_OPERACAO = {
   },
   pagamentos: { orderBy: { pagoEm: 'asc' as const } },
   contaReceber: { include: { pagamentos: true } },
-  cliente: { select: { id: true, nome: true, telefone: true } },
+  cliente: { select: { id: true, nome: true, telefone: true, email: true } },
 } satisfies Prisma.ComandaInclude;
 
 export type ComandaOperacaoCompleta = Prisma.ComandaGetPayload<{

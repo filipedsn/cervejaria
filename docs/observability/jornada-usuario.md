@@ -63,7 +63,9 @@ attributes.event.action : "ui.error" and attributes.metadata.feature : "comanda.
 attributes.event.action : "ui.error" and attributes.metadata.scenario : "network_unreachable"
 ```
 
-Alertas Telegram (`quiver-tap-ui-error-*`) **não** disparam para `handled=true` + `kind` de negócio esperado (`validation` / `api_client`); só para `handled=false`, legado sem flag, ou `kind` in `network|api_server|ui_bug`.
+Alertas Telegram técnicos (`quiver-tap-ui-error-*`) disparam para `handled=false`, legado sem flag, ou `kind` in `network|api_server|ui_bug`.
+
+Avisos leves de negócio (`quiver-tap-ui-negocio-*`, TAP-188) disparam para `handled=true` + `kind` in `validation|api_client` (estoque, comanda fechada, etc.), com prefixo `[NEGÓCIO] ℹ️` e **sem** mensagem de recover.
 
 #### Cenário funcional completo (TAP-179)
 
@@ -80,7 +82,7 @@ Com isso:
 - sem `entityType/entityId` explícitos, o evento herda a comanda do contexto (`entity.type=comanda`), então qualquer clique é filtrável por comanda;
 - o alerta do Telegram/e-mail monta o **Cenário** com comanda e intenção e abre o **Detalhamento** com `Onde`, `Queria`, `Mensagem exibida`, campos do contexto, itens, `Correlation ID`/`Request ID`/`Sessao`; o stack vai por último, para que o corte de 4000 caracteres do Telegram só atinja o stack.
 
-Proibido no contexto/intenção (o servidor descarta a chave): textos digitados livremente (observação, motivo), telefone, e-mail, endereço, documento, senha, token, dados de cartão. Observação só como `temObservacao: true/false`. Valores aceitos: texto (até 200 caracteres, com a mesma redação de cartão/token), número e booleano; listas apenas de objetos planos (até 30 itens × 15 campos).
+Proibido no contexto/intenção (o servidor descarta a chave): textos digitados livremente (observação, motivo), endereço, senha, token, dados de cartão. **Permitido (TAP-188):** `clienteTelefone`, `clienteEmail`, `clienteDocumento` (e aliases `telefone`/`email`/`cpf`/`cnpj`), com sanitização por campo (telefone 10–15 dígitos, e-mail com formato simples, documento 11 ou 14 dígitos) — não passam pelo redactor de PAN de cartão. Observação só como `temObservacao: true/false`. Valores aceitos: texto (até 200 caracteres; cartão/token em texto livre continuam `[REDACTED]`), número e booleano; listas apenas de objetos planos (até 30 itens × 15 campos).
 
 Telas cobertas: detalhe da comanda na Operação (`/operacao/comandas/:id`: incluir itens, remover, alterar quantidade, fechar conta, encerrar, abrir nova, atender balcão, cliente avisado, dispensar pedido de conta) e detalhe da comanda legado (`/comandas/:id`). Nova tela ou ação: declarar `useAuditContext` e `auditMutationMeta` — mutação sem `operation` continua gerando `ui.error`, mas sem `ui.submit` de sucesso nem intenção.
 

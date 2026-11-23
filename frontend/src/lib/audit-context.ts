@@ -1,11 +1,10 @@
 /**
- * Functional context attached to every audit event (TAP-179).
+ * Functional context attached to every audit event (TAP-179 / TAP-188).
  *
  * `context` answers "where was the operator" (comanda, mesa, cliente, status,
- * totals) and `intent` answers "what were they trying to do" (summary plus
- * items, quantities, payments). The backend keeps only primitive values and
- * flat item lists; free text typed by the operator (observações, senhas,
- * telefones) must never be placed here.
+ * totals, contact) and `intent` answers "what were they trying to do".
+ * Secrets (senha/token), cartão e texto livre (observação/motivo) continuam
+ * proibidos no backend; telefone, e-mail e documento do cliente são permitidos.
  */
 export type AuditPrimitive = string | number | boolean;
 export type AuditContext = Record<string, AuditPrimitive | null | undefined>;
@@ -67,6 +66,14 @@ export function compactIntent(intent: AuditIntent | undefined): AuditIntent | un
   return out;
 }
 
+type ComandaAuditCliente = {
+  id: string;
+  nome: string;
+  telefone?: string | null;
+  email?: string | null;
+  documento?: string | null;
+};
+
 type ComandaAuditSource = {
   id: string;
   numero?: number | null;
@@ -78,9 +85,21 @@ type ComandaAuditSource = {
   desconto?: number | null;
   total?: number | null;
   valorEmAberto?: number | null;
-  cliente?: { id: string; nome: string } | null;
+  cliente?: ComandaAuditCliente | null;
   itensQtd?: number | null;
 };
+
+function digitsOnly(value: string | null | undefined): string | undefined {
+  if (!value?.trim()) return undefined;
+  const digits = value.replace(/\D/g, '');
+  return digits || undefined;
+}
+
+function rotuloClienteAudit(cliente: ComandaAuditCliente | null | undefined): string | undefined {
+  if (!cliente?.nome?.trim()) return undefined;
+  const tel = digitsOnly(cliente.telefone);
+  return tel ? `cliente ${cliente.nome} (tel ${tel})` : `cliente ${cliente.nome}`;
+}
 
 function rotuloAuditComanda(comanda: ComandaAuditSource): string {
   const numero = comanda.numero != null ? `Comanda #${comanda.numero}` : 'Comanda';
@@ -91,14 +110,15 @@ function rotuloAuditComanda(comanda: ComandaAuditSource): string {
       : comanda.tipo === 'FICHA' && identificador
         ? `Ficha ${identificador}`
         : identificador || undefined;
-  return [numero, local, comanda.cliente?.nome ? `cliente ${comanda.cliente.nome}` : undefined]
-    .filter(Boolean)
-    .join(' · ');
+  return [numero, local, rotuloClienteAudit(comanda.cliente)].filter(Boolean).join(' · ');
 }
 
 /** Standard comanda context so every screen reports the same keys. */
 export function comandaAuditContext(comanda: ComandaAuditSource | null | undefined, comandaId?: string): AuditContext {
   if (!comanda) return comandaId ? { comandaId } : {};
+  const telefone = digitsOnly(comanda.cliente?.telefone);
+  const email = comanda.cliente?.email?.trim() || undefined;
+  const documento = digitsOnly(comanda.cliente?.documento);
   return {
     resumo: rotuloAuditComanda(comanda),
     comandaId: comanda.id,
@@ -114,6 +134,9 @@ export function comandaAuditContext(comanda: ComandaAuditSource | null | undefin
     itensQtd: comanda.itensQtd ?? undefined,
     clienteId: comanda.cliente?.id,
     clienteNome: comanda.cliente?.nome,
+    ...(telefone ? { clienteTelefone: telefone } : {}),
+    ...(email ? { clienteEmail: email } : {}),
+    ...(documento ? { clienteDocumento: documento } : {}),
   };
 }
 

@@ -26,6 +26,7 @@ export async function sendObservabilityAlertTelegram(
   }
 
   const text = formatObservabilityAlertTelegramText(alert);
+  if (!text.trim()) return;
   if (isTelegramAlertDryRun()) {
     console.log(JSON.stringify({ telegramDryRun: true, text }));
     return;

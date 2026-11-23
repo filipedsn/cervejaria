@@ -5,6 +5,8 @@ import {
   buildJourneyObjects,
   dashboardId,
   dataViewId,
+  journeyNegocioRule,
+  journeyNegocioRuleName,
   journeyRule,
   journeyRuleName,
   main,
@@ -70,6 +72,19 @@ test('journeyRule: surto de ui.error agrupado por tela, sem acoes por padrao', (
   assert.deepEqual(rule.actions, []);
   assert.ok(journeyRule('prd').tags.includes('production'));
   assert.deepEqual(journeyRule('dev', 9).params.threshold, [9]);
+});
+
+test('journeyNegocioRule: validation/api_client handled, firing-only notify', () => {
+  const rule = journeyNegocioRule('prd');
+  assert.equal(rule.name, journeyNegocioRuleName('prd'));
+  assert.equal(rule.name, 'quiver-tap-ui-negocio-prd');
+  assert.deepEqual(rule.params.index, ['logs-audit*.otel-prd']);
+  assert.match(rule.params.esQuery, /validation/);
+  assert.match(rule.params.esQuery, /api_client/);
+  assert.match(rule.params.esQuery, /"attributes\.metadata\.handled":true/);
+  assert.equal(rule.notify_when, 'onActiveAlert');
+  assert.deepEqual(rule.actions, []);
+  assert.ok(rule.tags.includes('negocio'));
 });
 
 test('main: valida ambiente e argumentos; sem --write so imprime', () => {

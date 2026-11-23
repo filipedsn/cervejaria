@@ -47,10 +47,42 @@ const RULE_COPY: Record<string, AlertCopy> = {
     impact:
       'Usuarios podem ver tela em branco, acao que nao responde ou mensagem de erro no navegador.',
     actions: [
-      'Pergunte qual pagina e acao estavam em uso quando o erro ocorreu.',
+      'Leia o cenario do alerta (quem, comanda, o que tentou).',
       'No Kibana, filtre por ui.error e veja a rota e a mensagem.',
       'Se for apos deploy, confira o console do navegador e o manifest do frontend.',
     ],
+  },
+  'quiver-tap-ui-error-dev': {
+    title: 'Erro de tela no app (DEV)',
+    severity: 'high',
+    category: 'app',
+    summary: 'O frontend DEV registrou erro de interface (ui.error).',
+    impact: 'Fluxo de teste no DEV pode estar quebrado na tela indicada.',
+    actions: [
+      'Leia o cenario do alerta.',
+      'No Kibana DEV, filtre por ui.error.',
+    ],
+  },
+  'quiver-tap-ui-negocio-prd': {
+    title: 'Aviso de operacao (producao)',
+    severity: 'medium',
+    category: 'app',
+    summary:
+      'Erro de negocio tratado na UI (estoque, comanda fechada, validacao, etc.) — o usuario viu a mensagem.',
+    impact:
+      'A operacao nao concluiu o que tentava; em geral nao e queda do sistema.',
+    actions: [
+      'Leia o cenario (atendente, comanda, cliente, o que tentou e a mensagem).',
+      'Se for recorrente no mesmo produto/estoque, ajuste cadastro ou estoque no app.',
+    ],
+  },
+  'quiver-tap-ui-negocio-dev': {
+    title: 'Aviso de operacao (DEV)',
+    severity: 'medium',
+    category: 'app',
+    summary: 'Erro de negocio tratado na UI no DEV (validation/api_client).',
+    impact: 'Fluxo de teste encontrou regra de negocio; normalmente esperado.',
+    actions: ['Leia o cenario do alerta no Telegram/Kibana DEV.'],
   },
   'quiver-tap-transacao-failure-prd': {
     title: 'Falha em operacao de negocio',
@@ -346,6 +378,8 @@ const OPERATIONAL_RULE_KEYS = new Set([
   'quiver-tap-transacao-failure-dev',
   'quiver-tap-ui-error-prd',
   'quiver-tap-ui-error-dev',
+  'quiver-tap-ui-negocio-prd',
+  'quiver-tap-ui-negocio-dev',
   'quiver-tap-5xx-rate-prd',
   'quiver-tap-5xx-rate-dev',
   'quiver-tap-401-surge-prd',
@@ -360,9 +394,16 @@ export function isOperationalAlertRule(ruleName?: string): boolean {
   return (
     key.includes('transacao-failure') ||
     key.includes('ui-error') ||
+    key.includes('ui-negocio') ||
     key.includes('5xx-rate') ||
     key.includes('401-surge')
   );
+}
+
+/** Kibana es-query boilerplate — hide from Telegram body (TAP-188). */
+export function isDocumentCountReason(text?: string): boolean {
+  if (!text?.trim()) return false;
+  return /document count is \d+/i.test(text);
 }
 
 export function isInfraAlertRule(ruleName?: string): boolean {
@@ -461,13 +502,27 @@ export function buildObservabilityAlertSections(payload: KibanaAlertPayload): {
     ? `${emoji} ${state.headlinePrefix} — ${copy.title}`
     : `${emoji} ${state.headlinePrefix} — ${copy.title}`;
 
-  const technicalReason = payload.reason?.trim() || undefined;
+  const rawReason = payload.reason?.trim() || undefined;
+  const technicalReason =
+    rawReason && !isDocumentCountReason(rawReason) ? rawReason : undefined;
+
+  const isAvailability =
+    (normalizeRuleName(payload.ruleName) ?? '').includes('api-ready-down') ||
+    (normalizeRuleName(payload.ruleName) ?? '').includes('public-ready-down');
+
   const recoveredSummary = state.isRecovered
-    ? 'O monitoramento indica que a condicao normalizou. Vale conferir se tudo voltou ao esperado.'
+    ? isAvailability
+      ? 'O endpoint voltou a responder OK. Se a queda durou cerca de 1 minuto e houve deploy recente, e provavel blip de publicacao (recreate do container) — confira o Actions/ops-panel se quiser fechar a causa.'
+      : 'O monitoramento indica que a condicao normalizou. Vale conferir se tudo voltou ao esperado.'
     : copy.summary;
 
   const recoveredActions = state.isRecovered
-    ? ['Nenhuma acao urgente. Opcional: confira o dashboard no Kibana para confirmar estabilidade.']
+    ? isAvailability
+      ? [
+          'Nenhuma acao urgente se ja recuperou.',
+          'Se repetir fora de janela de deploy, investigue logs da API no VPS.',
+        ]
+      : ['Nenhuma acao urgente. Opcional: confira o dashboard no Kibana para confirmar estabilidade.']
     : copy.actions;
 
   return {
@@ -476,7 +531,9 @@ export function buildObservabilityAlertSections(payload: KibanaAlertPayload): {
     environment: env,
     summary: recoveredSummary,
     impact: state.isRecovered
-      ? 'O impacto deve ter cessado. Monitore por alguns minutos.'
+      ? isAvailability
+        ? 'Impacto deve ter cessado. Quedas curtas apos deploy sao esperadas sem zero-downtime.'
+        : 'O impacto deve ter cessado. Monitore por alguns minutos.'
       : copy.impact,
     actions: recoveredActions,
     technicalReason,

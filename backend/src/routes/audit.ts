@@ -209,9 +209,14 @@ export function safeUiMetadata(meta: Record<string, unknown> | undefined): Recor
 }
 
 const FUNCTIONAL_KEY = /^[a-z][a-zA-Z0-9]{0,39}$/;
-/** Contact data and typed free text never belong in functional context. */
+/**
+ * Secrets, payment data and free-typed notes stay out of functional context.
+ * Contact (telefone/e-mail/documento) is allowed via dedicated sanitizers (TAP-188).
+ */
 const FORBIDDEN_FUNCTIONAL_KEY =
-  /senha|password|token|secret|cpf|cnpj|numerocartao|cardnumber|creditcard|cvv|cvc|telefone|phone|email|endereco|address|^observac|^motivo/i;
+  /senha|password|token|secret|numerocartao|cardnumber|creditcard|cvv|cvc|endereco|address|^observac|^motivo/i;
+const CONTACT_FUNCTIONAL_KEY =
+  /^(cliente)?(telefone|phone|email|documento|cpf|cnpj)$/i;
 const MAX_FUNCTIONAL_KEYS = 30;
 const MAX_INTENT_ITEMS = 30;
 const MAX_ITEM_KEYS = 15;
@@ -225,6 +230,28 @@ function safeFunctionalPrimitive(value: unknown, maxLength = 200): FunctionalPri
   return undefined;
 }
 
+/** Phone / e-mail / document — field-aware so E.164 and CNPJ are not treated as card PANs. */
+export function safeContactPrimitive(key: string, value: unknown): string | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const raw = String(value).trim();
+  if (!raw) return undefined;
+  const kind = key.toLowerCase();
+
+  if (kind.includes('telefone') || kind.includes('phone')) {
+    const digits = raw.replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 15 ? digits : undefined;
+  }
+  if (kind.includes('email')) {
+    const cleaned = raw.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 200);
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned) ? cleaned : undefined;
+  }
+  if (kind.includes('documento') || kind === 'cpf' || kind === 'cnpj' || kind.endsWith('cpf') || kind.endsWith('cnpj')) {
+    const digits = raw.replace(/\D/g, '');
+    return digits.length === 11 || digits.length === 14 ? digits : undefined;
+  }
+  return undefined;
+}
+
 function safeFunctionalKey(key: string): boolean {
   return FUNCTIONAL_KEY.test(key) && !FORBIDDEN_FUNCTIONAL_KEY.test(key);
 }
@@ -235,6 +262,11 @@ function safeFlatRecord(raw: unknown, maxKeys: number): Record<string, Functiona
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (Object.keys(out).length >= maxKeys) break;
     if (!safeFunctionalKey(key)) continue;
+    if (CONTACT_FUNCTIONAL_KEY.test(key)) {
+      const contact = safeContactPrimitive(key, value);
+      if (contact !== undefined) out[key] = contact;
+      continue;
+    }
     const safe = safeFunctionalPrimitive(value);
     if (safe !== undefined) out[key] = safe;
   }
