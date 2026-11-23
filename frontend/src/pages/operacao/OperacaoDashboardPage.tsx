@@ -219,7 +219,7 @@ export function OperacaoDashboardPage() {
 
   if (isLoading || !data) return <Loading />;
 
-  const { resumo, porPagamento, porProduto, porFuncionario, turnosRecentes, comparativoPontos } = data;
+  const { resumo, porPagamento, porProduto, porCombo = [], porFuncionario, turnosRecentes, comparativoPontos } = data;
   const mesSelecionadoIdx = mes - 1;
 
   return (
@@ -374,7 +374,12 @@ export function OperacaoDashboardPage() {
           hint={`Em aberto hoje (todos os meses): ${formatCurrency(Number.isFinite(resumo.totalPendente) ? resumo.totalPendente : 0)}`}
         />
         <KpiCard label="Comandas atendidas" value={String(resumo.comandasAtendidas)} />
-        <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} />
+        <KpiCard label="Vendas avulsas" value={String(resumo.vendasAvulsas)} hint="Comandas tipo venda avulsa (sem mesa/ficha)" />
+        <KpiCard
+          label="Combos vendidos"
+          value={String(resumo.combosVendidos ?? 0)}
+          hint={`${formatCurrency(resumo.receitaCombo ?? 0)} · ${resumo.percentualReceitaCombo ?? 0}% do faturamento`}
+        />
         <KpiCard label="Ticket médio" value={formatCurrency(resumo.ticketMedio)} />
         <KpiCard label="Itens vendidos" value={String(resumo.itensVendidos)} />
         <KpiCard label="Turnos de caixa" value={String(resumo.turnosCaixa)} />
@@ -584,6 +589,7 @@ export function OperacaoDashboardPage() {
 
             <section className="card p-4 sm:p-5">
               <h2 className="section-label mb-2">Produtos mais vendidos</h2>
+              <p className="mb-2 text-xs text-ink-faint">Solto = fora de combo · Em combo = componente de um combo</p>
               <div className="divide-y divide-line">
                 {porProduto.map((p, i) => (
                   <div key={p.produtoId} className="flex items-center gap-4 py-3">
@@ -593,6 +599,11 @@ export function OperacaoDashboardPage() {
                       <p className="text-xs text-ink-faint">
                         {p.quantidade} un · {p.percentual}% do faturamento
                       </p>
+                      <p className="text-xs text-ink-faint">
+                        {p.quantidadeSolta ?? 0} soltas ({formatCurrency(p.receitaSolta ?? 0)})
+                        {' · '}
+                        {p.quantidadeEmCombo ?? 0} em combo ({formatCurrency(p.receitaEmCombo ?? 0)})
+                      </p>
                     </div>
                     <p className="font-bold text-brand-600 tabular-nums shrink-0">{formatCurrency(p.receita)}</p>
                   </div>
@@ -600,6 +611,27 @@ export function OperacaoDashboardPage() {
               </div>
             </section>
           </div>
+
+          {porCombo.length > 0 && (
+            <section className="card p-4 sm:p-5">
+              <h2 className="section-label mb-2">Combos mais vendidos</h2>
+              <p className="mb-2 text-xs text-ink-faint">Quantidade = lançamentos de combo no período (comandas fechadas)</p>
+              <div className="divide-y divide-line">
+                {porCombo.map((c, i) => (
+                  <div key={c.comboProdutoId} className="flex items-center gap-4 py-3">
+                    <span className="w-6 shrink-0 text-sm font-bold text-ink-faint tabular-nums">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold truncate">{c.nome}</p>
+                      <p className="text-xs text-ink-faint">
+                        {c.quantidade} combo{c.quantidade === 1 ? '' : 's'} · {c.percentual}% do faturamento
+                      </p>
+                    </div>
+                    <p className="font-bold text-brand-600 tabular-nums shrink-0">{formatCurrency(c.receita)}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {porFuncionario.length > 0 && (
             <section className="space-y-3">

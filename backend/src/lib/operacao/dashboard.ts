@@ -1,12 +1,12 @@
 import type { PaymentMethod, Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { toNumber } from '../utils.js';
-import { itemContaNaVendaLiquida } from '../venda-liquida.js';
 import { totaisPorForma } from './caixa.js';
 import { pedidoContaNaComanda } from './cozinha.js';
 import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-operational-config.js';
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 import { contasPendentesWhere, sumDebtSettledAfterTurn } from './dashboard-fiado.js';
+import { agregarItensSoltosECombo } from './dashboard-combo.js';
 
 const MS_HOUR = 3_600_000;
 
@@ -151,10 +151,9 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
   let receitaTotal = 0;
   let vendasAvulsas = 0;
   let receitaAvulsa = 0;
-  let itensVendidos = 0;
   const porPagamento = new Map<PaymentMethod, number>();
-  const porProduto = new Map<string, { produtoId: string; nome: string; quantidade: number; receita: number }>();
   const porFuncionario = new Map<string, { usuarioId: string | null; nome: string; comandas: number; receita: number }>();
+  const itens = [];
 
   for (const comanda of comandas) {
     const valor = totalComanda(comanda);
@@ -182,18 +181,7 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     }
 
     for (const item of comanda.itens) {
-      if (!item.produtoId || !itemContaNaVendaLiquida(item)) continue;
-      itensVendidos += item.quantidade;
-      const itemValor = toNumber(item.precoUnit) * item.quantidade;
-      const prod = porProduto.get(item.produtoId) ?? {
-        produtoId: item.produtoId,
-        nome: item.nome ?? 'Item',
-        quantidade: 0,
-        receita: 0,
-      };
-      prod.quantidade += item.quantidade;
-      prod.receita += itemValor;
-      porProduto.set(item.produtoId, prod);
+      itens.push(item);
     }
   }
 
@@ -209,14 +197,7 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     }))
     .sort((a, b) => b.valor - a.valor);
 
-  const porProdutoArr = Array.from(porProduto.values())
-    .map((produto) => ({
-      ...produto,
-      percentual: receitaTotal > 0 ? Math.round((produto.receita / receitaTotal) * 100) : 0,
-    }))
-    .sort((a, b) => b.receita - a.receita)
-    .slice(0, 15);
-
+  const origem = agregarItensSoltosECombo(itens, receitaTotal);
   const porFuncionarioArr = Array.from(porFuncionario.values()).sort((a, b) => b.receita - a.receita);
 
   return {
@@ -225,9 +206,13 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     receitaAvulsa,
     comandasAtendidas,
     ticketMedio,
-    itensVendidos,
+    itensVendidos: origem.itensVendidos,
+    receitaCombo: origem.receitaCombo,
+    percentualReceitaCombo: origem.percentualReceitaCombo,
+    combosVendidos: origem.combosVendidos,
     porPagamento: porPagamentoArr,
-    porProduto: porProdutoArr,
+    porProduto: origem.porProduto,
+    porCombo: origem.porCombo,
     porFuncionario: porFuncionarioArr,
   };
 }
@@ -549,12 +534,16 @@ export async function buildOperacaoDashboard(
       receitaAvulsa: resumo.receitaAvulsa,
       ticketMedio: resumo.ticketMedio,
       itensVendidos: resumo.itensVendidos,
+      combosVendidos: resumo.combosVendidos,
+      receitaCombo: resumo.receitaCombo,
+      percentualReceitaCombo: resumo.percentualReceitaCombo,
       turnosCaixa: turnosNoMes,
       variacaoReceitaMesAnterior: variacaoReceita,
     },
     evolucaoSemanal,
     porPagamento,
     porProduto: resumo.porProduto,
+    porCombo: resumo.porCombo,
     porFuncionario: resumo.porFuncionario,
     turnosRecentes,
     comparativoPontos,
