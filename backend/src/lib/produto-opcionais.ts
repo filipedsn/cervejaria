@@ -14,7 +14,14 @@ export async function resolverOpcionais(tx: Prisma.TransactionClient, produtoId:
     const opcional = porId.get(entrada.opcionalId)!;
     const quantidade = entrada.quantidade ?? 1;
     if (!Number.isInteger(quantidade) || quantidade < 1) throw Object.assign(new Error('Quantidade de opcional inválida'), { statusCode: 400 });
-    return { opcionalId: opcional.id, nome: opcional.nome, precoAdicional: Number(opcional.preco), quantidade, produtoEstoqueId: null, opcionalCatalogoId: opcional.id };
+    return {
+      opcionalId: opcional.id,
+      nome: opcional.nome,
+      precoAdicional: Number(opcional.preco),
+      quantidade,
+      produtoEstoqueId: opcional.produtoEstoqueId ?? null,
+      opcionalCatalogoId: opcional.id,
+    };
   });
 }
 

@@ -190,18 +190,18 @@ export async function baixarEstoqueDoPedido(
   if (!params.moduloControlaEstoque) return;
 
   for (const item of params.itens) {
-    if (!item.controlaEstoque) continue;
-
-    await baixarQuantidade(tx, {
-      cervejariaId: params.cervejariaId,
-      pontoVendaId: params.pontoVendaId,
-      produtoId: item.produtoId,
-      quantidade: quantidadeVendidaEstoque(item),
-      nomeProduto: item.nome,
-      tipo: 'SAIDA_VENDA',
-      registradoPorId: params.registradoPorId,
-      pedidoId: params.pedidoId,
-    });
+    if (item.controlaEstoque) {
+      await baixarQuantidade(tx, {
+        cervejariaId: params.cervejariaId,
+        pontoVendaId: params.pontoVendaId,
+        produtoId: item.produtoId,
+        quantidade: quantidadeVendidaEstoque(item),
+        nomeProduto: item.nome,
+        tipo: 'SAIDA_VENDA',
+        registradoPorId: params.registradoPorId,
+        pedidoId: params.pedidoId,
+      });
+    }
     for (const opcional of item.opcionais ?? []) {
       if (!opcional.produtoEstoqueId) continue;
       const produtoOpcional = await tx.produto.findFirst({ where: { id: opcional.produtoEstoqueId, cervejariaId: params.cervejariaId, ativo: true }, select: { nome: true, controlaEstoque: true } });
@@ -306,29 +306,32 @@ export async function estornarEstoqueDaComanda(
     },
     include: {
       produto: true,
-      opcionais: true,
+      opcionais: { include: { opcional: true, opcionalCatalogo: { select: { produtoEstoqueId: true } } } },
       pedidoCozinha: { select: { id: true, pontoVendaId: true } },
     },
   });
 
   for (const item of itens) {
-    if (!item.produto?.controlaEstoque || !item.pedidoCozinha || !item.pedidoCozinha.pontoVendaId) continue;
+    if (!item.pedidoCozinha?.pontoVendaId) continue;
 
-    await entrarQuantidade(tx, {
-      cervejariaId: params.cervejariaId,
-      pontoVendaId: item.pedidoCozinha.pontoVendaId,
-      produtoId: item.produto.id,
-      quantidade: item.tapId ? (item.volumeMl * item.quantidade) / 1000 : item.quantidade,
-      tipo: 'ESTORNO_VENDA',
-      observacao: `Estorno comanda cancelada`,
-      registradoPorId: params.registradoPorId,
-      pedidoId: item.pedidoCozinha.id,
-    });
-    for (const opcional of (item as typeof item & { opcionais: Array<{ produtoEstoqueId: string | null; quantidade: number }> }).opcionais ?? []) {
-      if (!opcional.produtoEstoqueId) continue;
-      const produtoOpcional = await tx.produto.findFirst({ where: { id: opcional.produtoEstoqueId, cervejariaId: params.cervejariaId, ativo: true }, select: { controlaEstoque: true } });
+    if (item.produto?.controlaEstoque) {
+      await entrarQuantidade(tx, {
+        cervejariaId: params.cervejariaId,
+        pontoVendaId: item.pedidoCozinha.pontoVendaId,
+        produtoId: item.produto.id,
+        quantidade: item.tapId ? (item.volumeMl * item.quantidade) / 1000 : item.quantidade,
+        tipo: 'ESTORNO_VENDA',
+        observacao: `Estorno comanda cancelada`,
+        registradoPorId: params.registradoPorId,
+        pedidoId: item.pedidoCozinha.id,
+      });
+    }
+    for (const opcional of item.opcionais ?? []) {
+      const produtoEstoqueId = opcional.opcional?.produtoEstoqueId ?? opcional.opcionalCatalogo?.produtoEstoqueId ?? null;
+      if (!produtoEstoqueId) continue;
+      const produtoOpcional = await tx.produto.findFirst({ where: { id: produtoEstoqueId, cervejariaId: params.cervejariaId, ativo: true }, select: { controlaEstoque: true } });
       if (!produtoOpcional?.controlaEstoque) continue;
-      await entrarQuantidade(tx, { cervejariaId: params.cervejariaId, pontoVendaId: item.pedidoCozinha.pontoVendaId, produtoId: opcional.produtoEstoqueId, quantidade: item.quantidade * opcional.quantidade, tipo: 'ESTORNO_VENDA', observacao: 'Estorno opcional comanda cancelada', registradoPorId: params.registradoPorId, pedidoId: item.pedidoCozinha.id });
+      await entrarQuantidade(tx, { cervejariaId: params.cervejariaId, pontoVendaId: item.pedidoCozinha.pontoVendaId, produtoId: produtoEstoqueId, quantidade: item.quantidade * opcional.quantidade, tipo: 'ESTORNO_VENDA', observacao: 'Estorno opcional comanda cancelada', registradoPorId: params.registradoPorId, pedidoId: item.pedidoCozinha.id });
     }
   }
 }

@@ -7,6 +7,7 @@ import { readCanonicalPdvOperationalSettingsIfEnabled } from '../canonical-pdv-o
 import { paymentFilterForOperationalSession } from './payment-session-filter.js';
 import { contasPendentesWhere, sumDebtSettledAfterTurn } from './dashboard-fiado.js';
 import { agregarItensSoltosECombo } from './dashboard-combo.js';
+import { agregarOpcionaisVendidos } from './dashboard-opcionais.js';
 
 const MS_HOUR = 3_600_000;
 
@@ -62,7 +63,7 @@ async function fetchClosedComandas(
     },
     include: {
       pagamentos: true,
-      itens: true,
+      itens: { include: { opcionais: true } },
       pontoVenda: { select: { id: true, nome: true } },
     },
   });
@@ -200,6 +201,8 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
   const origem = agregarItensSoltosECombo(itens, receitaTotal);
   const porFuncionarioArr = Array.from(porFuncionario.values()).sort((a, b) => b.receita - a.receita);
 
+  const opcionaisAgg = agregarOpcionaisVendidos(comandas.flatMap((comanda) => comanda.itens), receitaTotal);
+
   return {
     receitaTotal,
     vendasAvulsas,
@@ -210,9 +213,13 @@ function aggregateComandas(comandas: ClosedComanda[], nomesPorId: Map<string, st
     receitaCombo: origem.receitaCombo,
     percentualReceitaCombo: origem.percentualReceitaCombo,
     combosVendidos: origem.combosVendidos,
+    receitaOpcionais: opcionaisAgg.receitaOpcionais,
+    unidadesOpcionais: opcionaisAgg.unidadesOpcionais,
+    percentualReceitaOpcionais: opcionaisAgg.percentualReceitaOpcionais,
     porPagamento: porPagamentoArr,
     porProduto: origem.porProduto,
     porCombo: origem.porCombo,
+    porOpcional: opcionaisAgg.porOpcional,
     porFuncionario: porFuncionarioArr,
   };
 }
@@ -537,6 +544,9 @@ export async function buildOperacaoDashboard(
       combosVendidos: resumo.combosVendidos,
       receitaCombo: resumo.receitaCombo,
       percentualReceitaCombo: resumo.percentualReceitaCombo,
+      receitaOpcionais: resumo.receitaOpcionais,
+      unidadesOpcionais: resumo.unidadesOpcionais,
+      percentualReceitaOpcionais: resumo.percentualReceitaOpcionais,
       turnosCaixa: turnosNoMes,
       variacaoReceitaMesAnterior: variacaoReceita,
     },
@@ -544,6 +554,7 @@ export async function buildOperacaoDashboard(
     porPagamento,
     porProduto: resumo.porProduto,
     porCombo: resumo.porCombo,
+    porOpcional: resumo.porOpcional,
     porFuncionario: resumo.porFuncionario,
     turnosRecentes,
     comparativoPontos,

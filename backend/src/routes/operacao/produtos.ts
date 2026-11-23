@@ -78,28 +78,77 @@ async function removerProdutoDosCardapios(
   });
 }
 
+async function validarProdutoEstoqueOpcional(cervejariaId: string, produtoEstoqueId: string | null | undefined) {
+  if (produtoEstoqueId == null || produtoEstoqueId === '') return null;
+  const produto = await prisma.produto.findFirst({
+    where: { id: produtoEstoqueId, cervejariaId, ativo: true, combo: false },
+    select: { id: true, nome: true, controlaEstoque: true },
+  });
+  if (!produto) throw Object.assign(new Error('Produto de estoque não encontrado'), { statusCode: 400 });
+  if (!produto.controlaEstoque) {
+    throw Object.assign(new Error(`Ative “controla estoque” em ${produto.nome} antes de vincular ao opcional`), { statusCode: 400 });
+  }
+  return produto.id;
+}
+
+const opcionalInclude = {
+  produtoEstoque: { select: { id: true, nome: true, controlaEstoque: true } },
+} as const;
+
 export async function produtosOperacaoRoutes(app: FastifyInstance) {
-  const opcionalCadastroSchema = z.object({ nome: z.string().trim().min(1).max(80), preco: z.number().min(0).max(9999), ativo: z.boolean().optional() });
-  app.get('/opcionais', async (request) => prisma.opcional.findMany({ where: { cervejariaId: request.operacao.cervejariaId }, orderBy: { nome: 'asc' } }));
+  const opcionalCadastroSchema = z.object({
+    nome: z.string().trim().min(1).max(80),
+    preco: z.number().min(0).max(9999),
+    ativo: z.boolean().optional(),
+    produtoEstoqueId: z.string().min(1).nullable().optional(),
+  });
+  app.get('/opcionais', async (request) => prisma.opcional.findMany({
+    where: { cervejariaId: request.operacao.cervejariaId },
+    include: opcionalInclude,
+    orderBy: { nome: 'asc' },
+  }));
   app.post('/opcionais', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const body = opcionalCadastroSchema.parse(request.body);
-    return reply.status(201).send(await prisma.opcional.create({ data: {
-      cervejariaId: request.operacao.cervejariaId,
-      // Operational middleware resolves effectiveSettings from the canonical
-      // PDV. Keep NULL in legacy mode to preserve its global optional contract.
-      pontoVendaId: canonicalPdvQaActivationEnabled() ? request.operacao.effectiveSettings.pointId : null,
-      nome: body.nome,
-      preco: body.preco,
-      ativo: body.ativo ?? true,
-    } }));
+    let produtoEstoqueId: string | null = null;
+    try {
+      produtoEstoqueId = await validarProdutoEstoqueOpcional(request.operacao.cervejariaId, body.produtoEstoqueId);
+    } catch (error) {
+      const err = error as { statusCode?: number; message?: string };
+      return reply.status(err.statusCode ?? 400).send({ error: err.message ?? 'Produto de estoque inválido' });
+    }
+    return reply.status(201).send(await prisma.opcional.create({
+      data: {
+        cervejariaId: request.operacao.cervejariaId,
+        // Operational middleware resolves effectiveSettings from the canonical
+        // PDV. Keep NULL in legacy mode to preserve its global optional contract.
+        pontoVendaId: canonicalPdvQaActivationEnabled() ? request.operacao.effectiveSettings.pointId : null,
+        nome: body.nome,
+        preco: body.preco,
+        ativo: body.ativo ?? true,
+        produtoEstoqueId,
+      },
+      include: opcionalInclude,
+    }));
   });
   app.put('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;
     const { id } = request.params as { id: string };
     const body = opcionalCadastroSchema.partial().parse(request.body);
-    const changed = await prisma.opcional.updateMany({ where: { id, cervejariaId }, data: body });
+    const data: { nome?: string; preco?: number; ativo?: boolean; produtoEstoqueId?: string | null } = {};
+    if (body.nome !== undefined) data.nome = body.nome;
+    if (body.preco !== undefined) data.preco = body.preco;
+    if (body.ativo !== undefined) data.ativo = body.ativo;
+    if (body.produtoEstoqueId !== undefined) {
+      try {
+        data.produtoEstoqueId = await validarProdutoEstoqueOpcional(cervejariaId, body.produtoEstoqueId);
+      } catch (error) {
+        const err = error as { statusCode?: number; message?: string };
+        return reply.status(err.statusCode ?? 400).send({ error: err.message ?? 'Produto de estoque inválido' });
+      }
+    }
+    const changed = await prisma.opcional.updateMany({ where: { id, cervejariaId }, data });
     if (!changed.count) return reply.status(404).send({ error: 'Opcional não encontrado' });
-    return prisma.opcional.findFirstOrThrow({ where: { id, cervejariaId } });
+    return prisma.opcional.findFirstOrThrow({ where: { id, cervejariaId }, include: opcionalInclude });
   });
   app.delete('/opcionais/:id', { preHandler: [requirePermissaoOuDono(app, 'catalog.manage')] }, async (request, reply) => {
     const { cervejariaId } = request.operacao;

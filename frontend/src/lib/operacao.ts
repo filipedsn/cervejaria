@@ -1110,6 +1110,9 @@ export interface OperacaoDashboard {
     combosVendidos: number;
     receitaCombo: number;
     percentualReceitaCombo: number;
+    receitaOpcionais: number;
+    unidadesOpcionais: number;
+    percentualReceitaOpcionais: number;
     turnosCaixa: number;
     variacaoReceitaMesAnterior: number | null;
   };
@@ -1128,6 +1131,13 @@ export interface OperacaoDashboard {
   }>;
   porCombo: Array<{
     comboProdutoId: string;
+    nome: string;
+    quantidade: number;
+    receita: number;
+    percentual: number;
+  }>;
+  porOpcional: Array<{
+    opcionalId: string;
     nome: string;
     quantidade: number;
     receita: number;

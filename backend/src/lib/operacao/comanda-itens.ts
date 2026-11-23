@@ -87,7 +87,7 @@ async function carregarItem(
     },
     include: {
       produto: true,
-      opcionais: { include: { opcional: true } },
+      opcionais: { include: { opcional: true, opcionalCatalogo: { select: { produtoEstoqueId: true } } } },
       pedidoCozinha: {
         include: {
           comanda: { include: INCLUDE_COMANDA_OPERACAO },
@@ -212,7 +212,10 @@ export async function removeItemFromComandaOperacao(params: {
         tapId: itemAtual.tapId,
         volumeMl: itemAtual.volumeMl,
         registradoPorId: params.registradoPorId,
-        opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
+        opcionais: itemAtual.opcionais.map((o) => ({
+          produtoEstoqueId: o.opcional?.produtoEstoqueId ?? o.opcionalCatalogo?.produtoEstoqueId ?? null,
+          quantidade: o.quantidade,
+        })),
       });
     }
 
@@ -357,7 +360,7 @@ async function cancelarItemEntregueOperacao(
       }
       const opcionaisComBaixa: typeof item.opcionais = [];
       for (const opcional of item.opcionais) {
-        const produtoEstoqueId = opcional.opcional?.produtoEstoqueId;
+        const produtoEstoqueId = opcional.opcional?.produtoEstoqueId ?? opcional.opcionalCatalogo?.produtoEstoqueId ?? null;
         if (!produtoEstoqueId) continue;
         const produtoOpcional = await tx.produto.findFirst({ where: { id: produtoEstoqueId, cervejariaId: params.cervejariaId }, select: { controlaEstoque: true } });
         if (!produtoOpcional?.controlaEstoque) continue;
@@ -378,7 +381,10 @@ async function cancelarItemEntregueOperacao(
           produtoId: item.produto.id, nome: item.nome ?? item.produto.nome,
           quantidade, controlaEstoque: produtoPrincipalComBaixa, tapId: item.tapId, volumeMl: item.volumeMl,
           registradoPorId: params.registradoPorId,
-          opcionais: opcionaisComBaixa.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
+          opcionais: opcionaisComBaixa.map((o) => ({
+            produtoEstoqueId: o.opcional?.produtoEstoqueId ?? o.opcionalCatalogo?.produtoEstoqueId ?? null,
+            quantidade: o.quantidade,
+          })),
         });
       }
     }
@@ -598,7 +604,10 @@ export async function updateItemQuantidadeComandaOperacao(params: {
             tapId: itemAtual.tapId,
             volumeMl: itemAtual.volumeMl,
             registradoPorId: params.registradoPorId,
-            opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
+            opcionais: itemAtual.opcionais.map((o) => ({
+          produtoEstoqueId: o.opcional?.produtoEstoqueId ?? o.opcionalCatalogo?.produtoEstoqueId ?? null,
+          quantidade: o.quantidade,
+        })),
           });
         } else {
           await estornarEstoqueItemPedido(tx, {
@@ -613,7 +622,10 @@ export async function updateItemQuantidadeComandaOperacao(params: {
             tapId: itemAtual.tapId,
             volumeMl: itemAtual.volumeMl,
             registradoPorId: params.registradoPorId,
-            opcionais: itemAtual.opcionais.map((o) => ({ produtoEstoqueId: o.opcional?.produtoEstoqueId ?? null, quantidade: o.quantidade })),
+            opcionais: itemAtual.opcionais.map((o) => ({
+          produtoEstoqueId: o.opcional?.produtoEstoqueId ?? o.opcionalCatalogo?.produtoEstoqueId ?? null,
+          quantidade: o.quantidade,
+        })),
           });
         }
       }
