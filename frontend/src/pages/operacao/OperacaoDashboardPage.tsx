@@ -21,6 +21,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useOperacaoContexto } from '../../hooks/useOperacaoContexto';
 import { getSocket } from '../../lib/socket';
 import { Loading } from '../../components/Loading';
+import { OperacaoDashboardProdutosTab } from '../../components/operacao/OperacaoDashboardProdutosTab';
 import type { OperacaoDashboard } from '../../lib/operacao';
 import {
   formatDuracaoTurnoMinutos,
@@ -35,6 +36,10 @@ const MESES = [
 
 function isoToday() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
+function parseAba(searchParams: URLSearchParams): 'visao' | 'produtos' {
+  return searchParams.get('aba') === 'produtos' ? 'produtos' : 'visao';
 }
 
 function parsePeriod(searchParams: URLSearchParams) {
@@ -105,6 +110,7 @@ export function OperacaoDashboardPage() {
   const { cervejaria } = useAuth();
   const { contexto } = useOperacaoContexto();
   const [searchParams, setSearchParams] = useSearchParams();
+  const aba = useMemo(() => parseAba(searchParams), [searchParams]);
   const { modo, ano, mes, de, ate } = useMemo(() => parsePeriod(searchParams), [searchParams]);
   const [pontoVendaId, setPontoVendaId] = useState<string>('all');
   const [deDraft, setDeDraft] = useState(de);
@@ -129,6 +135,9 @@ export function OperacaoDashboardPage() {
     ? `modo=periodo&de=${encodeURIComponent(de)}&ate=${encodeURIComponent(ate)}`
     : `modo=mes&ano=${ano}&mes=${mes}`;
 
+  const withAba = (params: Record<string, string>) =>
+    (aba === 'produtos' ? { ...params, aba: 'produtos' } : params);
+
   const { data, isLoading } = useQuery({
     queryKey: ['operacao-dashboard', modo, ano, mes, de, ate, pontoParam],
     queryFn: () =>
@@ -138,6 +147,7 @@ export function OperacaoDashboardPage() {
         }`,
       ),
     staleTime: 30_000,
+    enabled: aba === 'visao',
   });
 
   useEffect(() => {
@@ -162,17 +172,32 @@ export function OperacaoDashboardPage() {
     if (newAno > now.getFullYear() || (newAno === now.getFullYear() && newMes > now.getMonth() + 1)) {
       return;
     }
-    setSearchParams({ modo: 'mes', ano: String(newAno), mes: String(newMes) });
+    setSearchParams(withAba({ modo: 'mes', ano: String(newAno), mes: String(newMes) }));
   };
 
-  const setModoMes = () => setSearchParams({ modo: 'mes', ano: String(ano), mes: String(mes) });
+  const setModoMes = () => setSearchParams(withAba({ modo: 'mes', ano: String(ano), mes: String(mes) }));
   const setModoPeriodo = () => {
     const hoje = isoToday();
-    setSearchParams({ modo: 'periodo', de: de || hoje, ate: ate || hoje });
+    setSearchParams(withAba({ modo: 'periodo', de: de || hoje, ate: ate || hoje }));
   };
   const aplicarPeriodo = () => {
     if (!deDraft || !ateDraft) return;
-    setSearchParams({ modo: 'periodo', de: deDraft, ate: ateDraft });
+    setSearchParams(withAba({ modo: 'periodo', de: deDraft, ate: ateDraft }));
+  };
+  const setAba = (next: 'visao' | 'produtos') => {
+    if (modo === 'periodo') {
+      setSearchParams(
+        next === 'produtos'
+          ? { modo: 'periodo', de, ate, aba: 'produtos' }
+          : { modo: 'periodo', de, ate },
+      );
+      return;
+    }
+    setSearchParams(
+      next === 'produtos'
+        ? { modo: 'mes', ano: String(ano), mes: String(mes), aba: 'produtos' }
+        : { modo: 'mes', ano: String(ano), mes: String(mes) },
+    );
   };
 
   const weeklyChart = useMemo(() => {
@@ -217,19 +242,17 @@ export function OperacaoDashboardPage() {
     [data?.turnosRecentes],
   );
 
-  if (isLoading || !data) return <Loading />;
-
-  const {
-    resumo,
-    porPagamento,
-    porProduto,
-    porCombo = [],
-    porOpcional = [],
-    porFuncionario,
-    turnosRecentes,
-    comparativoPontos,
-  } = data;
   const mesSelecionadoIdx = mes - 1;
+  if (aba === 'visao' && (isLoading || !data)) return <Loading />;
+
+  const resumo = data?.resumo;
+  const porPagamento = data?.porPagamento ?? [];
+  const porProduto = data?.porProduto ?? [];
+  const porCombo = data?.porCombo ?? [];
+  const porOpcional = data?.porOpcional ?? [];
+  const porFuncionario = data?.porFuncionario ?? [];
+  const turnosRecentes = data?.turnosRecentes ?? [];
+  const comparativoPontos = data?.comparativoPontos ?? [];
 
   return (
     <div className="space-y-6 pb-6">
@@ -237,6 +260,35 @@ export function OperacaoDashboardPage() {
         <p className="page-eyebrow">Visão geral</p>
         <h1 className="page-title">{cervejaria?.nome ?? 'Quadro'}</h1>
         <p className="page-subtitle">{modo === 'periodo' ? 'Performance no período selecionado' : 'Performance mensal do operacao'}</p>
+      </div>
+
+      <div
+        className="grid w-full max-w-sm grid-cols-2 gap-1 rounded-xl border border-line bg-surface-lighter p-1"
+        role="tablist"
+        aria-label="Seção do quadro"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={aba === 'visao'}
+          onClick={() => setAba('visao')}
+          className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+            aba === 'visao' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          Visão
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={aba === 'produtos'}
+          onClick={() => setAba('produtos')}
+          className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+            aba === 'produtos' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          Produtos
+        </button>
       </div>
 
       <div className="space-y-3">
@@ -297,7 +349,7 @@ export function OperacaoDashboardPage() {
                 {!isCurrentMonth && (
                   <button
                     type="button"
-                    onClick={() => setSearchParams({ modo: 'mes' })}
+                    onClick={() => setSearchParams(withAba({ modo: 'mes' }))}
                     className="touch-btn-secondary touch-btn-sm ml-1 shrink-0 px-3"
                   >
                     Mês atual
@@ -370,6 +422,12 @@ export function OperacaoDashboardPage() {
         )}
       </div>
 
+      {aba === 'produtos' ? (
+        <OperacaoDashboardProdutosTab dashboardQuery={dashboardQuery} pontoParam={pontoParam} />
+      ) : !resumo ? (
+        <Loading />
+      ) : (
+      <>
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
         <KpiCard
           label="Vendas no período"
@@ -411,7 +469,7 @@ export function OperacaoDashboardPage() {
         <div className="card text-center py-16">
           <p className="text-4xl mb-3">📊</p>
           <p className="text-ink-muted">
-            Nenhuma venda fechada {modo === 'periodo' ? `em ${data.periodo.label}` : `em ${MESES[mesSelecionadoIdx]} ${ano}`}
+            Nenhuma venda fechada {modo === 'periodo' ? `em ${data?.periodo.label ?? ''}` : `em ${MESES[mesSelecionadoIdx]} ${ano}`}
           </p>
         </div>
       ) : (
@@ -689,7 +747,7 @@ export function OperacaoDashboardPage() {
 
       {modo === 'mes' && (
       <section className="card p-4 sm:p-5">
-        <h2 className="section-label mb-4">Receita mês a mês · {data.anoVigente}</h2>
+        <h2 className="section-label mb-4">Receita mês a mês · {data?.anoVigente}</h2>
         <div className="h-64 sm:h-72 -mx-1">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={annualChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -724,6 +782,8 @@ export function OperacaoDashboardPage() {
           </ResponsiveContainer>
         </div>
       </section>
+      )}
+      </>
       )}
     </div>
   );
