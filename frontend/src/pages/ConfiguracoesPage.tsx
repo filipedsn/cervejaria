@@ -6,12 +6,14 @@ import { OperacaoPage } from './OperacaoPage';
 import { PageHeader } from '../components/PageHeader';
 import { useOperacaoContexto } from '../hooks/useOperacaoContexto';
 import { Loading } from '../components/Loading';
+import { ManualWikiPanel } from '../components/ManualWikiPanel';
 
 const BASE_TABS = [
   { id: 'equipe', label: 'Equipe' },
   { id: 'trailers', label: 'Trailers' },
   { id: 'operacao', label: 'Operação' },
   { id: 'aparencia', label: 'Aparência' },
+  { id: 'ajuda', label: 'Ajuda' },
 ] as const;
 
 type TabId = (typeof BASE_TABS)[number]['id'];
@@ -41,7 +43,7 @@ export function ConfiguracoesPage() {
 
   return (
     <div className="space-y-5 pb-2">
-      <PageHeader title="Configurações" subtitle="Equipe, trailers, operação e aparência" />
+      <PageHeader title="Configurações" subtitle="Equipe, trailers, operação, aparência e ajuda" />
 
       <div className="segmented-control">
         {tabs.map(({ id, label }) => (
@@ -61,6 +63,7 @@ export function ConfiguracoesPage() {
       {tab === 'trailers' && <TrailersPage embedded />}
       {tab === 'operacao' && <OperacaoPage embedded />}
       {tab === 'aparencia' && <AparenciaPage embedded />}
+      {tab === 'ajuda' && <ManualWikiPanel />}
     </div>
   );
 }
