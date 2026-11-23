@@ -118,7 +118,7 @@ export function OperacaoDashboardProdutosTab({ dashboardQuery, pontoParam }: Pro
                   {controlaEstoque && (
                     <>
                       <th className="px-3 py-2 font-semibold text-right">Entr.</th>
-                      <th className="px-3 py-2 font-semibold text-right">S.venda</th>
+                      <th className="px-3 py-2 font-semibold text-right">Baixa</th>
                       <th className="px-3 py-2 font-semibold text-right">Estorno</th>
                       <th className="px-3 py-2 font-semibold text-right">Outros</th>
                       <th className="px-3 py-2 font-semibold text-right">Ajuste</th>
@@ -223,7 +223,7 @@ export function OperacaoDashboardProdutosTab({ dashboardQuery, pontoParam }: Pro
                     <p className="text-xs text-ink-muted mt-1 tabular-nums">
                       {formatQty(row.quantidadeVendida)} un · {formatCurrency(row.receita)}
                       {controlaEstoque
-                        ? ` · entr. ${formatQty(row.entradas)} · s.venda ${formatQty(row.saidasVenda)} · outros ${formatQty(row.outros)}`
+                        ? ` · entr. ${formatQty(row.entradas)} · baixa ${formatQty(row.saidasVenda)} · outros ${formatQty(row.outros)}`
                         : ''}
                     </p>
                   </div>
