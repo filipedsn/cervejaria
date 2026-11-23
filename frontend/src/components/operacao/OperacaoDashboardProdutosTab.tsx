@@ -7,7 +7,7 @@ import { compareProdutosLista, type OrdenacaoProdutos } from './produtosListaSor
 
 const TIPO_MOVIMENTO_LABEL: Record<string, string> = {
   ENTRADA: 'Entrada',
-  SAIDA_VENDA: 'Saída venda',
+  SAIDA_VENDA: 'Baixa',
   ESTORNO_VENDA: 'Estorno',
   PERDA: 'Perda',
   CORTESIA: 'Cortesia',
@@ -18,6 +18,14 @@ const TIPO_MOVIMENTO_LABEL: Record<string, string> = {
 function formatQty(n: number): string {
   if (Number.isInteger(n)) return String(n);
   return n.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+}
+
+/** Signed qty for the day ledger: + entrada/estorno, − baixa/perda/…, plain for ajuste. */
+function formatMovimentoQty(tipo: string, quantidade: number): string {
+  const q = formatQty(Math.abs(quantidade));
+  if (tipo === 'ENTRADA' || tipo === 'ESTORNO_VENDA') return `+${q}`;
+  if (tipo === 'AJUSTE') return q;
+  return `−${q}`;
 }
 
 type Props = {
@@ -290,23 +298,34 @@ function FragmentDia({
       </tr>
       {aberto && dia.movimentos.length > 0 && (
         <tr className="border-b border-line bg-surface-lighter/40">
-          <td colSpan={colSpan} className="px-3 py-2">
-            <ul className="space-y-1 text-xs text-ink-muted">
-              {dia.movimentos.map((mov) => (
-                <li key={mov.id} className="flex flex-wrap gap-x-2 tabular-nums">
-                  <span>
-                    {new Date(mov.createdAt).toLocaleTimeString('pt-BR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                  <span className="font-medium text-ink">
-                    {TIPO_MOVIMENTO_LABEL[mov.tipo] ?? mov.tipo}
-                  </span>
-                  <span>{formatQty(mov.quantidade)}</span>
-                  {mov.observacao ? <span className="text-ink-faint">— {mov.observacao}</span> : null}
-                </li>
-              ))}
+          <td colSpan={colSpan} className="px-3 py-2.5">
+            <ul className="space-y-1.5">
+              {dia.movimentos.map((mov) => {
+                const hora = new Date(mov.createdAt).toLocaleTimeString('pt-BR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+                return (
+                  <li key={mov.id} className="text-xs">
+                    <div className="grid grid-cols-[3rem_1fr_auto] items-baseline gap-x-2 tabular-nums">
+                      <span className="text-ink-muted whitespace-nowrap">{hora}</span>
+                      <span className="min-w-0 font-medium text-ink truncate">
+                        {TIPO_MOVIMENTO_LABEL[mov.tipo] ?? mov.tipo}
+                      </span>
+                      <span className="text-right text-ink whitespace-nowrap">
+                        {formatMovimentoQty(mov.tipo, mov.quantidade)}
+                      </span>
+                    </div>
+                    {mov.observacao ? (
+                      <p className="mt-0.5 grid grid-cols-[3rem_1fr_auto] gap-x-2">
+                        <span aria-hidden="true" />
+                        <span className="min-w-0 truncate text-ink-faint">{mov.observacao}</span>
+                        <span aria-hidden="true" />
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </td>
         </tr>
