@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import {
+  escolhasComboFechado,
   escolhasCompletas,
   fatorPrecoCombo,
   precoBaseCombo,
@@ -40,4 +41,21 @@ it('o combo só fica completo com o mínimo de cada grupo', () => {
   assert.equal(escolhasCompletas(grupos, { g1: ['boi'] }), false);
   assert.equal(escolhasCompletas(grupos, { g1: ['boi'], g2: ['arroz'] }), true);
   assert.equal(fatorPrecoCombo(10, 0), 1);
+});
+
+it('combo fechado marca todas as opções disponíveis', () => {
+  const fechado: GrupoCombo[] = [{
+    id: 'itens',
+    nome: 'Itens',
+    minimo: 2,
+    maximo: 2,
+    somenteCardapioTurno: false,
+    opcoes: [
+      opcao('a', 'A', 10),
+      { ...opcao('b', 'B', 5), disponivel: false },
+      opcao('c', 'C', 8),
+    ],
+  }];
+  assert.deepEqual(escolhasComboFechado(fechado), { itens: ['a', 'c'] });
+  assert.equal(escolhasCompletas(fechado, { itens: ['a', 'c'] }), true);
 });
