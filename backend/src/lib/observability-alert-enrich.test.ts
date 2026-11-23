@@ -166,7 +166,7 @@ describe('observability alert enrich', () => {
       reason: 'Document count is 1 in the last 15m in logs-audit*.otel-prd index. Alert when greater than 0.',
     });
 
-    assert.match(cenario, /Thiago Silva/);
+    assert.match(cenario, /O atendente Thiago Silva/);
     assert.match(cenario, /Churrasquinho Do Thiago/);
     assert.match(cenario, /Detalhe da comanda/i);
     assert.match(cenario, /navegador nao conseguiu falar com o servidor/i);
@@ -226,9 +226,8 @@ describe('observability alert enrich', () => {
       reason: 'Document count is 1',
     });
 
+    assert.match(cenario, /O atendente Thiago Silva/);
     assert.match(cenario, /Detalhe da comanda/i);
-    assert.match(cenario, /operacao=comanda\.close/);
-    assert.match(cenario, /cenario=network_unreachable/);
     assert.match(cenario, /navegador nao conseguiu falar com o servidor/i);
   });
 
@@ -262,9 +261,11 @@ describe('observability alert enrich', () => {
     const payload = { ruleName: 'quiver-tap-ui-error-prd', alertState: 'active', reason: 'Document count is 1' };
 
     const cenario = buildUiErrorCenario(log, payload);
-    assert.match(cenario, /Thiago Silva em Churrasquinho Do Thiago/);
-    assert.match(cenario, /na Comanda #42 · Mesa 3, tentando "Incluir 2x Chopp Pilsen 300ml"/);
-    assert.match(cenario, /Mensagem exibida ao usuario: "Não foi possível falar com o servidor/);
+    assert.match(cenario, /O atendente Thiago Silva ao tentar "Incluir 2x Chopp Pilsen 300ml"/);
+    assert.match(cenario, /na Comanda #42 · Mesa 3/);
+    assert.match(cenario, /Churrasquinho Do Thiago/);
+    assert.match(cenario, /Não foi possível falar com o servidor/);
+    assert.match(cenario, /navegador nao conseguiu falar com o servidor/i);
 
     const ctx = buildEnrichedContextFromLogs(payload, [log]);
     const details = ctx?.technicalDetails ?? [];
@@ -275,5 +276,45 @@ describe('observability alert enrich', () => {
     assert.ok(details.includes('Correlation ID: f4311c18-422d-4b47-bc63-be144dcf7167'));
     assert.ok(!details.some((line) => line.startsWith('Metadata:') && line.includes('intent')));
     assert.match(details.at(-1) ?? '', /^Stack trace:/);
+  });
+
+  it('narrativa de negocio inclui telefone e mensagem de estoque', () => {
+    const log = parseAuditLogSource({
+      attributes: {
+        'event.action': 'ui.error',
+        'event.outcome': 'failure',
+        'cervejaria.slug': 'churrasquinho-do-thiago',
+        'user.name': 'Thiago Rosseto',
+        'ui.page': '/operacao/comandas/cmw5mmn8b08cjl601ul30q44d',
+        'error.message': 'Estoque insuficiente para Churrasquinho de boi',
+        message: 'Erro na interface',
+        metadata: {
+          handled: true,
+          kind: 'validation',
+          operation: 'comanda.itens.incluir',
+          context: {
+            resumo: 'Comanda #7 · cliente Filipe (tel 27981283526)',
+            comandaNumero: 7,
+            clienteNome: 'Filipe',
+            clienteTelefone: '27981283526',
+          },
+          intent: {
+            summary: 'Incluir 1x Churrasquinho de boi',
+            itens: [{ produtoNome: 'Churrasquinho de boi', quantidade: 1 }],
+          },
+        },
+      },
+    });
+
+    const cenario = buildUiErrorCenario(log, {
+      ruleName: 'quiver-tap-ui-negocio-prd',
+      alertState: 'active',
+      reason: 'Document count is 1',
+    });
+
+    assert.match(cenario, /O atendente Thiago Rosseto ao tentar "Incluir 1x Churrasquinho de boi"/);
+    assert.match(cenario, /Comanda #7/);
+    assert.match(cenario, /27981283526/);
+    assert.match(cenario, /Estoque insuficiente para Churrasquinho de boi/);
   });
 });

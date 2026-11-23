@@ -286,6 +286,7 @@ Write-Host '4a. Alertas funcionais (PRD)...' -ForegroundColor Yellow
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-5xx-rate-prd.json') -SearchName 'quiver-tap-5xx-rate-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-401-surge-prd.json') -SearchName 'quiver-tap-401-surge-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-ui-error-prd.json') -SearchName 'quiver-tap-ui-error-prd' | Out-Null
+Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-ui-negocio-prd.json') -SearchName 'quiver-tap-ui-negocio-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-transacao-failure-prd.json') -SearchName 'quiver-tap-transacao-failure-prd' | Out-Null
 Set-QuiverAlertRule -JsonFile (Join-Path $ObsDir 'kibana-alert-api-latency-p95-prd.json') -SearchName 'quiver-tap-api-latency-p95-prd' | Out-Null
 

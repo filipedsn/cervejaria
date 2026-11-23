@@ -172,7 +172,7 @@ export function journeyRuleName(env) {
   return `quiver-tap-ui-error-surge-${env}`;
 }
 
-/** Alertable ui.error: unhandled/legacy or unexpected kind (TAP-177). */
+/** Alertable ui.error tecnico: unhandled/legacy or unexpected kind (TAP-177). */
 export function uiErrorAlertFilter() {
   return {
     bool: {
@@ -183,6 +183,60 @@ export function uiErrorAlertFilter() {
       ],
       minimum_should_match: 1,
     },
+  };
+}
+
+/** Avisos leves de negocio no Telegram (TAP-188). */
+export function uiNegocioAlertFilter() {
+  return {
+    bool: {
+      must: [
+        { term: { 'attributes.metadata.handled': true } },
+        { terms: { 'attributes.metadata.kind': ['validation', 'api_client'] } },
+      ],
+    },
+  };
+}
+
+export function journeyNegocioRuleName(env) {
+  return `quiver-tap-ui-negocio-${env}`;
+}
+
+export function journeyNegocioRule(env) {
+  assertEnv(env);
+  return {
+    name: journeyNegocioRuleName(env),
+    tags: ['quiver-tap', 'TAP-188', env === 'prd' ? 'production' : 'development', 'functional', 'negocio'],
+    rule_type_id: '.es-query',
+    consumer: 'stackAlerts',
+    schedule: { interval: '5m' },
+    enabled: true,
+    params: {
+      index: [`logs-audit*.otel-${env}`],
+      timeField: '@timestamp',
+      esQuery: JSON.stringify({
+        query: {
+          bool: {
+            must: [
+              { term: { 'attributes.event.action': 'ui.error' } },
+              { term: { 'attributes.event.outcome': 'failure' } },
+              ...uiNegocioAlertFilter().bool.must,
+            ],
+          },
+        },
+      }),
+      size: 20,
+      timeWindowSize: 15,
+      timeWindowUnit: 'm',
+      thresholdComparator: '>',
+      threshold: [0],
+      aggType: 'count',
+      groupBy: 'all',
+      searchType: 'esQuery',
+      excludeHitsFromPreviousRun: true,
+    },
+    actions: [],
+    notify_when: 'onActiveAlert',
   };
 }
 
@@ -299,6 +353,10 @@ export function rulePath(env) {
   return join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'deploy', 'observability', `kibana-alert-ui-error-surge-${env}.json`);
 }
 
+export function negocioRulePath(env) {
+  return join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'deploy', 'observability', `kibana-alert-ui-negocio-${env}.json`);
+}
+
 export function main(argv, { log = console.log } = {}) {
   let env;
   let write = false;
@@ -312,7 +370,8 @@ export function main(argv, { log = console.log } = {}) {
   if (!write) { log(ndjson); return; }
   writeFileSync(ndjsonPath(env), ndjson);
   writeFileSync(rulePath(env), `${JSON.stringify(journeyRule(env), null, 2)}\n`);
-  log(`Gravados ${ndjsonPath(env)} e ${rulePath(env)}`);
+  writeFileSync(negocioRulePath(env), `${JSON.stringify(journeyNegocioRule(env), null, 2)}\n`);
+  log(`Gravados ${ndjsonPath(env)}, ${rulePath(env)} e ${negocioRulePath(env)}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -113,7 +113,14 @@ export function ComandaDetailPage() {
           status: comanda.status,
           total: parseFloat(comanda.total),
           desconto: descontoComandaCervejaria(comanda),
-          cliente: comanda.cliente ? { id: comanda.cliente.id, nome: comanda.cliente.nome } : null,
+          cliente: comanda.cliente
+            ? {
+                id: comanda.cliente.id,
+                nome: comanda.cliente.nome,
+                telefone: comanda.cliente.telefone,
+                email: comanda.cliente.email,
+              }
+            : null,
           itensQtd: comanda.itens
             .filter((item) => !item.canceladoEm && !item.cancelamentoPendenteEm)
             .reduce((total, item) => total + item.quantidade, 0),

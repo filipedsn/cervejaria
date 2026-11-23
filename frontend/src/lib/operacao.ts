@@ -289,7 +289,7 @@ export interface ComandaOperacao {
   total: number;
   valorEmAberto: number;
   solicitacaoPagamentoEm?: string | null;
-  cliente: { id: string; nome: string; telefone: string | null } | null;
+  cliente: { id: string; nome: string; telefone: string | null; email?: string | null } | null;
   pedidos: PedidoOperacao[];
   pagamentos: PagamentoOperacao[];
   contaPendente?: { id: string; valorOriginal: number; recebido: number; saldo: number } | null;

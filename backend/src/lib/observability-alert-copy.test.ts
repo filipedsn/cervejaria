@@ -152,7 +152,59 @@ describe('observability alert copy', () => {
     assert.match(text, /OK/);
     assert.match(text, /Problema:/);
     assert.match(text, /Detalhamento:/);
-    assert.match(text, /normalizou/i);
+    assert.match(text, /blip de publicacao/i);
+  });
+
+  it('hides Document count reason from infra telegram body', () => {
+    const text = formatObservabilityAlertTelegramText({
+      ruleName: 'quiver-tap-api-ready-down-prd',
+      alertState: 'active',
+      reason: 'Document count is 12 in the last 3m in metrics-httpcheckreceiver.otel-infra* index. Alert when greater than 0.',
+    });
+
+    assert.match(text, /ALERTA/);
+    assert.doesNotMatch(text, /Document count is 12/i);
+  });
+
+  it('negocio telegram uses [NEGÓCIO] prefix and skips recover', () => {
+    const active = formatObservabilityAlertTelegramText({
+      ruleName: 'quiver-tap-ui-negocio-prd',
+      alertState: 'active',
+      reason: 'Document count is 1',
+      context: {
+        empresa: 'Churrasquinho Do Thiago',
+        operacao: 'Detalhe da comanda (Operacao)',
+        usuario: 'Thiago',
+        cenario: 'O atendente Thiago ao tentar "Incluir 1x Churrasquinho": Estoque insuficiente.',
+      },
+    });
+    assert.equal(active.startsWith('[NEGÓCIO] '), true);
+    assert.match(active, /AVISO DE OPERACAO/);
+    assert.match(active, /ℹ️/);
+
+    const recovered = formatObservabilityAlertTelegramText({
+      ruleName: 'quiver-tap-ui-negocio-prd',
+      alertState: 'recovered',
+      reason: 'Document count is 0',
+      context: { cenario: 'qualquer' },
+    });
+    assert.equal(recovered, '');
+  });
+
+  it('operational recover repeats cenario', () => {
+    const text = formatObservabilityAlertTelegramText({
+      ruleName: 'quiver-tap-ui-error-prd',
+      alertState: 'recovered',
+      reason: 'Document count is 0',
+      context: {
+        empresa: 'Churrasquinho Do Thiago',
+        operacao: 'Lista de comandas (Operacao)',
+        cenario: 'O atendente Thiago ao usar "Lista de comandas": falha de rede.',
+      },
+    });
+    assert.match(text, /RECUPERADO/);
+    assert.match(text, /voltou ao normal/i);
+    assert.match(text, /falha de rede/);
   });
 
   it('builds technical details from audit log fields', () => {

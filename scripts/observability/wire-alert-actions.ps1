@@ -15,7 +15,7 @@ if ($Apply) { Assert-PrdMutationConfirmed -Confirmed:$ConfirmPrd }
 $canonical = @(
   'quiver-tap-api-ready-down-prd', 'quiver-tap-public-ready-down-prd',
   'quiver-tap-postgres-tcp-down-prd', 'quiver-tap-eventloop-high-prd',
-  'quiver-tap-5xx-rate-prd', 'quiver-tap-ui-error-prd',
+  'quiver-tap-5xx-rate-prd', 'quiver-tap-ui-error-prd', 'quiver-tap-ui-negocio-prd',
   'quiver-tap-transacao-failure-prd', 'quiver-tap-401-surge-prd',
   'quiver-tap-telemetry-gap-prd', 'quiver-tap-slo-cozinha-slow-prd',
   'quiver-tap-disk-high-prd', 'quiver-tap-ssh-bruteforce-prd',
@@ -78,10 +78,17 @@ foreach ($rule in $rules) {
 
   $detail = Invoke-Kibana -Path "/api/alerting/rule/$($rule.id)" | ConvertFrom-Json
   $ourCount = @(@($detail.actions) | Where-Object { $_ -and $_.id -eq $connector.id }).Count
+  # TAP-188: avisos de negocio so disparam no firing (sem recover no Telegram/index).
+  $firingOnly = $rule.name -eq 'quiver-tap-ui-negocio-prd'
   $okFiring = Test-OurAction $detail.actions $connector.id 'query matched' 'active'
   $okRecovered = Test-OurAction $detail.actions $connector.id 'recovered' 'recovered'
   $current = "nossas=$ourCount firing=$okFiring recovered=$okRecovered"
-  if ($okFiring -and $okRecovered -and $ourCount -eq 2) {
+  $alreadyOk = if ($firingOnly) {
+    $okFiring -and -not $okRecovered -and $ourCount -eq 1
+  } else {
+    $okFiring -and $okRecovered -and $ourCount -eq 2
+  }
+  if ($alreadyOk) {
     $results += [pscustomobject]@{ Rule = $rule.name; Current = $current; Result = 'NO_CHANGE' }
     continue
   }
@@ -96,9 +103,11 @@ foreach ($rule in $rules) {
     $a
   })
   $new = @(
-    [ordered]@{ group = 'query matched'; id = $connector.id; params = @{ documents = @(New-AlertDocument 'active') }; frequency = $frequency },
-    [ordered]@{ group = 'recovered'; id = $connector.id; params = @{ documents = @(New-AlertDocument 'recovered') }; frequency = $frequency }
+    [ordered]@{ group = 'query matched'; id = $connector.id; params = @{ documents = @(New-AlertDocument 'active') }; frequency = $frequency }
   )
+  if (-not $firingOnly) {
+    $new += [ordered]@{ group = 'recovered'; id = $connector.id; params = @{ documents = @(New-AlertDocument 'recovered') }; frequency = $frequency }
+  }
   $payload = [ordered]@{ name = $detail.name; tags = @($detail.tags); schedule = $detail.schedule; params = $detail.params; actions = @($kept) + @($new) }
   $tmp = Join-Path $env:TEMP "quiver-wire-$([guid]::NewGuid().ToString('N')).json"
   try {

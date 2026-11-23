@@ -285,7 +285,12 @@ function is401SurgeRule(ruleName?: string): boolean {
 }
 
 function isUiErrorRule(ruleName?: string): boolean {
-  return (ruleName ?? '').toLowerCase().includes('ui-error');
+  const key = (ruleName ?? '').toLowerCase();
+  return key.includes('ui-error') || key.includes('ui-negocio');
+}
+
+export function isNegocioAlertRule(ruleName?: string): boolean {
+  return (ruleName ?? '').toLowerCase().includes('ui-negocio');
 }
 
 function matchesRule(log: ParsedLog, ruleName?: string): boolean {
@@ -536,53 +541,80 @@ function classifyUiErrorKind(log: ParsedLog): 'network' | 'server_unavailable' |
   return 'other';
 }
 
-/** Cenario legivel para quiver-tap-ui-error-* (rede vs API vs quebra de UI). */
+function contactClause(log: ParsedLog): string {
+  const ctx = log.functionalContext;
+  const nome = asString(ctx?.clienteNome);
+  const tel = asString(ctx?.clienteTelefone) ?? asString(ctx?.telefone);
+  const email = asString(ctx?.clienteEmail) ?? asString(ctx?.email);
+  const doc =
+    asString(ctx?.clienteDocumento) ?? asString(ctx?.documento) ?? asString(ctx?.cpf) ?? asString(ctx?.cnpj);
+  const bits = [
+    nome ? `cliente ${nome}` : undefined,
+    tel ? `tel ${tel}` : undefined,
+    email ? `email ${email}` : undefined,
+    doc ? `doc ${doc}` : undefined,
+  ].filter(Boolean);
+  return bits.length > 0 ? bits.join(', ') : '';
+}
+
+/** Drop DEV-only restart tips that leak into PRD alert narratives. */
+function sanitizeUiErrorDetail(text: string): string {
+  return text
+    .replace(/\s*Execute npm run restart[^.]*\.?/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * Narrativa operacional (TAP-188): quem, o que tentou, comanda/cliente/contato, empresa, mensagem.
+ * Kind de rede/servidor/bug acrescenta orientação curta depois da frase principal.
+ */
 export function buildUiErrorCenario(log: ParsedLog, payload: KibanaAlertPayload): string {
   const empresa =
     slugToDisplayName(log.cervejariaSlug) ?? log.cervejariaSlug ?? 'empresa nao identificada';
-  const usuario = formatUsuario(log) ?? 'usuario nao identificado';
+  const usuario = formatUsuario(log) ?? 'atendente nao identificado';
   const funcionalidade = resolveOperacao(log);
   const kind = classifyUiErrorKind(log);
-  const scenario = asString(log.metadata?.scenario);
-  const operation = asString(log.metadata?.operation);
+  const intent = functionalIntentSummary(log);
+  const scope = functionalScope(log);
+  const contact = contactClause(log);
   const rawDetail =
+    log.errorMessage ??
     extractResponseErrorMessage(log.metadata) ??
     log.message.trim() ??
     payload.reason?.trim() ??
     'falha sem detalhe';
+  const detail = sanitizeUiErrorDetail(rawDetail) || 'falha sem detalhe';
 
-  const contextBits = [
-    operation ? `operacao=${operation}` : undefined,
-    scenario ? `cenario=${scenario}` : undefined,
-  ].filter(Boolean);
-  const contextSuffix = contextBits.length > 0 ? ` (${contextBits.join(', ')})` : '';
-  const narrative = functionalNarrative(log);
-  const shown = log.errorMessage ? ` Mensagem exibida ao usuario: "${log.errorMessage}".` : '';
+  const trying = intent ? `ao tentar "${intent}"` : `ao usar "${funcionalidade}"`;
+  const whereParts = [scope, !scope && contact ? contact : undefined].filter(Boolean);
+  // When resumo already has cliente, still append tel/email/doc if missing from scope.
+  if (scope && contact) {
+    for (const piece of contact.split(', ').slice(1)) {
+      if (piece && !scope.includes(piece.replace(/^(tel|email|doc) /, ''))) {
+        whereParts.push(piece);
+      }
+    }
+  }
+  const where = whereParts.length > 0 ? ` na ${whereParts.join(' · ')}` : '';
+  const head = `O atendente ${usuario} ${trying}${where} em ${empresa} (${funcionalidade}): ${detail}.`;
 
   if (kind === 'network') {
     return (
-      `${usuario} em ${empresa} ao usar "${funcionalidade}"${narrative}${contextSuffix}: o navegador nao conseguiu falar com o servidor ` +
-      `(falha de rede no dispositivo ou no caminho ate a API). Nao prova que a API caiu; ` +
-      `se so este alerta disparou, trate como problema pontual do usuario/rede.${shown}`
+      `${head} O navegador nao conseguiu falar com o servidor (rede no dispositivo ou caminho ate a API). ` +
+      `Nao prova que a API caiu; se so este alerta disparou, trate como problema pontual do usuario/rede.`
     );
   }
-
   if (kind === 'server_unavailable') {
     return (
-      `${usuario} em ${empresa} ao usar "${funcionalidade}"${narrative}${contextSuffix}: o servidor respondeu indisponivel ` +
-      `(502/503 ou equivalente). Verifique saude da API/site publico e deploys recentes.${shown}`
+      `${head} O servidor respondeu indisponivel (502/503 ou equivalente). ` +
+      `Verifique saude da API/site publico e deploys recentes.`
     );
   }
-
-  const detail = log.errorMessage ?? rawDetail;
   if (kind === 'ui_bug') {
-    return (
-      `${usuario} em ${empresa} encontrou quebra de interface em "${funcionalidade}"${narrative}${contextSuffix}: ${detail}. ` +
-      `Provavel bug de tela/JS; confira console e release do frontend.`
-    );
+    return `${head} Provavel bug de tela/JS; confira console e release do frontend.`;
   }
-
-  return `${usuario} em ${empresa} ao usar "${funcionalidade}"${narrative}${contextSuffix}: ${detail}.`;
+  return head;
 }
 
 const CONTEXT_LABELS: Record<string, string> = {
@@ -600,6 +632,14 @@ const CONTEXT_LABELS: Record<string, string> = {
   itensQtd: 'Itens na comanda',
   clienteId: 'Cliente ID',
   clienteNome: 'Cliente',
+  clienteTelefone: 'Telefone',
+  clienteEmail: 'E-mail',
+  clienteDocumento: 'Documento',
+  telefone: 'Telefone',
+  email: 'E-mail',
+  documento: 'Documento',
+  cpf: 'CPF',
+  cnpj: 'CNPJ',
   eventoId: 'Evento ID',
   eventoNome: 'Evento',
 };

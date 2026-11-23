@@ -1,12 +1,13 @@
 import type { KibanaAlertPayload } from './kibana-alert-email.js';
 import type { AlertEnrichedContext } from './observability-alert-enrich.js';
-import { buildInfraTechnicalDetails } from './observability-alert-enrich.js';
+import { buildInfraTechnicalDetails, isNegocioAlertRule } from './observability-alert-enrich.js';
 import {
   buildObservabilityAlertSections,
   isOperationalAlertRule,
   resolveAlertCopy,
   formatAlertStateLabel,
   resolveEnvironmentLabel,
+  isDocumentCountReason,
 } from './observability-alert-copy.js';
 
 const TELEGRAM_MAX_CHARS = 4000;
@@ -56,18 +57,32 @@ function appendTechnicalSection(lines: string[], title: string, details: string[
   lines.push('', `<b>${title}:</b>`, escapeHtml(formatTechnicalBlock(details)));
 }
 
+function operationalEmoji(severity: ReturnType<typeof resolveAlertCopy>['severity'], isRecovered: boolean): string {
+  if (isRecovered) return '✅';
+  if (severity === 'critical') return '🚨';
+  if (severity === 'high') return '⚠️';
+  return 'ℹ️';
+}
+
 function formatOperationalTelegram(payload: KibanaAlertPayload): string {
   const ctx = pickContext(payload);
   const state = formatAlertStateLabel(payload.alertState);
   const copy = resolveAlertCopy(payload.ruleName);
   const env = resolveEnvironmentLabel(payload.ruleName);
   const sections = buildObservabilityAlertSections(payload);
+  const negocio = isNegocioAlertRule(payload.ruleName);
 
-  const emoji = state.isRecovered ? '✅' : copy.severity === 'critical' ? '🚨' : '⚠️';
+  // Business notices: firing only — skip recover to avoid chat noise (TAP-188).
+  if (negocio && state.isRecovered) return '';
+
+  const emoji = operationalEmoji(copy.severity, state.isRecovered);
   const headline = state.isRecovered
     ? `${emoji} RECUPERADO — ${escapeHtml(ctx.operacao ?? copy.title)}`
-    : `${emoji} ERRO NA OPERACAO`;
+    : negocio
+      ? `${emoji} AVISO DE OPERACAO`
+      : `${emoji} ERRO NA OPERACAO`;
 
+  const cenario = fieldOrMissing(ctx.cenario ?? ctx.errorDescription ?? payload.reason);
   const lines: string[] = [headline, ''];
 
   if (!state.isRecovered) {
@@ -75,9 +90,7 @@ function formatOperationalTelegram(payload: KibanaAlertPayload): string {
       `<b>Empresa:</b> ${escapeHtml(fieldOrMissing(ctx.empresa))}`,
       `<b>Funcionalidade:</b> ${escapeHtml(fieldOrMissing(ctx.operacao))}`,
       `<b>Usuario:</b> ${escapeHtml(fieldOrMissing(ctx.usuario))}`,
-      `<b>Cenario:</b> ${escapeHtml(
-        fieldOrMissing(ctx.cenario ?? ctx.errorDescription ?? payload.reason),
-      )}`,
+      `<b>Cenario:</b> ${escapeHtml(cenario)}`,
     );
     appendTechnicalSection(
       lines,
@@ -88,8 +101,11 @@ function formatOperationalTelegram(payload: KibanaAlertPayload): string {
     lines.push(
       `<b>Empresa:</b> ${escapeHtml(fieldOrMissing(ctx.empresa))}`,
       `<b>Funcionalidade:</b> ${escapeHtml(fieldOrMissing(ctx.operacao))}`,
+      `<b>Cenario:</b> ${escapeHtml(cenario)}`,
       `<b>Detalhamento:</b> ${escapeHtml(
-        'O monitoramento indica que a condicao normalizou. Confira se a operacao concluiu corretamente no app.',
+        cenario !== MISSING
+          ? `${cenario} — voltou ao normal. Confira se a operacao concluiu corretamente no app.`
+          : 'O monitoramento indica que a condicao normalizou. Confira se a operacao concluiu corretamente no app.',
       )}`,
     );
   }
@@ -138,11 +154,13 @@ function formatInfraTelegram(payload: KibanaAlertPayload): string {
     });
   }
 
-  if (sections.technicalReason) {
+  if (sections.technicalReason && !isDocumentCountReason(sections.technicalReason)) {
     detalhamentoParts.push(`Motivo tecnico: ${sections.technicalReason}`);
   }
 
-  const infraTechnical = buildInfraTechnicalDetails(payload);
+  const infraTechnical = buildInfraTechnicalDetails(payload).filter(
+    (line) => !isDocumentCountReason(line),
+  );
   for (const line of infraTechnical) {
     if (!detalhamentoParts.some((part) => part.includes(line))) {
       detalhamentoParts.push(line);
@@ -182,7 +200,9 @@ export function formatObservabilityAlertTelegramText(payload: KibanaAlertPayload
   const body = isOperationalAlertRule(payload.ruleName)
     ? formatOperationalTelegram(payload)
     : formatInfraTelegram(payload);
-  return truncateTelegramHtml(`[KIBANA] ${body}`);
+  if (!body.trim()) return '';
+  const prefix = isNegocioAlertRule(payload.ruleName) ? '[NEGÓCIO]' : '[KIBANA]';
+  return truncateTelegramHtml(`${prefix} ${body}`);
 }
 
 function formatOperationalEmailHtml(payload: KibanaAlertPayload): string {
@@ -195,11 +215,18 @@ function formatOperationalEmailHtml(payload: KibanaAlertPayload): string {
     ? `Recuperado — ${ctx.operacao ?? copy.title}`
     : `Erro na operacao — ${ctx.operacao ?? copy.title}`;
 
+  const cenario = fieldOrMissing(ctx.cenario ?? ctx.errorDescription ?? payload.reason);
+  const recoveredDetail =
+    cenario !== MISSING
+      ? `${cenario} — voltou ao normal. Confira se a operacao concluiu corretamente no app.`
+      : 'O monitoramento indica que a condicao normalizou. Confira se a operacao concluiu corretamente no app.';
+
   const bodyRows = state.isRecovered
     ? `
       <p><strong>Empresa:</strong> ${escapeHtml(fieldOrMissing(ctx.empresa))}<br>
       <strong>Funcionalidade:</strong> ${escapeHtml(fieldOrMissing(ctx.operacao))}</p>
-      <p><strong>Detalhamento:</strong> O monitoramento indica que a condicao normalizou. Confira se a operacao concluiu corretamente no app.</p>
+      <p><strong>Cenario:</strong> ${escapeHtml(cenario)}</p>
+      <p><strong>Detalhamento:</strong> ${escapeHtml(recoveredDetail)}</p>
     `
     : `
       <p><strong>Empresa:</strong> ${escapeHtml(fieldOrMissing(ctx.empresa))}<br>
@@ -248,11 +275,13 @@ function formatInfraEmailHtml(payload: KibanaAlertPayload): string {
     });
   }
 
-  if (sections.technicalReason) {
+  if (sections.technicalReason && !isDocumentCountReason(sections.technicalReason)) {
     detalhamentoParts.push(`Motivo tecnico: ${sections.technicalReason}`);
   }
 
-  const infraTechnical = buildInfraTechnicalDetails(payload);
+  const infraTechnical = buildInfraTechnicalDetails(payload).filter(
+    (line) => !isDocumentCountReason(line),
+  );
   for (const line of infraTechnical) {
     if (!detalhamentoParts.some((part) => part.includes(line))) {
       detalhamentoParts.push(line);

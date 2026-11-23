@@ -351,7 +351,9 @@ test('contexto funcional e intenção viajam no ui.error, saneados, e entram na 
         comandaNumero: 42,
         comandaIdentificador: '3',
         subtotal: 87.5,
-        clienteTelefone: '11999998888',
+        clienteTelefone: '+55 27 98128-3526',
+        clienteEmail: 'filipe@example.test',
+        clienteDocumento: '123.456.789-09',
         observacao: 'sem gelo',
         nested: { nao: 'aceito' },
       },
@@ -372,7 +374,9 @@ test('contexto funcional e intenção viajam no ui.error, saneados, e entram na 
   const intent = input?.metadata?.intent as Record<string, unknown>;
   assert.equal(context.comandaNumero, 42);
   assert.equal(context.subtotal, 87.5);
-  assert.equal(context.clienteTelefone, undefined);
+  assert.equal(context.clienteTelefone, '5527981283526');
+  assert.equal(context.clienteEmail, 'filipe@example.test');
+  assert.equal(context.clienteDocumento, '12345678909');
   assert.equal(context.observacao, undefined);
   assert.equal(context.nested, undefined);
   assert.equal(intent.itensQuantidade, 3);

@@ -561,7 +561,8 @@ Pelo menos **um** canal deve estar configurado. E-mail e Telegram podem coexisti
 
 Todas as regras `quiver-tap-*` habilitadas via `npm run obs:configure` / `obs:alert-email`, incluindo:
 
-- `quiver-tap-ui-error-prd` — erros de tela (`ui.error`)
+- `quiver-tap-ui-error-prd` — erros técnicos de tela (`ui.error` network/api_server/ui_bug)
+- `quiver-tap-ui-negocio-prd` — avisos leves de negócio (`validation`/`api_client`, TAP-188)
 - `quiver-tap-5xx-rate-prd` — HTTP 5xx (>2 em 15 min)
 - `quiver-tap-api-ready-down-prd` — API fora do ar
 - `quiver-tap-transacao-failure-prd` — falhas transacionais
