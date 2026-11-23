@@ -1182,3 +1182,65 @@ export interface OperacaoDashboard {
   receitaAnual: Array<{ mes: number; label: string; receita: number; comandas: number }>;
   anoVigente: number;
 }
+
+/** TAP-189 — aba Produtos do Quadro. */
+export interface OperacaoDashboardProdutoListaItem {
+  produtoId: string;
+  nome: string;
+  quantidadeVendida: number;
+  receita: number;
+  entradas: number;
+  saidasVenda: number;
+  outros: number;
+  ajustes: number;
+  saldoAtual: number | null;
+}
+
+export interface OperacaoDashboardProdutosLista {
+  periodo: { tipo: 'mes' | 'periodo'; label: string; ano?: number; mes?: number; de?: string; ate?: string };
+  controlaEstoque: boolean;
+  pontoVendaId: string | null;
+  escopoEstoque: 'ponto' | 'todas_unidades';
+  produtos: OperacaoDashboardProdutoListaItem[];
+}
+
+export interface OperacaoDashboardProdutoDetalhe {
+  periodo: { tipo: 'mes' | 'periodo'; label: string; ano?: number; mes?: number; de?: string; ate?: string };
+  controlaEstoque: boolean;
+  pontoVendaId: string | null;
+  escopoEstoque: 'ponto' | 'todas_unidades';
+  produto: { id: string; nome: string };
+  /** True when some qty/revenue on this product came from optionals linked to its stock. */
+  vendaViaOpcional?: boolean;
+  totais: {
+    quantidadeVendida: number;
+    receita: number;
+    entradas: number;
+    saidasVenda: number;
+    estornos: number;
+    outros: number;
+    ajustes: number;
+    saldoAtual: number | null;
+  };
+  dias: Array<{
+    dia: string;
+    label: string;
+    quantidadeVendida: number;
+    receita: number;
+    entradas: number;
+    saidasVenda: number;
+    estornos: number;
+    outros: number;
+    ajustes: number;
+    deltaEstoque: number;
+    movimentos: Array<{
+      id: string;
+      tipo: string;
+      quantidade: number;
+      createdAt: string;
+      observacao: string | null;
+      pontoVendaId: string;
+      registradoPorNome?: string | null;
+    }>;
+  }>;
+}
