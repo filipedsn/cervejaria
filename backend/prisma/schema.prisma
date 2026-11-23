@@ -398,6 +398,8 @@ model Produto {
   ordem            Int     @default(0)
   /// Vendido como composição de outros produtos (gruposCombo); não tem estoque nem preparo próprios.
   combo            Boolean @default(false)
+  /// Combo fechado: itens fixos, sem escolha na venda. Só faz sentido com combo = true.
+  comboFechado     Boolean @default(false)
   ativo        Boolean       @default(true)
   cervejariaId String
   pontoVendaId String?
