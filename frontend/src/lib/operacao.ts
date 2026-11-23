@@ -1184,22 +1184,24 @@ export interface OperacaoDashboard {
 }
 
 /** TAP-189 — aba Produtos do Quadro. */
+export interface OperacaoDashboardProdutoListaItem {
+  produtoId: string;
+  nome: string;
+  quantidadeVendida: number;
+  receita: number;
+  entradas: number;
+  saidasVenda: number;
+  outros: number;
+  ajustes: number;
+  saldoAtual: number | null;
+}
+
 export interface OperacaoDashboardProdutosLista {
   periodo: { tipo: 'mes' | 'periodo'; label: string; ano?: number; mes?: number; de?: string; ate?: string };
   controlaEstoque: boolean;
   pontoVendaId: string | null;
   escopoEstoque: 'ponto' | 'todas_unidades';
-  produtos: Array<{
-    produtoId: string;
-    nome: string;
-    quantidadeVendida: number;
-    receita: number;
-    entradas: number;
-    saidasVenda: number;
-    outros: number;
-    ajustes: number;
-    saldoAtual: number | null;
-  }>;
+  produtos: OperacaoDashboardProdutoListaItem[];
 }
 
 export interface OperacaoDashboardProdutoDetalhe {

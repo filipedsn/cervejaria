@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, formatCurrency } from '../../lib/api';
 import { Loading } from '../Loading';
 import type { OperacaoDashboardProdutoDetalhe, OperacaoDashboardProdutosLista } from '../../lib/operacao';
+import { compareProdutosLista, type OrdenacaoProdutos } from './produtosListaSort';
 
 const TIPO_MOVIMENTO_LABEL: Record<string, string> = {
   ENTRADA: 'Entrada',
@@ -26,7 +27,7 @@ type Props = {
 
 export function OperacaoDashboardProdutosTab({ dashboardQuery, pontoParam }: Props) {
   const [busca, setBusca] = useState('');
-  const [ordenar, setOrdenar] = useState<'receita' | 'quantidade'>('receita');
+  const [ordenar, setOrdenar] = useState<OrdenacaoProdutos>('receita');
   const [incluirZerados, setIncluirZerados] = useState(false);
   const [produtoId, setProdutoId] = useState<string | null>(null);
   const [diaAberto, setDiaAberto] = useState<string | null>(null);
@@ -51,16 +52,11 @@ export function OperacaoDashboardProdutosTab({ dashboardQuery, pontoParam }: Pro
     staleTime: 30_000,
   });
 
-  const produtos = useMemo(() => {
-    const rows = listaQuery.data?.produtos ?? [];
-    const term = busca.trim().toLowerCase();
-    const filtered = term ? rows.filter((row) => row.nome.toLowerCase().includes(term)) : rows;
-    return [...filtered].sort((a, b) =>
-      ordenar === 'quantidade'
-        ? b.quantidadeVendida - a.quantidadeVendida || b.receita - a.receita
-        : b.receita - a.receita || b.quantidadeVendida - a.quantidadeVendida,
-    );
-  }, [listaQuery.data?.produtos, busca, ordenar]);
+  const term = busca.trim().toLowerCase();
+  const produtos = (listaQuery.data?.produtos ?? [])
+    .filter((row) => (term ? row.nome.toLowerCase().includes(term) : true))
+    .slice()
+    .sort((a, b) => compareProdutosLista(a, b, ordenar));
 
   if (listaQuery.isLoading || !listaQuery.data) return <Loading />;
 
@@ -163,18 +159,36 @@ export function OperacaoDashboardProdutosTab({ dashboardQuery, pontoParam }: Pro
           />
         </label>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs text-ink-muted flex items-center gap-2">
-            Ordenar
-            <select
-              className="input min-h-10 py-1"
-              value={ordenar}
-              onChange={(e) => setOrdenar(e.target.value as 'receita' | 'quantidade')}
+          <div className="space-y-1">
+            <span className="text-xs text-ink-muted">Ordenar</span>
+            <div
+              className="grid grid-cols-2 gap-1 rounded-xl bg-surface-lighter p-1"
+              role="group"
+              aria-label="Ordenar lista"
             >
-              <option value="receita">Receita</option>
-              <option value="quantidade">Unidades</option>
-            </select>
-          </label>
-          <label className="text-xs text-ink-muted flex items-center gap-2">
+              <button
+                type="button"
+                aria-pressed={ordenar === 'receita'}
+                onClick={() => setOrdenar('receita')}
+                className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+                  ordenar === 'receita' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                Receita
+              </button>
+              <button
+                type="button"
+                aria-pressed={ordenar === 'quantidade'}
+                onClick={() => setOrdenar('quantidade')}
+                className={`min-h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${
+                  ordenar === 'quantidade' ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                Unidades
+              </button>
+            </div>
+          </div>
+          <label className="text-xs text-ink-muted flex items-center gap-2 self-end min-h-9">
             <input
               type="checkbox"
               checked={incluirZerados}
