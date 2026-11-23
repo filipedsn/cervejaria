@@ -1107,6 +1107,9 @@ export interface OperacaoDashboard {
     receitaAvulsa: number;
     ticketMedio: number;
     itensVendidos: number;
+    combosVendidos: number;
+    receitaCombo: number;
+    percentualReceitaCombo: number;
     receitaOpcionais: number;
     unidadesOpcionais: number;
     percentualReceitaOpcionais: number;
@@ -1117,6 +1120,17 @@ export interface OperacaoDashboard {
   porPagamento: Array<{ forma: string; valor: number; percentual: number }>;
   porProduto: Array<{
     produtoId: string;
+    nome: string;
+    quantidade: number;
+    receita: number;
+    percentual: number;
+    quantidadeSolta: number;
+    receitaSolta: number;
+    quantidadeEmCombo: number;
+    receitaEmCombo: number;
+  }>;
+  porCombo: Array<{
+    comboProdutoId: string;
     nome: string;
     quantidade: number;
     receita: number;
