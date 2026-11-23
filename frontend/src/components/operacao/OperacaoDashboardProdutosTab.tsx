@@ -298,37 +298,45 @@ function FragmentDia({
       </tr>
       {aberto && dia.movimentos.length > 0 && (
         <tr className="border-b border-line bg-surface-lighter/40">
-          <td colSpan={colSpan} className="px-3 py-2.5">
-            <ul className="space-y-1.5">
-              {dia.movimentos.map((mov) => {
-                const hora = new Date(mov.createdAt).toLocaleTimeString('pt-BR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                });
-                return (
-                  <li key={mov.id} className="text-xs">
-                    <div className="grid grid-cols-[3rem_1fr_auto] items-baseline gap-x-2 tabular-nums">
-                      <span className="text-ink-muted whitespace-nowrap">{hora}</span>
-                      <span className="min-w-0 font-medium text-ink truncate">
-                        {TIPO_MOVIMENTO_LABEL[mov.tipo] ?? mov.tipo}
-                      </span>
-                      <span className="text-right text-ink whitespace-nowrap">
-                        {formatMovimentoQty(mov.tipo, mov.quantidade)}
-                      </span>
-                    </div>
-                    {(mov.registradoPorNome || mov.observacao) ? (
-                      <p className="mt-0.5 grid grid-cols-[3rem_1fr_auto] gap-x-2">
-                        <span aria-hidden="true" />
-                        <span className="min-w-0 truncate text-ink-faint">
-                          {[mov.registradoPorNome, mov.observacao].filter(Boolean).join(' · ')}
-                        </span>
-                        <span aria-hidden="true" />
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
+          <td colSpan={colSpan} className="px-2 py-2 sm:px-3">
+            <div className="overflow-x-auto rounded-lg border border-line/80 bg-surface">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="border-b border-line text-left text-[11px] text-ink-faint">
+                    <th className="px-2 py-1.5 font-semibold whitespace-nowrap">Hora</th>
+                    <th className="px-2 py-1.5 font-semibold">Tipo</th>
+                    <th className="px-2 py-1.5 font-semibold">Quem</th>
+                    <th className="px-2 py-1.5 font-semibold">Obs.</th>
+                    <th className="px-2 py-1.5 font-semibold text-right whitespace-nowrap">Qtd</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dia.movimentos.map((mov) => {
+                    const hora = new Date(mov.createdAt).toLocaleTimeString('pt-BR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                    return (
+                      <tr key={mov.id} className="border-b border-line/60 last:border-b-0">
+                        <td className="px-2 py-1.5 tabular-nums text-ink-muted whitespace-nowrap">{hora}</td>
+                        <td className="px-2 py-1.5 font-medium text-ink whitespace-nowrap">
+                          {TIPO_MOVIMENTO_LABEL[mov.tipo] ?? mov.tipo}
+                        </td>
+                        <td className="px-2 py-1.5 text-ink-muted whitespace-nowrap">
+                          {mov.registradoPorNome?.trim() || '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-ink-faint max-w-[10rem] truncate" title={mov.observacao ?? undefined}>
+                          {mov.observacao?.trim() || '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-ink whitespace-nowrap">
+                          {formatMovimentoQty(mov.tipo, mov.quantidade)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </td>
         </tr>
       )}
